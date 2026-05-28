@@ -1,0 +1,36 @@
+import type { EmbeddingProvider } from "../core/interfaces.js";
+import type { RagConfig } from "../core/config.js";
+import { OllamaProvider } from "./ollama.js";
+import { OpenAIProvider } from "./openai.js";
+
+export function createEmbedder(config: RagConfig): EmbeddingProvider {
+  const { provider, baseUrl, model, apiKey } = config.embedding;
+
+  switch (provider) {
+    case "ollama":
+      return new OllamaProvider(baseUrl, model, apiKey);
+    case "openai":
+      if (!apiKey) {
+        throw new Error("OpenAI provider requires an apiKey");
+      }
+      return new OpenAIProvider(baseUrl, model, apiKey);
+    default:
+      throw new Error(`Unknown embedding provider: ${provider}`);
+  }
+}
+
+export async function embedBatch(
+  embedder: EmbeddingProvider,
+  texts: string[],
+  batchSize: number = 10
+): Promise<number[][]> {
+  const results: number[][] = [];
+
+  for (let i = 0; i < texts.length; i += batchSize) {
+    const batch = texts.slice(i, i + batchSize);
+    const embeddings = await embedder.embed(batch);
+    results.push(...embeddings);
+  }
+
+  return results;
+}

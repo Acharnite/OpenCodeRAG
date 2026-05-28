@@ -1,0 +1,69 @@
+{
+  "name": "opencode-rag",
+  "version": "0.1.0",
+  "description": "OpenCode plugin for local-first RAG-based semantic code search",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "opencode-rag": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "cli": "tsx src/cli.ts"
+  },
+  "keywords": [
+    "opencode",
+    "rag",
+    "code-search",
+    "embeddings",
+    "vector-search",
+    "semantic-search",
+    "plugin",
+    "ai",
+    "code"
+  ],
+  "author": "Christoph Döllinger <christoph.doellinger@med.uni-heidelberg.de>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anomalyco/OpenCodeRAG.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anomalyco/OpenCodeRAG/issues"
+  },
+  "homepage": "https://github.com/anomalyco/OpenCodeRAG#readme",
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "dependencies": {
+    "@lancedb/lancedb": "^0.29.0",
+    "apache-arrow": "^21.1.0",
+    "chokidar": "^4.0.3",
+    "commander": "^13.1.0",
+    "tree-sitter-wasm": "^1.0.2",
+    "web-tree-sitter": "^0.26.9"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.15.5",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

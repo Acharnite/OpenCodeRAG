@@ -1,0 +1,32 @@
+{
+  "embedding": {
+    "provider": "ollama",
+    "baseUrl": "http://localhost:11434/api",
+    "model": "embeddinggemma"
+  },
+  "indexing": {
+    "includeExtensions": [
+      ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+      ".py", ".java", ".go",
+      ".md", ".mdx",
+      ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hxx",
+      ".cs", ".aspx", ".razor", ".cshtml",
+      ".json",
+      ".html", ".htm", ".css",
+      ".xml", ".csproj", ".sln"
+    ],
+    "excludeDirs": ["node_modules", ".git", ".opencode", "dist", "build", "__pycache__", ".venv"],
+    "chunkOverlap": 0
+  },
+  "vectorStore": {
+    "path": "./.opencode/rag_db"
+  },
+  "retrieval": {
+    "topK": 10
+  },
+  "openCode": {
+    "enabled": true,
+    "maxContextChunks": 5
+  },
+  "chunkers": []
+}
