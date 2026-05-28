@@ -68,6 +68,11 @@ export const DEFAULT_CONFIG: RagConfig = {
       ".xml",
       ".csproj",
       ".sln",
+      ".rs",
+      ".rb",
+      ".kt",
+      ".kts",
+      ".swift",
     ],
     excludeDirs: [
       "node_modules",

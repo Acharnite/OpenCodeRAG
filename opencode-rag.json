@@ -13,7 +13,8 @@
       ".cs", ".aspx", ".razor", ".cshtml",
       ".json",
       ".html", ".htm", ".css",
-      ".xml", ".csproj", ".sln"
+      ".xml", ".csproj", ".sln",
+      ".rs", ".rb", ".kt", ".kts", ".swift"
     ],
     "excludeDirs": ["node_modules", ".git", ".opencode", "dist", "build", "__pycache__", ".venv"],
     "chunkOverlap": 0

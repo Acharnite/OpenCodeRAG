@@ -137,6 +137,31 @@ describe("getChunker", () => {
     const chunker = getChunker("MySolution.sln");
     assert.equal(chunker.language, "sln");
   });
+
+  it("returns Rust chunker for .rs files", () => {
+    const chunker = getChunker("main.rs");
+    assert.equal(chunker.language, "rust");
+  });
+
+  it("returns Ruby chunker for .rb files", () => {
+    const chunker = getChunker("app.rb");
+    assert.equal(chunker.language, "ruby");
+  });
+
+  it("returns Kotlin chunker for .kt files", () => {
+    const chunker = getChunker("main.kt");
+    assert.equal(chunker.language, "kotlin");
+  });
+
+  it("returns Kotlin chunker for .kts files", () => {
+    const chunker = getChunker("script.kts");
+    assert.equal(chunker.language, "kotlin");
+  });
+
+  it("returns Swift chunker for .swift files", () => {
+    const chunker = getChunker("main.swift");
+    assert.equal(chunker.language, "swift");
+  });
 });
 
 describe("chunkFile fallback", () => {

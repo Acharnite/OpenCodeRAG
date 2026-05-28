@@ -90,7 +90,7 @@ Create `opencode-rag.json` in the project root (auto-detected) or pass via
     "model": "embeddinggemma"
   },
   "indexing": {
-    "includeExtensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".java", ".go", ".md", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hxx", ".cs", ".aspx", ".razor", ".cshtml", ".json", ".html", ".htm", ".css", ".xml", ".csproj", ".sln"],
+    "includeExtensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".java", ".go", ".rs", ".rb", ".kt", ".kts", ".swift", ".md", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hxx", ".cs", ".aspx", ".razor", ".cshtml", ".json", ".html", ".htm", ".css", ".xml", ".csproj", ".sln"],
     "excludeDirs": ["node_modules", ".git", ".opencode", "dist", "build", "__pycache__", ".venv"],
     "chunkOverlap": 0
   },
@@ -256,12 +256,11 @@ interface SearchResult {
 | Razor      | Regex (brace matching)         | `@code` / `@functions` blocks, template regions |
 | Markdown   | Regex heading split            | h1/h2 sections + trailing content         |
 | Solution   | Regex (section boundary)       | project entries and global sections       |
+| Rust       | AST (tree-sitter)              | functions, structs, enums, traits, impl blocks, modules, types |
+| Ruby       | AST (tree-sitter)              | methods, classes, modules, singleton methods |
+| Kotlin     | AST (tree-sitter)              | functions, classes, interfaces, objects, properties |
+| Swift      | AST (tree-sitter)              | functions, classes, structs, enums, protocols, extensions, variables |
 | (other)    | Line-based (100 lines/chunk)   | raw text blocks                           |
-
-AST chunking walks the tree to depth 10, collecting nodes of configured types.
-Web-tree-sitter runs as WASM — no native build tools required.
-
-## Pluggable Chunkers
 
 Custom chunkers can be added without modifying the project source code. Two
 registration paths are supported:
@@ -346,7 +345,7 @@ imports. No test library dependencies.
 ## Limitations
 
 - Embedding model must support 384-dimensional vectors (default seed row size)
-- 12 built-in chunkers (AST for 10 languages, regex for 2) + configurable fallback
+- 18 built-in chunkers (AST for 14 languages, regex for 4) + configurable fallback
 - Watch mode is CLI-only; the OpenCode plugin remains query-only
 
 ## Privacy

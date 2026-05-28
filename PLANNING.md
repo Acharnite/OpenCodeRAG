@@ -22,7 +22,7 @@
 - [ ] Hybrid search (BM25 keyword + vector)
 - [ ] Query rewriting / multi-variant expansion
 - [ ] Context window optimization (dedup, merge adjacent chunks)
-- [ ] AST chunking for more languages (Rust, Ruby, Kotlin, Swift)
+- [x] AST chunking for more languages (Rust, Ruby, Kotlin, Swift, C, C++, C#, JavaScript, JSON, HTML, CSS, XML, Razor)
 
 ## Mid Term
 

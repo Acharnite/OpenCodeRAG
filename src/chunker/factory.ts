@@ -14,6 +14,10 @@ import { htmlChunker } from "./html.js";
 import { cssChunker } from "./css.js";
 import { xmlChunker } from "./xml.js";
 import { slnChunker } from "./sln.js";
+import { rustChunker } from "./rust.js";
+import { rubyChunker } from "./ruby.js";
+import { kotlinChunker } from "./kotlin.js";
+import { swiftChunker } from "./swift.js";
 import { fallbackChunker } from "./fallback.js";
 import { uuid } from "./uuid.js";
 
@@ -33,6 +37,10 @@ const chunkers: Chunker[] = [
   cssChunker,
   xmlChunker,
   slnChunker,
+  rustChunker,
+  rubyChunker,
+  kotlinChunker,
+  swiftChunker,
 ];
 
 const extensionMap = new Map<string, Chunker>();
@@ -153,4 +161,4 @@ export async function chunkFile(
   return splitOversized(chunks, filePath);
 }
 
-export { typescriptChunker, pythonChunker, javaChunker, goChunker, markdownChunker, cChunker, cppChunker, csharpChunker, javascriptChunker, razorChunker, jsonChunker, htmlChunker, cssChunker, xmlChunker, slnChunker, fallbackChunker };
+export { typescriptChunker, pythonChunker, javaChunker, goChunker, markdownChunker, cChunker, cppChunker, csharpChunker, javascriptChunker, razorChunker, jsonChunker, htmlChunker, cssChunker, xmlChunker, slnChunker, rustChunker, rubyChunker, kotlinChunker, swiftChunker, fallbackChunker };
