@@ -244,6 +244,41 @@ If you use the project-local plugin file, OpenCode auto-loads it from
 
 Restart OpenCode after changing plugin files or plugin configuration.
 
+#### AGENTS.md hints for using the plugin
+
+Add a section like this to the target workspace's `AGENTS.md` so the agent
+knows how to use the plugin correctly:
+
+```markdown
+## OpenCodeRAG Plugin
+
+This workspace has OpenCodeRAG installed for semantic code retrieval.
+
+### `opencode-rag-context` tool
+Before planning, editing, or answering, use this tool to retrieve relevant code
+chunks with file paths, line ranges, and surrounding implementation.
+- `query` (required) — narrow, specific search, e.g. `"authentication middleware setup"`
+- `pathHints` (optional) — up to 10 path filters, e.g. `["src/auth/"]`
+- `languageHints` (optional) — up to 10 language filters, e.g. `["typescript"]`
+- `topK` (optional) — result count (1-25, default 10)
+
+### File suggestions
+After each user message, a `chat.message` hook appends up to 10 relevant file
+suggestions to the message. Look for lines like
+`src/file.ts (typescript, lines 10-42)` at the bottom of user input.
+
+### Indexing
+- The plugin auto-indexes changed files in the background (debounced 5s)
+- If no results come back, the workspace may not be indexed yet —
+  run `opencode-rag index` from the terminal
+- Tiny files (under 1 KB), excluded extensions, and excluded directories
+  (`node_modules`, `.git`, `.opencode`, `dist`, etc.) are silently skipped
+```
+
+The plugin registers itself in the system prompt via the
+`experimental.chat.system.transform` hook, so compliant agents will see a
+reminder about the `opencode-rag-context` tool in their system instructions.
+
 ## Data Model
 
 ```typescript
