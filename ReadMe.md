@@ -327,6 +327,7 @@ interface SearchResult {
 | Ruby       | AST (tree-sitter)              | methods, classes, modules, singleton methods |
 | Kotlin     | AST (tree-sitter)              | functions, classes, interfaces, objects, properties |
 | Swift      | AST (tree-sitter)              | functions, classes, structs, enums, protocols, extensions, variables |
+| PDF        | Paragraph-based (text extraction) | groups small paragraphs, splits oversized |
 | (other)    | Line-based (100 lines/chunk)   | raw text blocks                           |
 
 Custom chunkers can be added without modifying the project source code. Two
