@@ -5,6 +5,8 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
 PLUGIN_NAME="opencode-rag"
+CLI_BIN_DIR="$HOME/.local/bin"
+GLOBAL_OPENCODE="$HOME/.config/opencode"
 
 command -v npm >/dev/null 2>&1 || {
   echo "npm is required but was not found in PATH" >&2
@@ -16,37 +18,75 @@ command -v opencode >/dev/null 2>&1 || {
   exit 1
 }
 
+# --- uninstall ---------------------------------------------------------------
+if [ "${1:-}" = "uninstall" ]; then
+  echo "Uninstalling $PLUGIN_NAME..."
+
+  rm -f "$CLI_BIN_DIR/opencode-rag"
+  rm -f "$GLOBAL_OPENCODE/opencode-rag-"*.tgz
+
+  if [ -f "$GLOBAL_OPENCODE/package.json" ]; then
+    node -e "
+      const fs = require('fs');
+      const p = '$GLOBAL_OPENCODE/package.json';
+      const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (pkg.dependencies && pkg.dependencies['$PLUGIN_NAME']) {
+        delete pkg.dependencies['$PLUGIN_NAME'];
+      }
+      fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+    "
+    cd "$GLOBAL_OPENCODE" && npm prune --silent 2>/dev/null || true
+  fi
+
+  for cfg in opencode.jsonc opencode.json; do
+    cfgpath="$GLOBAL_OPENCODE/$cfg"
+    if [ -f "$cfgpath" ]; then
+      node -e "
+        const fs = require('fs');
+        const c = JSON.parse(fs.readFileSync('$cfgpath', 'utf8'));
+        if (c.plugin) {
+          c.plugin = c.plugin.filter(p => p !== '$PLUGIN_NAME');
+          if (c.plugin.length === 0) delete c.plugin;
+        }
+        fs.writeFileSync('$cfgpath', JSON.stringify(c, null, 2) + '\n');
+      "
+    fi
+  done
+
+  echo "Removing old workspace-local wrapper..."
+  rm -f "$REPO_ROOT/.opencode/plugins/rag-plugin.js" \
+        "$REPO_ROOT/.opencode/plugins/package.json"
+  rmdir "$REPO_ROOT/.opencode/plugins" 2>/dev/null || true
+
+  echo "Uninstalled. Restart OpenCode if it is running."
+  exit 0
+fi
+
+# --- install -----------------------------------------------------------------
 cd "$REPO_ROOT"
 
 echo "Building $PLUGIN_NAME..."
 npm run build
 
-echo "Writing OpenCode local plugin wrapper..."
-mkdir -p "$REPO_ROOT/.opencode/plugins"
-cat > "$REPO_ROOT/.opencode/plugins/package.json" <<'EOF'
-{
-  "type": "module"
-}
-EOF
-
-cat > "$REPO_ROOT/.opencode/plugins/rag-plugin.js" <<'EOF'
-import { ragPlugin } from "../../dist/plugin.js";
-
-export default ragPlugin;
-export const server = ragPlugin;
-EOF
-
 echo "Installing globally in OpenCode (~/.config/opencode)..."
-GLOBAL_OPENCODE="$HOME/.config/opencode"
 mkdir -p "$GLOBAL_OPENCODE"
 
+rm -rf "$GLOBAL_OPENCODE/node_modules/opencode-rag"
 PACKED=$(npm pack --pack-destination "$GLOBAL_OPENCODE" 2>&1 | tail -1)
-
 npm install --prefix "$GLOBAL_OPENCODE" --silent "$GLOBAL_OPENCODE/$PACKED"
 
+echo "Making CLI available on PATH..."
+mkdir -p "$CLI_BIN_DIR"
+rm -f "$CLI_BIN_DIR/opencode-rag"
+cat > "$CLI_BIN_DIR/opencode-rag" << WRAPPER
+#!/usr/bin/env bash
+exec node "$HOME/.config/opencode/node_modules/opencode-rag/dist/cli.js" "\$@"
+WRAPPER
+chmod +x "$CLI_BIN_DIR/opencode-rag"
+
+echo "Registering plugin with OpenCode..."
 if [ -f "$GLOBAL_OPENCODE/opencode.jsonc" ]; then
   if ! grep -q "\"opencode-rag\"" "$GLOBAL_OPENCODE/opencode.jsonc"; then
-    echo "Adding opencode-rag to global plugin list in opencode.jsonc..."
     TEMP=$(mktemp)
     node -e "
       const fs = require('fs');
@@ -56,8 +96,6 @@ if [ -f "$GLOBAL_OPENCODE/opencode.jsonc" ]; then
       fs.writeFileSync(process.argv[1], JSON.stringify(c, null, 2) + '\n');
     " "$TEMP"
     mv "$TEMP" "$GLOBAL_OPENCODE/opencode.jsonc"
-  else
-    echo "opencode-rag already in global plugin list."
   fi
 elif [ -f "$GLOBAL_OPENCODE/opencode.json" ]; then
   if ! grep -q "\"opencode-rag\"" "$GLOBAL_OPENCODE/opencode.json"; then
@@ -70,7 +108,6 @@ elif [ -f "$GLOBAL_OPENCODE/opencode.json" ]; then
     "
   fi
 else
-  echo "Creating global opencode.jsonc with opencode-rag plugin..."
   cat > "$GLOBAL_OPENCODE/opencode.jsonc" << JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
@@ -79,4 +116,12 @@ else
 JSONEOF
 fi
 
-echo "Done. Restart OpenCode if it is already running."
+echo "Cleaning up old workspace-local wrapper (no longer needed)..."
+rm -f "$REPO_ROOT/.opencode/plugins/rag-plugin.js" \
+      "$REPO_ROOT/.opencode/plugins/package.json"
+rmdir "$REPO_ROOT/.opencode/plugins" 2>/dev/null || true
+
+echo ""
+echo "Done. You can now run 'opencode-rag --help' from anywhere."
+echo "Run '$0 uninstall' to remove."
+echo "Restart OpenCode if it is already running."
