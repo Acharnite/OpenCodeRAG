@@ -21,8 +21,6 @@ export interface AutoIndexConfig {
   intervalMs: number;
 }
 
-export type ReadNoResultsBehavior = "hint" | "empty" | "error";
-
 export interface RagConfig {
   embedding: {
     provider: "ollama" | "openai";
@@ -49,10 +47,6 @@ export interface RagConfig {
     maxContextChunks: number;
     autoIndex?: AutoIndexConfig;
     overrideRead?: boolean;
-    allowRangeReadFallback?: boolean;
-    maxReadOutputChars?: number;
-    readNoResultsBehavior?: ReadNoResultsBehavior;
-    readRelatedFilesMax?: number;
   };
   chunkers?: ChunkerConfig[];
   logging: LoggingConfig;
@@ -105,6 +99,8 @@ export const DEFAULT_CONFIG: RagConfig = {
       ".kt",
       ".kts",
       ".swift",
+      ".tex",
+      ".pdf",
     ],
     excludeDirs: [
       "node_modules",
@@ -116,7 +112,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       ".venv",
     ],
     chunkOverlap: 0,
-    minFileSizeBytes: 1024,
+    minFileSizeBytes: 10,
   },
   vectorStore: {
     path: "./.opencode/rag_db",
@@ -127,11 +123,7 @@ export const DEFAULT_CONFIG: RagConfig = {
   openCode: {
     enabled: true,
     maxContextChunks: 5,
-    overrideRead: true,
-    allowRangeReadFallback: false,
-    maxReadOutputChars: 20000,
-    readNoResultsBehavior: "hint",
-    readRelatedFilesMax: 5,
+    overrideRead: false,
     autoIndex: {
       enabled: true,
       debounceMs: 5000,

@@ -3,13 +3,13 @@
 ## Project status
 
 MVP implemented. All core modules are built and tested:
-- Chunking (5 languages + fallback)
+- Chunking (17 AST languages + 4 regex-based + 1 PDF text + fallback)
 - Embedding (Ollama + OpenAI)
 - Vector storage (LanceDB)
 - Retrieval pipeline
 - CLI (index, query, clear, status)
 - OpenCode plugin (chat.message hook + background auto-indexing)
-- Test suite (342 tests, 0 failures)
+- Test suite (354 tests, 0 failures)
 
 Design docs: `ReadMe.md` (project docs), `PLANNING.md` (roadmap + brainstorming),
 `docs/designs/2026-05-28-rag-plugin-mvp-design.md` (architecture design).
@@ -39,11 +39,13 @@ src/
   chunker/
     grammar.ts        — tree-sitter init, language loader, walkTree()
     base.ts           — TreeSitterChunker abstract class
-    typescript.ts     — nodeTypes: function_declaration, method_definition, class_declaration, ...
-    python.ts         — nodeTypes: function_definition, class_definition, decorated_definition
-    java.ts           — nodeTypes: method_declaration, class_declaration, interface_declaration, ...
-    go.ts             — nodeTypes: function_declaration, method_declaration, type_declaration
+    typescript.ts     — ...
+    python.ts         — ...
+    java.ts           — ...
+    go.ts             — ...
     markdown.ts       — regex heading-splitter, code-block aware
+    tex.ts            — regex section-splitter (chapter/section/subsection), comment-aware
+    pdf.ts            — paragraph-based, groups small paragraphs, splits oversized
     fallback.ts       — line-based 100-line chunks
     factory.ts        — getChunker(filePath) by extension, chunkFile()
     uuid.ts           — simple UUID v4 generator
@@ -58,9 +60,9 @@ src/
   types/
     opencode-plugin.d.ts  — local type declaration for @opencode-ai/plugin
   indexer.ts          — runIndexPass, scanWorkspace, createWatchPassScheduler, createWatchIgnore
-  watcher.ts          — createBackgroundIndexer (chokidar watcher + debounced scheduler + periodic timer)
+  watcher.ts          — createBackgroundIndexer (chokidar + debounced scheduler + periodic timer)
   cli.ts              — commander: index, query, clear, status
-  plugin.ts           — ragPlugin: chat.message hook + background auto-indexing
+  plugin.ts           — ragPlugin: context tool + chat.message hook + background auto-indexing
   index.ts            — public API re-exports + plugin default export
   __tests__/          — mirrors module structure
 ```
@@ -174,6 +176,15 @@ When behind a corporate proxy:
 - `autoIndex` config (`openCode.autoIndex`) controls `enabled`, `debounceMs` (default 5000), and `intervalMs` (default 300000).
 - `minFileSizeBytes` in `indexing` (default 1024) skips tiny files during indexing; files below the threshold are also removed from the store if previously indexed.
 
+### Plugin architecture — chat.message file suggestions
+- The plugin registers an `opencode-rag-context` tool (for chunk-level retrieval) and a `chat.message` hook.
+- On each user message, the `chat.message` hook runs retrieval and appends a compact file suggestion list to `output.parts[0].text`.
+- `formatFileList()` in `src/plugin.ts` groups results by file path, sorts by best score, and formats as `path (lang, lines N-M)` — max 10 files, no scores or snippets.
+- Paths in file suggestions are made relative via `path.relative(worktree, ...)`.
+- `extractUserMessageText()` attempts to find user message text from `output.message` (via parts/text) then falls back to `output.message.content`.
+- The old read override (`src/opencode/`, 5 modules) and `tool.execute.after` hooks (glob/grep/list) have been removed in favor of this single chat.message hook.
+- `overrideRead` config option kept for backward compatibility, defaults to `false`.
+
 ### Plugins and module structure
 - `createRagHooks` now accepts optional pre-created `store` and `embedder` instances via `CreateRagHooksOptions`, allowing the plugin to create them with a probed vector dimension before passing them in.
 - The plugin probes the embedding dimension by sending a single `"dimension-probe"` request at startup; falls back to **384** if the probe fails.
@@ -187,8 +198,43 @@ When behind a corporate proxy:
    `node_modules/tree-sitter-wasm/README.md` for supported names)
 5. Add extension to defaults in `DEFAULT_CONFIG.indexing.includeExtensions`
 
+## Adding a Non-Code Chunker (e.g. PDF)
+
+For binary or document formats:
+
+1. Create `src/chunker/<lang>.ts` implementing `Chunker` directly (not `TreeSitterChunker`)
+2. If binary, add text extraction in the chunker using dynamic imports to avoid
+   startup overhead (see `pdf.ts` for the DOMMatrix polyfill + pdfjs-dist pattern)
+3. Register in `factory.ts` and add extension to `DEFAULT_CONFIG.indexing.includeExtensions`
+4. For binary files, update `scanWorkspace` in `indexer.ts` to read as `Buffer`
+   and extract text before passing to `chunkFile()`
+
 ## Adding a New Embedding Provider
 
 1. Create `src/embedder/<name>.ts` implementing `EmbeddingProvider`
 2. Add provider dispatch in `createEmbedder()` in `factory.ts`
 3. Update `RagConfig.embedding.provider` union type in `config.ts`
+
+## OpenCodeRAG Plugin
+
+This workspace has OpenCodeRAG installed for semantic code retrieval.
+
+### `opencode-rag-context` tool
+Before planning, editing, or answering, use this tool to retrieve relevant code
+chunks with file paths, line ranges, and surrounding implementation.
+- `query` (required) — narrow, specific search, e.g. `"authentication middleware setup"`
+- `pathHints` (optional) — up to 10 path filters, e.g. `["src/auth/"]`
+- `languageHints` (optional) — up to 10 language filters, e.g. `["typescript"]`
+- `topK` (optional) — result count (1-25, default 10)
+
+### File suggestions
+After each user message, a `chat.message` hook appends up to 10 relevant file
+suggestions to the message. Look for lines like
+`src/file.ts (typescript, lines 10-42)` at the bottom of user input.
+
+### Indexing
+- The plugin auto-indexes changed files in the background (debounced 5s)
+- If no results come back, the workspace may not be indexed yet —
+  run `opencode-rag index` from the terminal (or `npx opencode-rag-plugin`)
+- Tiny files (under 1 KB), excluded extensions, and excluded directories
+  (`node_modules`, `.git`, `.opencode`, `dist`, etc.) are silently skipped
