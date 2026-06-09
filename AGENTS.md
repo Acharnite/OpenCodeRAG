@@ -220,8 +220,8 @@ When behind a corporate proxy:
   ```typescript
   import { ragPlugin } from "./plugin.js";
   export const server = ragPlugin;
-  export const id = "opencode-rag";
-  export default { id: "opencode-rag", server: ragPlugin };
+  export const id = "opencode-rag-plugin";
+  export default { id: "opencode-rag-plugin", server: ragPlugin };
   ```
 - The `default` export MUST be an object, not a bare function. If `default` is
   not a record, `readV1Plugin` returns `undefined` and OpenCode falls through to
