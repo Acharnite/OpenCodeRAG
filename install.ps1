@@ -237,11 +237,20 @@ else {
 # Clean up .tgz
 cleanup_tgz
 
-# Note: Plugin registration via opencode.jsonc is intentionally SKIPPED.
-# OpenCode resolves plugin entries from npm, which triggers native dependency
-# compilation (canvas) and fails in this environment. The plugin is loaded via
-# the workspace-local .opencode/plugins/rag-plugin.js file (auto-discovered
-# by OpenCode), set up by `opencode-rag init` in each workspace.
+# Register the plugin with the OpenCode CLI
+if (Get-Command opencode -ErrorAction SilentlyContinue) {
+    step "Registering plugin with OpenCode (opencode plugin)..."
+    try {
+        & opencode 'plugin' $PLUGIN_NAME
+        if ($LASTEXITCODE -eq 0) {
+            ok "Registered via opencode plugin"
+        } else {
+            Write-Host "  'opencode plugin' returned exit code $LASTEXITCODE; registration may have failed." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "  Registration via 'opencode plugin' failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
 
 # Create CLI wrapper
 step "Making CLI available on PATH..."

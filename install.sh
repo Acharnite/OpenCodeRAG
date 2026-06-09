@@ -149,11 +149,15 @@ fi
 # Clean up .tgz
 cleanup_tgz
 
-# Note: Plugin registration via opencode.jsonc is intentionally SKIPPED.
-# OpenCode resolves plugin entries from npm, which triggers native dependency
-# compilation (canvas) and fails in this environment. The plugin is loaded via
-# the workspace-local .opencode/plugins/rag-plugin.js file (auto-discovered
-# by OpenCode), set up by \`opencode-rag init\` in each workspace.
+# Register the plugin with the OpenCode CLI
+if command -v opencode >/dev/null 2>&1; then
+  step "Registering plugin with OpenCode CLI (opencode plugin)..."
+  if opencode plugin opencode-rag-plugin; then
+    ok "Registered via opencode plugin"
+  else
+    info "opencode plugin command returned non-zero exit code; registration may have failed."
+  fi
+fi
 
 # Create CLI wrapper (pointing to runtime's node_modules for stability)
 step "Making CLI available on PATH..."

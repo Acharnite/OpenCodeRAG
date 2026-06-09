@@ -669,6 +669,44 @@ program
       console.log("\nInstalling workspace-local plugin dependencies...\n");
       installWorkspaceDependencies(opencodeDir);
       console.log("\n  Installed: .opencode/node_modules/");
+      // Best-effort: try to register the plugin with the OpenCode CLI so users
+      // who rely on the global `opencode` command get the plugin registered.
+      // This is non-fatal: if the CLI is missing or registration fails we
+      // continue and only warn the user.
+      try {
+        console.log("\nAttempting to register plugin with OpenCode CLI (opencode plugin)...");
+        const pluginName = packageMetadata.name;
+        // Quick availability check for the `opencode` binary
+        let opencodeAvailable = true;
+        try {
+          const check =
+            process.platform === "win32"
+              ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", "opencode --version"], { cwd, stdio: "ignore" })
+              : spawnSync("opencode", ["--version"], { cwd, stdio: "ignore" });
+          if (check && (check as any).error) {
+            opencodeAvailable = false;
+          }
+        } catch {
+          opencodeAvailable = false;
+        }
+
+        if (!opencodeAvailable) {
+          console.log("  opencode CLI not found in PATH; skipping plugin registration.");
+        } else {
+          const regResult =
+            process.platform === "win32"
+              ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `opencode plugin ${pluginName}`], { cwd, stdio: "inherit", env: process.env })
+              : spawnSync("opencode", ["plugin", pluginName], { cwd, stdio: "inherit", env: process.env });
+
+          if (regResult && regResult.status === 0) {
+            console.log("  Registered via opencode plugin");
+          } else {
+            console.log("  opencode plugin returned a non-zero exit code; registration may have failed.");
+          }
+        }
+      } catch (err) {
+        console.log(`  Registration via 'opencode plugin' failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     } else {
       console.log("\n  Skipped:   dependency installation (--skip-install)");
     }
