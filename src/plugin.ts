@@ -170,6 +170,52 @@ function formatContext(
   return parts.join("\n");
 }
 
+function formatAutoInjectContext(
+  results: SearchResult[],
+  worktree: string,
+  maxTokens: number,
+  maxChunks: number
+): string {
+  if (results.length === 0) return "";
+
+  const estimateTokens = (text: string) => Math.ceil(text.length / 4);
+
+  const sorted = [...results].sort((a, b) => b.score - a.score);
+  const included = sorted.slice(0, maxChunks);
+
+  const buildString = (items: SearchResult[]): string => {
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+    const uniqueFiles = new Set(items.map((r) => r.chunk.metadata.filePath));
+    const minScore = last.score;
+    const maxScore = first.score;
+
+    const lines: string[] = [];
+    lines.push(`\n**Auto-retrieved code context** _(context: ${items.length} chunk${items.length === 1 ? "" : "s"}, ${uniqueFiles.size} file${uniqueFiles.size === 1 ? "" : "s"}, relevance ${minScore.toFixed(2)}–${maxScore.toFixed(2)})_\n`);
+    lines.push("---\n");
+
+    for (const r of items) {
+      const m = r.chunk.metadata;
+      const relPath = path.relative(worktree, m.filePath).replace(/\\/g, "/");
+      lines.push(`[${relPath}:${m.startLine}-${m.endLine}] (${m.language}, score: ${r.score.toFixed(2)})`);
+      lines.push("```" + m.language);
+      lines.push(r.chunk.content);
+      lines.push("```\n");
+    }
+
+    lines.push("---");
+    return lines.join("\n");
+  };
+
+  let formatted = buildString(included);
+  while (estimateTokens(formatted) > maxTokens && included.length > 1) {
+    included.pop();
+    formatted = buildString(included);
+  }
+
+  return formatted;
+}
+
 function buildRetrievalQuery(hints: RetrievalQueryHints): string {
   const parts: string[] = [hints.query.trim()];
 
@@ -498,7 +544,28 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
         if (results.length === 0) return;
 
-        const suggestionList = formatFileList(results, options.worktree);
+        const autoInjectCfg = options.cfg.openCode.autoInject;
+        let suggestionList: string | undefined;
+
+        if (autoInjectCfg?.enabled !== false) {
+          const minScore = autoInjectCfg?.minScore ?? 0.75;
+          const maxChunks = autoInjectCfg?.maxChunks ?? 3;
+          const maxTokens = autoInjectCfg?.maxTokens ?? 2000;
+          const highConfidence = results.filter((r) => r.score >= minScore);
+
+          if (highConfidence.length > 0) {
+            suggestionList = formatAutoInjectContext(
+              highConfidence,
+              options.worktree,
+              maxTokens,
+              maxChunks
+            );
+          }
+        }
+
+        if (!suggestionList) {
+          suggestionList = formatFileList(results, options.worktree);
+        }
 
         if (!suggestionList) return;
 

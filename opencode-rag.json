@@ -36,6 +36,12 @@
       "enabled": true,
       "debounceMs": 2000,
       "intervalMs": 300000
+    },
+    "autoInject": {
+      "enabled": true,
+      "minScore": 0.75,
+      "maxChunks": 3,
+      "maxTokens": 2000
     }
   },
   "logging": {

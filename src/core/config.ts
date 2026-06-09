@@ -23,6 +23,13 @@ export interface AutoIndexConfig {
 
 export type ReadNoResultsBehavior = "hint" | "empty" | "error";
 
+export interface AutoInjectConfig {
+  enabled: boolean;
+  minScore: number;
+  maxChunks: number;
+  maxTokens: number;
+}
+
 export interface RagConfig {
   embedding: {
     provider: "ollama" | "openai";
@@ -49,6 +56,7 @@ export interface RagConfig {
     enabled: boolean;
     maxContextChunks: number;
     autoIndex?: AutoIndexConfig;
+    autoInject?: AutoInjectConfig;
     overrideRead?: boolean;
     maxReadOutputChars?: number;
     readNoResultsBehavior?: ReadNoResultsBehavior;
@@ -141,6 +149,12 @@ export const DEFAULT_CONFIG: RagConfig = {
       debounceMs: 5000,
       intervalMs: 300000,
     },
+    autoInject: {
+      enabled: true,
+      minScore: 0.75,
+      maxChunks: 3,
+      maxTokens: 2000,
+    },
   },
   logging: {
     level: "info",
@@ -193,6 +207,10 @@ export function loadConfig(filePath: string): RagConfig {
           ...base.autoIndex,
           ...(user.autoIndex ?? {}),
         } as AutoIndexConfig,
+        autoInject: {
+          ...base.autoInject,
+          ...(user.autoInject ?? {}),
+        } as AutoInjectConfig,
       };
       return merged;
     })(),

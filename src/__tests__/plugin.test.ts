@@ -387,4 +387,357 @@ describe("ragPlugin", () => {
     assert.match((output.parts[0] as Record<string, unknown>).text as string, /src\/embedder\/ollama\.ts.*typescript/);
   });
 
+  it("auto-injects chunk content when scores exceed threshold", async () => {
+    const results = [
+      makeResult(
+        "chunk-1",
+        "/project/src/auth.ts",
+        12,
+        30,
+        "typescript",
+        "export function login() {\n  const token = getToken();\n  return token;\n}",
+        0.92
+      ),
+      makeResult(
+        "chunk-2",
+        "/project/src/auth.ts",
+        40,
+        55,
+        "typescript",
+        "export function validateToken(token: string): boolean {\n  return token.length > 0;\n}",
+        0.88
+      ),
+    ];
+
+    const storeWithResults: VectorStore = {
+      addChunks: async () => {},
+      search: async () => [],
+      count: async () => 5,
+      clear: async () => {},
+      deleteByFilePath: async () => {},
+    };
+
+    const { dependencies } = makeDependencies(results, 2);
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        openCode: {
+          enabled: true,
+          maxContextChunks: 5,
+          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 2000 },
+        },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: storeWithResults,
+      dependencies,
+      worktree: "/project",
+    });
+
+    const chatMessageHook = hooks["chat.message"];
+    assert.ok(chatMessageHook);
+
+    const output = {
+      message: {
+        id: "msg-1",
+        role: "user",
+        sessionID: "session-2",
+        parts: [{
+          type: "text",
+          text: "how does login work?",
+          id: "prt-1",
+          messageID: "msg-1",
+          sessionID: "session-2",
+        }],
+      },
+      parts: [{
+        type: "text",
+        text: "how does login work?",
+        id: "prt-1",
+        messageID: "msg-1",
+        sessionID: "session-2",
+      }],
+    };
+
+    await chatMessageHook?.({ sessionID: "session-2" } as never, output as never);
+
+    const resultText = (output.parts[0] as Record<string, unknown>).text as string;
+    assert.match(resultText, /Auto-retrieved code context/);
+    assert.match(resultText, /login\(\)/);
+    assert.match(resultText, /validateToken/);
+    assert.match(resultText, /auth\.ts:12-30/);
+    assert.doesNotMatch(resultText, /Showing top.*relevant files/);
+  });
+
+  it("falls back to file list when scores are below autoInject threshold", async () => {
+    const results = [
+      makeResult(
+        "chunk-1",
+        "/project/src/auth.ts",
+        12,
+        30,
+        "typescript",
+        "export function login() {}",
+        0.5
+      ),
+    ];
+
+    const storeWithResults: VectorStore = {
+      addChunks: async () => {},
+      search: async () => [],
+      count: async () => 5,
+      clear: async () => {},
+      deleteByFilePath: async () => {},
+    };
+
+    const { dependencies } = makeDependencies(results, 1);
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        openCode: {
+          enabled: true,
+          maxContextChunks: 5,
+          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 2000 },
+        },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: storeWithResults,
+      dependencies,
+      worktree: "/project",
+    });
+
+    const chatMessageHook = hooks["chat.message"];
+    assert.ok(chatMessageHook);
+
+    const output = {
+      message: {
+        id: "msg-1",
+        role: "user",
+        sessionID: "session-3",
+        parts: [{
+          type: "text",
+          text: "auth stuff",
+          id: "prt-1",
+          messageID: "msg-1",
+          sessionID: "session-3",
+        }],
+      },
+      parts: [{
+        type: "text",
+        text: "auth stuff",
+        id: "prt-1",
+        messageID: "msg-1",
+        sessionID: "session-3",
+      }],
+    };
+
+    await chatMessageHook?.({ sessionID: "session-3" } as never, output as never);
+
+    const resultText = (output.parts[0] as Record<string, unknown>).text as string;
+    assert.doesNotMatch(resultText, /Auto-retrieved code context/);
+    assert.match(resultText, /Showing top.*relevant files/);
+  });
+
+  it("respects maxChunks limit for auto-injection", async () => {
+    const results = [
+      makeResult("c1", "/p/a.ts", 1, 10, "ts", "fn a() {}", 0.95),
+      makeResult("c2", "/p/b.ts", 1, 10, "ts", "fn b() {}", 0.90),
+      makeResult("c3", "/p/c.ts", 1, 10, "ts", "fn c() {}", 0.85),
+    ];
+
+    const storeWithResults: VectorStore = {
+      addChunks: async () => {},
+      search: async () => [],
+      count: async () => 3,
+      clear: async () => {},
+      deleteByFilePath: async () => {},
+    };
+
+    const { dependencies } = makeDependencies(results, 3);
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        openCode: {
+          enabled: true,
+          maxContextChunks: 5,
+          autoInject: { enabled: true, minScore: 0.5, maxChunks: 1, maxTokens: 99999 },
+        },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: storeWithResults,
+      dependencies,
+      worktree: "/p",
+    });
+
+    const chatMessageHook = hooks["chat.message"];
+    assert.ok(chatMessageHook);
+
+    const output = {
+      message: {
+        id: "msg-1",
+        role: "user",
+        sessionID: "session-4",
+        parts: [{
+          type: "text",
+          text: "test",
+          id: "prt-1",
+          messageID: "msg-1",
+          sessionID: "session-4",
+        }],
+      },
+      parts: [{
+        type: "text",
+        text: "test",
+        id: "prt-1",
+        messageID: "msg-1",
+        sessionID: "session-4",
+      }],
+    };
+
+    await chatMessageHook?.({ sessionID: "session-4" } as never, output as never);
+
+    const resultText = (output.parts[0] as Record<string, unknown>).text as string;
+    assert.match(resultText, /Auto-retrieved code context/);
+    assert.match(resultText, /1 chunk/);
+    assert.match(resultText, /fn a\(\)/);
+    assert.doesNotMatch(resultText, /fn b\(\)/);
+  });
+
+  it("disabled autoInject falls back to file list", async () => {
+    const results = [
+      makeResult(
+        "chunk-1",
+        "/project/src/main.ts",
+        1,
+        10,
+        "typescript",
+        "export function main() {}",
+        0.99
+      ),
+    ];
+
+    const storeWithResults: VectorStore = {
+      addChunks: async () => {},
+      search: async () => [],
+      count: async () => 5,
+      clear: async () => {},
+      deleteByFilePath: async () => {},
+    };
+
+    const { dependencies } = makeDependencies(results, 1);
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        openCode: {
+          enabled: true,
+          maxContextChunks: 5,
+          autoInject: { enabled: false, minScore: 0.75, maxChunks: 3, maxTokens: 2000 },
+        },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: storeWithResults,
+      dependencies,
+      worktree: "/project",
+    });
+
+    const chatMessageHook = hooks["chat.message"];
+    assert.ok(chatMessageHook);
+
+    const output = {
+      message: {
+        id: "msg-1",
+        role: "user",
+        sessionID: "session-5",
+        parts: [{
+          type: "text",
+          text: "test",
+          id: "prt-1",
+          messageID: "msg-1",
+          sessionID: "session-5",
+        }],
+      },
+      parts: [{
+        type: "text",
+        text: "test",
+        id: "prt-1",
+        messageID: "msg-1",
+        sessionID: "session-5",
+      }],
+    };
+
+    await chatMessageHook?.({ sessionID: "session-5" } as never, output as never);
+
+    const resultText = (output.parts[0] as Record<string, unknown>).text as string;
+    assert.doesNotMatch(resultText, /Auto-retrieved code context/);
+    assert.match(resultText, /src\/main\.ts/);
+  });
+
+  it("uses relative paths in auto-injected context", async () => {
+    const results = [
+      makeResult(
+        "chunk-1",
+        "/home/user/workspace/src/app.ts",
+        1,
+        5,
+        "typescript",
+        "const x = 1;",
+        0.95
+      ),
+    ];
+
+    const storeWithResults: VectorStore = {
+      addChunks: async () => {},
+      search: async () => [],
+      count: async () => 5,
+      clear: async () => {},
+      deleteByFilePath: async () => {},
+    };
+
+    const { dependencies } = makeDependencies(results, 1);
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        openCode: {
+          enabled: true,
+          maxContextChunks: 5,
+          autoInject: { enabled: true, minScore: 0.5, maxChunks: 3, maxTokens: 2000 },
+        },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: storeWithResults,
+      dependencies,
+      worktree: "/home/user/workspace",
+    });
+
+    const chatMessageHook = hooks["chat.message"];
+    assert.ok(chatMessageHook);
+
+    const output = {
+      message: {
+        id: "msg-1",
+        role: "user",
+        sessionID: "session-6",
+        parts: [{
+          type: "text",
+          text: "test",
+          id: "prt-1",
+          messageID: "msg-1",
+          sessionID: "session-6",
+        }],
+      },
+      parts: [{
+        type: "text",
+        text: "test",
+        id: "prt-1",
+        messageID: "msg-1",
+        sessionID: "session-6",
+      }],
+    };
+
+    await chatMessageHook?.({ sessionID: "session-6" } as never, output as never);
+
+    const resultText = (output.parts[0] as Record<string, unknown>).text as string;
+    assert.match(resultText, /src\/app\.ts/);
+    assert.doesNotMatch(resultText, /home\/user\/workspace/);
+  });
+
 });

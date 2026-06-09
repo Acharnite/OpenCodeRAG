@@ -8,8 +8,8 @@ MVP implemented. All core modules are built and tested:
 - Vector storage (LanceDB)
 - Retrieval pipeline
 - CLI (index, query, clear, status)
-- OpenCode plugin (chat.message hook + background auto-indexing)
-- Test suite (354 tests, 0 failures)
+- OpenCode plugin (chat.message hook + auto-context injection + background auto-indexing)
+- Test suite (483 tests, 0 failures)
 
 Design docs: `ReadMe.md` (project docs), `PLANNING.md` (roadmap + brainstorming),
 `docs/designs/2026-05-28-rag-plugin-mvp-design.md` (architecture design).
@@ -176,11 +176,12 @@ When behind a corporate proxy:
 - `autoIndex` config (`openCode.autoIndex`) controls `enabled`, `debounceMs` (default 5000), and `intervalMs` (default 300000).
 - `minFileSizeBytes` in `indexing` (default 1024) skips tiny files during indexing; files below the threshold are also removed from the store if previously indexed.
 
-### Plugin architecture — chat.message file suggestions
+### Plugin architecture — chat.message auto-injection
 - The plugin registers an `opencode-rag-context` tool (for chunk-level retrieval) and a `chat.message` hook.
-- On each user message, the `chat.message` hook runs retrieval and appends a compact file suggestion list to `output.parts[0].text`.
-- `formatFileList()` in `src/plugin.ts` groups results by file path, sorts by best score, and formats as `path (lang, lines N-M)` — max 10 files, no scores or snippets.
-- Paths in file suggestions are made relative via `path.relative(worktree, ...)`.
+- On each user message, the `chat.message` hook runs retrieval. If high-confidence results exist (score ≥ `autoInject.minScore`, default 0.75), it **auto-injects the actual code chunks** via `formatAutoInjectContext()` in `src/plugin.ts`, saving a tool-call round-trip. If scores are below threshold, it falls back to a file suggestion list via `formatFileList()`.
+- `formatAutoInjectContext()` respects `maxChunks` (default 3) and `maxTokens` (default 2000, estimated at ~4 chars/token) budgets. Low-scoring chunks are evicted first to fit the budget.
+- `formatFileList()` groups results by file path, sorts by best score, and formats as `path (lang, lines N-M)` — max 10 files, no scores or snippets.
+- Paths in file suggestions and auto-injected context are made relative via `path.relative(worktree, ...)`.
 - `extractUserMessageText()` attempts to find user message text from `output.message` (via parts/text) then falls back to `output.message.content`.
 - The old read override (`src/opencode/`, 5 modules) and `tool.execute.after` hooks (glob/grep/list) have been removed in favor of this single chat.message hook.
 - `overrideRead` config option kept for backward compatibility, defaults to `false`.
@@ -270,10 +271,11 @@ chunks with file paths, line ranges, and surrounding implementation.
 - `languageHints` (optional) — up to 10 language filters, e.g. `["typescript"]`
 - `topK` (optional) — result count (1-25, default 10)
 
-### File suggestions
-After each user message, a `chat.message` hook appends up to 10 relevant file
-suggestions to the message. Look for lines like
-`src/file.ts (typescript, lines 10-42)` at the bottom of user input.
+### Auto-injected context
+When retrieval confidence is high (score ≥ 0.75), the relevant code chunks are
+injected directly into the message. Look for blocks starting with
+`**Auto-retrieved code context**`. When confidence is low, a compact file list
+is shown instead — lines like `src/file.ts (typescript, lines 10-42)`.
 
 ### Indexing
 - The plugin auto-indexes changed files in the background (debounced 5s)

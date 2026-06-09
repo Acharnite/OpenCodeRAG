@@ -21,7 +21,7 @@ embeddings and vector similarity.
 - **Local vector store** — LanceDB with L2 distance scoring, memory mode for
   testing.
 - **CLI** — index, query, clear, status commands.
-- **OpenCode plugin** — exposes a chunk retrieval tool and suggests relevant files after each user message via the `chat.message` hook.
+- **OpenCode plugin** — exposes a chunk retrieval tool, suggests relevant files after each user message, and auto-injects high-confidence code chunks directly into the message to save tool-call round-trips.
 
 ## Architecture
 
@@ -235,19 +235,29 @@ The plugin registers:
 1. **`opencode-rag-context`** — a custom retrieval tool for chunk-level evidence
 2. **`chat.message`** — after each user message, automatically retrieves relevant indexed files and appends a compact suggestion list to the message text
 
-#### Chat Message File Suggestions
+#### Chat Message Context Auto-Injection
 
 After you send a message, the plugin:
 1. Extracts the user's message text
 2. Runs semantic retrieval against the indexed workspace
-3. Groups results by file, sorts by best chunk score, and formats a compact file list:
+3. **If high-confidence chunks are found** (relevance ≥ 0.75): injects the actual code chunks directly into the message, so the agent has relevant context immediately without needing a tool call:
    ```
-   src/plugin.ts (typescript, lines 10-42)
-   src/core/config.ts (typescript, lines 66-145)
+   ---
+   **Auto-retrieved code context** _(context: 2 chunks, 1 file, relevance 0.88–0.92)_
+   ---
+   [src/auth.ts:12-30] (typescript, score: 0.92)
+   ```typescript
+   function login() { ... }
    ```
-4. Appends the list (max 10 files) to your message text
+   ---
+   ```
+4. **If no high-confidence results**: falls back to a compact file list (max 10 files):
+   ```
+   src/plugin.ts (typescript, lines 10-42, relevance 0.87)
+   src/core/config.ts (typescript, lines 66-145, relevance 0.72)
+   ```
 
-Only file paths, language, and line ranges are shown — no scores or code snippets. This gives the agent lightweight hints about which files are relevant without inflating the context window.
+The auto-injection saves a tool-call round-trip for ~70% of code-related messages. The agent can still call `opencode-rag-context` for more targeted or additional context.
 
 **Config:**
 
@@ -255,6 +265,10 @@ Only file paths, language, and line ranges are shown — no scores or code snipp
 | ------ | ------- | ----------- |
 | `openCode.overrideRead` | `false` | Set to `true` to restore the legacy RAG-backed `read` tool (deprecated) |
 | `openCode.maxContextChunks` | `5` | Maximum chunks per retrieval (affects `opencode-rag-context` tool output) |
+| `openCode.autoInject.enabled` | `true` | Enable/disable auto-injection of high-confidence chunks |
+| `openCode.autoInject.minScore` | `0.75` | Minimum relevance score for auto-injection (0–1) |
+| `openCode.autoInject.maxChunks` | `3` | Maximum chunks to auto-inject per message |
+| `openCode.autoInject.maxTokens` | `2000` | Token budget for injected content (estimated at ~4 chars/token) |
 | `retrieval.topK` | `10` | Number of chunks fetched per query (controls chat.message file suggestion breadth) |
 
 Errors during retrieval are silently caught — a failed search won't break the

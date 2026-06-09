@@ -22,6 +22,7 @@
 - [x] Configurable file logging
 - [x] Published npm package: `opencode-rag-plugin`
 - [x] Expanded automated test suite (472 tests, Node built-in runner)
+- [x] Auto-context injection on `chat.message` — high-confidence chunks are injected directly into messages, saving tool-call round-trips
 
 ## Short Term
 

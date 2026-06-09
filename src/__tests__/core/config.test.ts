@@ -84,6 +84,29 @@ describe("loadConfig", () => {
     assert.equal(config.openCode.enabled, DEFAULT_CONFIG.openCode.enabled);
   });
 
+  it("allows partial override of autoInject settings", () => {
+    writeFileSync(
+      tmpFile,
+      JSON.stringify({ openCode: { autoInject: { minScore: 0.5, maxChunks: 5 } } }),
+      "utf-8"
+    );
+    const config = loadConfig(tmpFile);
+    assert.equal(config.openCode.autoInject?.enabled, true);
+    assert.equal(config.openCode.autoInject?.minScore, 0.5);
+    assert.equal(config.openCode.autoInject?.maxChunks, 5);
+    assert.equal(config.openCode.autoInject?.maxTokens, 2000);
+  });
+
+  it("allows disabling autoInject", () => {
+    writeFileSync(
+      tmpFile,
+      JSON.stringify({ openCode: { autoInject: { enabled: false } } }),
+      "utf-8"
+    );
+    const config = loadConfig(tmpFile);
+    assert.equal(config.openCode.autoInject?.enabled, false);
+  });
+
   it("allows partial override of vectorStore path", () => {
     writeFileSync(
       tmpFile,
@@ -150,6 +173,13 @@ describe("DEFAULT_CONFIG", () => {
 
   it("has default logFilePath", () => {
     assert.equal(DEFAULT_CONFIG.logging.logFilePath, "./.opencode/opencode-rag.log");
+  });
+
+  it("has autoInject enabled by default with sensible defaults", () => {
+    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.enabled, true);
+    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.minScore, 0.75);
+    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxChunks, 3);
+    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxTokens, 2000);
   });
 });
 
