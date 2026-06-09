@@ -1,6 +1,7 @@
 # OpenCodeRAG
 
 Local-first RAG plugin for OpenCode to enable semantic code search with embeddings and vector similarity.
+
 The primary aim is to save tokens by offloading expensive tool calls (mostly file reads) to a locally hosted embedding LLM. When the codebase consists of many large files, mayor speed improvements are possible (depending on the local hardware).
 
 **Published on npm as [`opencode-rag-plugin`](https://www.npmjs.com/package/opencode-rag-plugin)** (**this is not opencode-rag**).
