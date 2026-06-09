@@ -1,20 +1,28 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const originalCwd = process.cwd;
 
 describe("opencode-rag init", () => {
   let tmpDir: string;
+  let symlinkPath: string;
 
   before(() => {
     tmpDir = join(tmpdir(), `opencode-rag-init-test-${Date.now()}`);
     mkdirSync(tmpDir, { recursive: true });
+    symlinkPath = join(tmpDir, "opencode-rag-cli-symlink.js");
   });
 
   after(() => {
+    try {
+      rmSync(symlinkPath, { force: true });
+    } catch {
+      // ignore cleanup failures
+    }
     process.cwd = originalCwd;
   });
 
@@ -97,5 +105,18 @@ describe("opencode-rag init", () => {
     const afterContent = readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(afterContent);
     assert.equal(parsed.embedding.provider, "ollama", "should contain defaults after force");
+  });
+
+  it("resolves symlinked cli entrypoints", async () => {
+    const cliModuleFileUrl = new URL("../cli.ts", import.meta.url);
+    const cliModuleUrl = cliModuleFileUrl.href;
+    symlinkSync(fileURLToPath(cliModuleFileUrl), symlinkPath);
+    assert.ok(existsSync(symlinkPath));
+
+    const { shouldAutoRunCli } = await import("../cli.js");
+
+    assert.equal(shouldAutoRunCli(cliModuleUrl, symlinkPath), true);
+    assert.equal(shouldAutoRunCli(cliModuleUrl, join(tmpDir, "missing-cli.js")), false);
+    assert.equal(shouldAutoRunCli(cliModuleUrl, undefined), false);
   });
 });
