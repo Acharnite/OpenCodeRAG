@@ -4,7 +4,7 @@ This is RAG plugin for OpenCode to enable semantic code search with local embedd
 
 The primary aim of this plugin is to save tokens by offloading expensive tool calls (file reads) to a locally hosted embedding LLM.
 
-If the codebase consists of many large files, major speed improvements are possible (depending on the hardware). But in most cases, a modern CPU is performant enough.
+If the codebase consists of many large files, speed improvements are possible (depending on the hardware). But in most cases, a modern CPU is performant enough.
 
 **Published on npm as [`opencode-rag-plugin`](https://www.npmjs.com/package/opencode-rag-plugin)** (**Don't confuse with opencode-rag, this is a discontinued project by someone else**).
 
