@@ -178,8 +178,9 @@ fi
 # Clean up .tgz
 cleanup_tgz
 
-# Also register via `opencode plugin --global` to let the runtime validate it
-opencode plugin "$PLUGIN_NAME" --global 2>/dev/null || true
+# Note: Plugin is registered in opencode.jsonc above (step "Registering plugin with OpenCode").
+# The `opencode plugin --global` command would download from npm (v1.1.0)
+# and conflict with the locally built version. Rely on the jsonc registration instead.
 
 # Create CLI wrapper (pointing to runtime's node_modules for stability)
 step "Making CLI available on PATH..."

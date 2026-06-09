@@ -189,6 +189,38 @@ When behind a corporate proxy:
 - `createRagHooks` now accepts optional pre-created `store` and `embedder` instances via `CreateRagHooksOptions`, allowing the plugin to create them with a probed vector dimension before passing them in.
 - The plugin probes the embedding dimension by sending a single `"dimension-probe"` request at startup; falls back to **384** if the probe fails.
 
+### Global plugin installation — install scripts
+- `install.ps1` / `install.sh` install the plugin globally by: (1) `npm run build` + `npm pack`, (2) `npm install --prefix ~/.opencode/` and `--prefix ~/.config/opencode/`, (3) adding `"opencode-rag-plugin"` to `~/.config/opencode/opencode.jsonc` plugin array.
+- **NEVER call `opencode plugin <name> --global` in an install script** — it downloads the npm-published version, which can differ from the locally built version. If the npm version is stale, OpenCode loads the wrong code. The `opencode.jsonc` registration alone is sufficient for plugin discovery.
+- Do NOT mix manual npm-pack installation with `opencode plugin` CLI registration; choose one. Our scripts use the manual path (build from source) because the npm version may lag behind.
+
+### `opencode-rag init` — workspace-local plugin fallback
+- `opencode-rag init` always creates `.opencode/plugins/rag-plugin.js` as a workspace-local fallback, even when global registration exists. This file re-exports from `node_modules/` and gives OpenCode a reliable local entry point.
+- The install scripts clean up old `.opencode/plugins/` directories from a previous era, but the init command must recreate the local plugin file for workspaces that haven't run the global install.
+- Never remove the workspace-local plugin creation from `cli.ts`; it is the safety net when global plugin loading fails.
+
+### Plugin export debugging
+- If OpenCode reports "Plugin export is not a function", verify with BOTH dynamic import and require before assuming it is an OpenCode loader bug:
+  ```bash
+  node --input-type=module -e "const m = await import('opencode-rag-plugin'); console.log(typeof m.default, typeof m.server)"
+  node -e "const m = require('opencode-rag-plugin'); console.log(typeof m.default, typeof m.server)"
+  ```
+- The plugin was never broken — the npm version was stale. The `opencode plugin --global` call in install scripts was the real cause: it downloaded an old version from npm, while the local build was v1.2.0.
+
+### PluginModule export pattern
+- OpenCode expects a module with `server` export (async `Plugin` function) and optionally `id` and `default`. The type is:
+  ```typescript
+  type PluginModule = { id?: string; server: Plugin; tui?: never };
+  ```
+- Use the direct export form, not re-exports, for easier debugging:
+  ```typescript
+  import { ragPlugin } from "./plugin.js";
+  export default ragPlugin;
+  export const server = ragPlugin;
+  export const id = "opencode-rag";
+  ```
+- Re-export syntax (`export { X as default } from ...`) produces the same result but is harder to inspect with DevTools or stack traces.
+
 ## Adding a New Language Chunker
 
 1. Create `src/chunker/<lang>.ts` extending `TreeSitterChunker`

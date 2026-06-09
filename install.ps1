@@ -258,8 +258,9 @@ else {
 # Clean up .tgz
 cleanup_tgz
 
-# Also register via opencode CLI
-& cmd /c "opencode plugin $PLUGIN_NAME --global >nul 2>&1"
+# Note: Plugin is registered in opencode.jsonc above (step "Registering plugin with OpenCode").
+# The `opencode plugin --global` command would download from npm (v1.1.0)
+# and conflict with the locally built version. Rely on the jsonc registration instead.
 
 # Create CLI wrapper
 step "Making CLI available on PATH..."
