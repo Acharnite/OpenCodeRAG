@@ -83,61 +83,6 @@ opencode-rag index
 # 5. Restart OpenCode — the plugin is active
 ```
 
----
-
-## Installation
-
-### Global Installation (Recommended)
-
-Clone the repository and run the platform-specific install script:
-
-```bash
-# Linux/macOS
-./install.sh
-
-# Windows
-.\install.ps1
-```
-
-The script will:
-1. Build the plugin from source (`npm run build`)
-2. Install it into OpenCode's runtime (`~/.opencode/node_modules/`)
-3. Register it in the global OpenCode config (`~/.config/opencode/opencode.jsonc`)
-
-**Restart OpenCode after installation.** 
-
----
-
-### Per-Workspace Setup
-
-```bash
-cd your-workspace
-opencode-rag init
-```
-
-Bootstraps the current directory with all required files and a sample configuration.
-Add `--skip-install` to generate the files only, without installing dependencies.
-
----
-
-### Manual Installation
-
-If you prefer to build and install without the script:
-
-```bash
-npm run build
-npm pack
-
-# Install into OpenCode's runtime
-npm install --prefix ~/.opencode/ opencode-rag-plugin-1.2.0.tgz
-npm install --prefix ~/.config/opencode/ opencode-rag-plugin-1.2.0.tgz
-
-# Then add "opencode-rag-plugin" to the plugins array in:
-# ~/.config/opencode/opencode.jsonc
-```
-
----
-
 ### Uninstallation
 
 ```bash
