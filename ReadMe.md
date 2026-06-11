@@ -7,7 +7,7 @@ It features a seamless integration with [OpenCode](https://opencode.ai) and offe
 
 > ⚠️ **Note:** Don't confuse this with `opencode-rag`, which is a discontinued project by a different author. Ensure you are using **`opencode-rag-plugin`**.
 
-**Why OpenCodeRAG?**  
+**Why Using OpenCodeRAG?**  
 OpenCodeRAG aims to reduce LLM token usage by replacing expensive full-file reads with targeted, vector-similarity-based chunk retrieval. 
 Large codebases benefit massively in performance. It runs perfectly on a local dedicated GPU, but modern CPUs handle most workloads just fine. 
 When using only locally hosted embedding models and LLMs, your codebase also remains 100% private.
@@ -61,9 +61,9 @@ opencode-rag index
 
 OpenCodeRAG intelligently processes your query in OpenCode and your codebase for high-precision retrieval:
 1. **AST-aware chunking:** Intelligently splits code into functions, methods, and classes using `tree-sitter`.
-2. **Local Vector Database:** Uses LanceDB to store embeddings locally without cloud dependencies.
+2. **Local Vector Database:** Uses LanceDB to store embeddings locally without any cloud dependencies.
 3. **Hybrid Search:** Combines TF×IDF keyword matching with vector similarity for superior precision on identifiers.
-4. **Incremental Indexing:** Only updates files that have changed, ensuring lightning-fast re-indexing.
+4. **Incremental Indexing:** Only updates files that have changed, ensuring that the vector database stays up-to-date.
 
 ---
 
@@ -77,34 +77,7 @@ After every message you send, the plugin effectively searches your vector-indexe
 - **Lower-confidence results:** A compact list of suggested files is appended instead (e.g., `src/plugin.ts (lines 10-42)`).
 
 ### 2. Direct Tool Call (`opencode-rag-context`)
-The OpenCode agent can actively invoke the RAG tool to fetch specific code chunks, filter by exact file paths, or target specific programming languages.
-
-### Required Setup: `AGENTS.md`
-To ensure the OpenCode agent knows how to leverage the plugin, add this snippet to your workspace's `AGENTS.md`:
-
-<details>
-<summary>Click to view the AGENTS.md snippet</summary>
-
-```markdown
-## OpenCodeRAG Plugin
-
-This workspace has OpenCodeRAG installed for semantic code retrieval.
-
-### `opencode-rag-context` tool
-Before planning, editing, or answering questions, use this tool to retrieve relevant code chunks with file paths, line ranges, and surrounding implementation.
-- `query` (required) — narrow, specific search, e.g. `"authentication middleware setup"`
-- `pathHints` (optional) — up to 10 path filters, e.g. `["src/auth/"]`
-- `languageHints` (optional) — up to 10 language filters, e.g. `["typescript"]`
-- `topK` (optional) — result count (1–25, default 10)
-
-### File suggestions
-After each user message, a `chat.message` hook appends up to 10 relevant file suggestions. Look for lines like `src/file.ts (typescript, lines 10-42)` at the bottom of user input.
-
-### Indexing
-- Changed files are auto-indexed in the background.
-- If searches return no results, run `opencode-rag index` in the terminal.
-```
-</details>
+Any OpenCode agent can actively invoke the RAG tool to fetch specific code chunks, filter by exact file paths, or target specific programming languages.
 
 ---
 
@@ -145,6 +118,33 @@ Running `opencode-rag init` creates the config file `opencode-rag.json` in your 
     "logFilePath": "./.opencode/opencode-rag.log"
   }
 }
+```
+</details>
+
+### `AGENTS.md` Setup
+To ensure the OpenCode agent knows how to leverage the plugin, add this snippet to your workspace's `AGENTS.md`:
+
+<details>
+<summary>Click to view the AGENTS.md snippet</summary>
+
+```markdown
+## OpenCodeRAG Plugin
+
+This workspace has OpenCodeRAG installed for semantic code retrieval.
+
+### `opencode-rag-context` tool
+Before planning, editing, or answering questions, use this tool to retrieve relevant code chunks with file paths, line ranges, and surrounding implementation.
+- `query` (required) — narrow, specific search, e.g. `"authentication middleware setup"`
+- `pathHints` (optional) — up to 10 path filters, e.g. `["src/auth/"]`
+- `languageHints` (optional) — up to 10 language filters, e.g. `["typescript"]`
+- `topK` (optional) — result count (1–25, default 10)
+
+### File suggestions
+After each user message, a `chat.message` hook appends up to 10 relevant file suggestions. Look for lines like `src/file.ts (typescript, lines 10-42)` at the bottom of user input.
+
+### Indexing
+- Changed files are auto-indexed in the background.
+- If searches return no results, run `opencode-rag index` in the terminal.
 ```
 </details>
 
