@@ -1,13 +1,12 @@
+import fs from "node:fs/promises";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult } from "../core/interfaces.js";
 import type { RagConfig } from "../core/config.js";
 import { retrieve } from "../retriever/retriever.js";
 import { normalizeReadArgs, resolveWorkspacePath } from "./tool-args.js";
 import { buildReadQuery } from "./read-query.js";
-import { formatReadOutput, formatRelatedFiles } from "./read-format.js";
+import { formatReadOutput, formatRelatedFiles, formatFileFallback } from "./read-format.js";
 import {
-  missingIndexMessage,
-  getNoResultsMessage,
   retrievalErrorMessage,
 } from "./read-fallback.js";
 
@@ -44,7 +43,6 @@ export function createRagReadTool(
   const openCodeCfg = config.openCode;
   const maxContextChunks = openCodeCfg.maxContextChunks;
   const maxReadOutputChars = openCodeCfg.maxReadOutputChars ?? 20000;
-  const noResultsBehavior = openCodeCfg.readNoResultsBehavior ?? "hint";
   const retrievalTopK = maxContextChunks * 4;
   const readRelatedFilesMax = openCodeCfg.readRelatedFilesMax ?? 5;
 
@@ -67,12 +65,14 @@ export function createRagReadTool(
     },
 
     async execute(args: Record<string, unknown>, ctx?: { sessionID?: string }) {
+      let resolvedPath: string | undefined;
+      let normalized: { filePath: string; startLine?: number; endLine?: number; query?: string } | undefined;
       try {
         // 1. Normalize and validate arguments
-        const normalized = normalizeReadArgs(args as never);
+        normalized = normalizeReadArgs(args as never);
 
         // 2. Resolve workspace path
-        const resolvedPath = resolveWorkspacePath(worktree, normalized.filePath);
+        resolvedPath = resolveWorkspacePath(worktree, normalized.filePath);
 
         // 3. Build retrieval query (chat-context-aware if available)
         const sessionID = ctx?.sessionID;
@@ -81,15 +81,7 @@ export function createRagReadTool(
         // 4. Check if index exists
         const count = await store.count();
         if (count === 0) {
-          return {
-            title: "Read (OpenCodeRAG)",
-            output: missingIndexMessage(),
-            metadata: {
-              tool: "read",
-              filePath: resolvedPath,
-              indexed: false,
-            },
-          };
+          return await readFileFallback(resolvedPath, normalized, "index is empty", maxReadOutputChars);
         }
 
         // 5. Get or create cached raw results for this session
@@ -126,17 +118,7 @@ export function createRagReadTool(
         const relatedFiles = collectRelatedFiles(rawResults, resolvedPath, readRelatedFilesMax);
 
         if (rawResults.length === 0) {
-          const output = getNoResultsMessage(noResultsBehavior, resolvedPath);
-          return {
-            title: "Read (OpenCodeRAG)",
-            output,
-            metadata: {
-              tool: "read",
-              filePath: resolvedPath,
-              chunks: 0,
-              indexed: true,
-            },
-          };
+          return await readFileFallback(resolvedPath, normalized, "no retrieval results", maxReadOutputChars);
         }
 
         // 7. Filter results to the requested file
@@ -144,22 +126,9 @@ export function createRagReadTool(
           (r) => r.chunk.metadata.filePath === resolvedPath
         );
 
-        // 8. If file has no results, use no-results behavior
+        // 8. If file has no results, fall back to direct file read
         if (filtered.length === 0) {
-          let output = getNoResultsMessage(noResultsBehavior, resolvedPath);
-          if (readRelatedFilesMax > 0 && relatedFiles.length > 0) {
-            output += "\n\n" + formatRelatedFiles(relatedFiles);
-          }
-          return {
-            title: "Read (OpenCodeRAG)",
-            output,
-            metadata: {
-              tool: "read",
-              filePath: resolvedPath,
-              chunks: 0,
-              indexed: true,
-            },
-          };
+          return await readFileFallback(resolvedPath, normalized, "file not found in index", maxReadOutputChars);
         }
 
         // 9. Apply line-range overlap filtering
@@ -201,12 +170,20 @@ export function createRagReadTool(
       } catch (err) {
         const message =
           err instanceof Error ? err.message : String(err);
+        // Try file fallback on retrieval error (only if we have a resolved path)
+        if (resolvedPath && normalized) {
+          try {
+            return await readFileFallback(resolvedPath, normalized, `retrieval error: ${message}`, maxReadOutputChars);
+          } catch {
+            // file read also failed — fall through to error message
+          }
+        }
         return {
           title: "Read (OpenCodeRAG)",
           output: retrievalErrorMessage(message),
           metadata: {
             tool: "read",
-            filePath: undefined,
+            filePath: resolvedPath,
             error: message,
           },
         };
@@ -326,4 +303,39 @@ function collectRelatedFiles(
     .map(([filePath, score]) => ({ filePath, score }))
     .sort((a, b) => b.score - a.score)
     .slice(0, maxRelated);
+}
+
+/**
+ * Read the actual file from disk and return formatted contents.
+ *
+ * Used as a fallback when no RAG chunks are available for the requested file.
+ * Applies startLine/endLine filtering if specified.
+ *
+ * Throws if the file cannot be read (e.g. doesn't exist).
+ */
+async function readFileFallback(
+  resolvedPath: string,
+  normalized: { startLine?: number; endLine?: number },
+  reason: string,
+  maxChars: number
+) {
+  const content = await fs.readFile(resolvedPath, "utf-8");
+  const output = formatFileFallback({
+    filePath: resolvedPath,
+    content,
+    startLine: normalized.startLine,
+    endLine: normalized.endLine,
+    reason,
+    maxChars,
+  });
+  return {
+    title: `Read (OpenCodeRAG) — ${resolvedPath}`,
+    output,
+    metadata: {
+      tool: "read",
+      filePath: resolvedPath,
+      fallback: true,
+      indexed: false,
+    },
+  };
 }

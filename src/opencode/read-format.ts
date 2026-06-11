@@ -112,6 +112,73 @@ export interface RelatedFileEntry {
 }
 
 /**
+ * Options for formatting a direct file fallback.
+ */
+export interface FormatFileFallbackOptions {
+  /** Absolute file path. */
+  filePath: string;
+  /** Raw file content (full file). */
+  content: string;
+  /** Optional start line (1-indexed). */
+  startLine?: number;
+  /** Optional end line (1-indexed). */
+  endLine?: number;
+  /** Reason why fallback was used. */
+  reason: string;
+  /** Maximum output character count. */
+  maxChars?: number;
+}
+
+/**
+ * Format raw file contents as a fallback when no RAG chunks are available.
+ *
+ * Applies optional line-range slicing and enforces maxChars limit.
+ */
+export function formatFileFallback(options: FormatFileFallbackOptions): string {
+  const { filePath, content, startLine, endLine, reason, maxChars } = options;
+
+  const lines = content.split("\n");
+  const sliceStart = startLine !== undefined ? startLine - 1 : 0;
+  const sliceEnd = endLine !== undefined ? endLine : lines.length;
+  const sliced = lines.slice(sliceStart, sliceEnd);
+
+  const header = [
+    "OpenCodeRAG read override active.",
+    `No indexed chunks available — returning direct file contents. (${reason})`,
+    "",
+    "Requested file:",
+    `- ${filePath}`,
+    startLine !== undefined || endLine !== undefined
+      ? `Line range: ${startLine ?? 1}-${endLine ?? lines.length}`
+      : `Lines: 1-${lines.length}`,
+    "",
+  ].join("\n");
+
+  const lang = guessLanguage(filePath);
+  const codeBlock = "```" + lang + "\n" + sliced.join("\n") + "\n```";
+  let output = header + codeBlock;
+
+  if (maxChars && output.length > maxChars) {
+    output = output.slice(0, maxChars) + "\n\n---\nOutput truncated.";
+  }
+
+  return output;
+}
+
+function guessLanguage(filePath: string): string {
+  const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
+    py: "python", rb: "ruby", go: "go", rs: "rust", java: "java",
+    kt: "kotlin", swift: "swift", c: "c", cpp: "cpp", h: "c", hpp: "cpp",
+    cs: "csharp", php: "php", sh: "bash", bash: "bash", zsh: "bash",
+    md: "markdown", json: "json", yaml: "yaml", yml: "yaml", xml: "xml",
+    html: "html", css: "css", scss: "scss", sql: "sql", toml: "toml",
+  };
+  return map[ext] ?? "";
+}
+
+/**
  * Format a list of related files as a lightweight suggestion section.
  *
  * Only includes file paths and scores — no code content — to keep tokens low.

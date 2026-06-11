@@ -1,6 +1,8 @@
-import { describe, it } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import fs from "node:fs/promises";
+import os from "node:os";
 import type { EmbeddingProvider, VectorStore, SearchResult, Chunk } from "../../core/interfaces.js";
 import { DEFAULT_CONFIG } from "../../core/config.js";
 import { createRagReadTool } from "../../opencode/create-read-tool.js";
@@ -86,7 +88,7 @@ const OTHER_TS = PROJECT + "/other.ts";
     assert.ok("execute" in tool);
   });
 
-  it("returns a missing-index message when store is empty", async () => {
+  it("falls back to file read when store is empty (file not on disk → error)", async () => {
     const tool = createRagReadTool({
       worktree: PROJECT,
       config: DEFAULT_CONFIG,
@@ -99,10 +101,11 @@ const OTHER_TS = PROJECT + "/other.ts";
       {}
     ) as { output: string };
 
-    assert.match(result.output, /No OpenCodeRAG index was found/);
+    // File doesn't exist on disk, so fallback fails → retrieval error
+    assert.match(result.output, /OpenCodeRAG retrieval failed/);
   });
 
-  it("returns a no-results message when file has no indexed chunks", async () => {
+  it("falls back to file read when file has no indexed chunks (file not on disk → error)", async () => {
     const tool = createRagReadTool({
       worktree: PROJECT,
       config: DEFAULT_CONFIG,
@@ -120,8 +123,8 @@ const OTHER_TS = PROJECT + "/other.ts";
       {}
     ) as { output: string };
 
-    assert.match(result.output, /No indexed chunks were found/);
-    assert.match(result.output, /src\/main\.ts/);
+    // File doesn't exist on disk, so fallback fails → retrieval error
+    assert.match(result.output, /OpenCodeRAG retrieval failed/);
   });
 
   it("returns chunks filtered to the requested file", async () => {
@@ -206,7 +209,7 @@ const OTHER_TS = PROJECT + "/other.ts";
     assert.doesNotMatch(result.output, /third block/);
   });
 
-  it("handles retrieval errors gracefully", async () => {
+  it("handles retrieval errors gracefully (file not on disk → error)", async () => {
     const failingStore: VectorStore = {
       addChunks: async () => {},
       search: async () => { throw new Error("DB connection failed"); },
@@ -227,8 +230,8 @@ const OTHER_TS = PROJECT + "/other.ts";
       {}
     ) as { output: string };
 
+    // File doesn't exist on disk either → still returns retrieval error
     assert.match(result.output, /OpenCodeRAG retrieval failed/);
-    assert.match(result.output, /DB connection failed/);
   });
 
   it("returns suppression notice with successful retrieval", async () => {
@@ -308,7 +311,7 @@ const OTHER_TS = PROJECT + "/other.ts";
     assert.doesNotMatch(result.output, /src\/main\.ts \(Score:/);
   });
 
-  it("shows related files even when requested file has no chunks", async () => {
+  it("falls back to file read when file not indexed (file not on disk → error)", async () => {
     const tool = createRagReadTool({
       worktree: PROJECT,
       config: DEFAULT_CONFIG,
@@ -327,12 +330,8 @@ const OTHER_TS = PROJECT + "/other.ts";
       {}
     ) as { output: string };
 
-    // Should show no-chunks message
-    assert.match(result.output, /No indexed chunks were found/);
-
-    // Should still show related files (the rescue case)
-    assert.match(result.output, /Please consider reading other relevant files/);
-    assert.match(result.output, /other\.ts \(Score: 0\.85\)/);
+    // File doesn't exist on disk, so fallback fails → retrieval error
+    assert.match(result.output, /OpenCodeRAG retrieval failed/);
   });
 
   it("limits related files with readRelatedFilesMax", async () => {
@@ -545,5 +544,166 @@ const OTHER_TS = PROJECT + "/other.ts";
     // Should get fresh results (not stale), because the message changed
     assert.match(result.output, /fresh result/);
     assert.doesNotMatch(result.output, /stale result/);
+  });
+});
+
+// ── File fallback tests (require real temp files) ────────────
+
+describe("createRagReadTool — file fallback", () => {
+  let tmpDir: string;
+  let tmpWorktree: string;
+  let tmpFile: string;
+
+  before(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-read-test-"));
+    tmpWorktree = tmpDir.replace(/\\/g, "/");
+    tmpFile = tmpWorktree + "/test-file.ts";
+    await fs.writeFile(tmpFile, [
+      "import { foo } from './foo';",
+      "",
+      "export function bar() {",
+      "  return foo();",
+      "}",
+      "",
+      "export function baz() {",
+      "  return 42;",
+      "}",
+    ].join("\n"), "utf-8");
+  });
+
+  after(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("reads actual file when index is empty", async () => {
+    const tool = createRagReadTool({
+      worktree: tmpWorktree,
+      config: DEFAULT_CONFIG,
+      embedder: makeEmbedder(),
+      store: makeStore({ count: 0 }),
+    });
+
+    const result = await (tool as { execute: Function }).execute(
+      { filePath: "test-file.ts" },
+      {}
+    ) as { output: string; metadata: Record<string, unknown> };
+
+    assert.match(result.output, /No indexed chunks available/);
+    assert.match(result.output, /index is empty/);
+    assert.match(result.output, /export function bar/);
+    assert.match(result.output, /export function baz/);
+    assert.equal(result.metadata.fallback, true);
+  });
+
+  it("reads actual file when file has no indexed chunks", async () => {
+    const otherFile = tmpWorktree + "/other.ts";
+    await fs.writeFile(otherFile, "export const x = 1;", "utf-8");
+
+    const tool = createRagReadTool({
+      worktree: tmpWorktree,
+      config: DEFAULT_CONFIG,
+      embedder: makeEmbedder(),
+      store: makeStore({
+        count: 5,
+        searchResults: [
+          makeResult("c1", otherFile, 1, 1, "typescript", "export const x = 1;", 0.9),
+        ],
+      }),
+    });
+
+    const result = await (tool as { execute: Function }).execute(
+      { filePath: "test-file.ts" },
+      {}
+    ) as { output: string; metadata: Record<string, unknown> };
+
+    assert.match(result.output, /No indexed chunks available/);
+    assert.match(result.output, /file not found in index/);
+    assert.match(result.output, /export function bar/);
+    assert.equal(result.metadata.fallback, true);
+
+    await fs.unlink(otherFile);
+  });
+
+  it("respects startLine/endLine in fallback", async () => {
+    const tool = createRagReadTool({
+      worktree: tmpWorktree,
+      config: DEFAULT_CONFIG,
+      embedder: makeEmbedder(),
+      store: makeStore({ count: 0 }),
+    });
+
+    const result = await (tool as { execute: Function }).execute(
+      { filePath: "test-file.ts", startLine: 3, endLine: 5 },
+      {}
+    ) as { output: string };
+
+    assert.match(result.output, /export function bar/);
+    assert.match(result.output, /return foo/);
+    assert.doesNotMatch(result.output, /import \{ foo \}/);
+    assert.doesNotMatch(result.output, /export function baz/);
+  });
+
+  it("returns error for non-existent file when index is empty", async () => {
+    const tool = createRagReadTool({
+      worktree: tmpWorktree,
+      config: DEFAULT_CONFIG,
+      embedder: makeEmbedder(),
+      store: makeStore({ count: 0 }),
+    });
+
+    const result = await (tool as { execute: Function }).execute(
+      { filePath: "does-not-exist.ts" },
+      {}
+    ) as { output: string };
+
+    assert.match(result.output, /OpenCodeRAG retrieval failed/);
+  });
+
+  it("returns error for non-existent file when file not in index", async () => {
+    const tool = createRagReadTool({
+      worktree: tmpWorktree,
+      config: DEFAULT_CONFIG,
+      embedder: makeEmbedder(),
+      store: makeStore({
+        count: 5,
+        searchResults: [
+          makeResult("c1", tmpFile, 1, 5, "typescript", "code", 0.8),
+        ],
+      }),
+    });
+
+    const result = await (tool as { execute: Function }).execute(
+      { filePath: "missing.ts" },
+      {}
+    ) as { output: string };
+
+    assert.match(result.output, /OpenCodeRAG retrieval failed/);
+  });
+
+  it("reads actual file on retrieval error", async () => {
+    const failingStore: VectorStore = {
+      addChunks: async () => {},
+      search: async () => { throw new Error("DB down"); },
+      count: async () => { throw new Error("DB down"); },
+      clear: async () => {},
+      deleteByFilePath: async () => {},
+    };
+
+    const tool = createRagReadTool({
+      worktree: tmpWorktree,
+      config: DEFAULT_CONFIG,
+      embedder: makeEmbedder(),
+      store: failingStore,
+    });
+
+    const result = await (tool as { execute: Function }).execute(
+      { filePath: "test-file.ts" },
+      {}
+    ) as { output: string; metadata: Record<string, unknown> };
+
+    assert.match(result.output, /No indexed chunks available/);
+    assert.match(result.output, /retrieval error/);
+    assert.match(result.output, /export function bar/);
+    assert.equal(result.metadata.fallback, true);
   });
 });
