@@ -1,64 +1,40 @@
 # OpenCodeRAG
 
-> A RAG (Retrieval-Augmented Generation) plugin for [OpenCode](https://opencode.ai) that adds **semantic code search** powered by locally-hosted embedding models.
+> OpenCodeRAG is a RAG (Retrieval-Augmented Generation) plugin for semantic code search powered by locally-hosted embedding models. 
+> It features a seamless integration with [OpenCode](https://opencode.ai) and offers a CLI interface as backend for testing purposes.
 
-**Published on npm: [`opencode-rag-plugin`](https://www.npmjs.com/package/opencode-rag-plugin)**
+[![npm version](https://img.shields.io/npm/v/opencode-rag-plugin.svg)](https://www.npmjs.com/package/opencode-rag-plugin)
 
-> ⚠️ **Do not confuse with `opencode-rag`** — that is a discontinued project by a different author.
+> ⚠️ **Note:** Don't confuse this with `opencode-rag`, which is a discontinued project by a different author. Ensure you are using **`opencode-rag-plugin`**.
 
-OpenCodeRAG reduces token usage by replacing expensive file-read tool calls with targeted, vector-similarity-based chunk retrieval. Large codebases and files on a local dedicated GPU benefit most in terms of performance, but even a modern CPU handles most workloads without a GPU.
+**Why OpenCodeRAG?**  
+OpenCodeRAG aims to reduce LLM token usage by replacing expensive full-file reads with targeted, vector-similarity-based chunk retrieval. 
+Large codebases benefit massively in performance. It runs perfectly on a local dedicated GPU, but modern CPUs handle most workloads just fine. 
+When using only locally hosted embedding models and LLMs, your codebase also remains 100% private.
 
 ---
 
 ## Table of Contents
 
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Uninstallation](#uninstallation)
-- [Configuration](#configuration)
-  - [Embedding Providers](#embedding-providers)
-  - [Logging](#logging)
-- [Usage](#usage)
-  - [CLI](#cli)
-  - [OpenCode Plugin](#opencode-plugin)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Chunking Language Support](#chunking-language-support)
-  - [Adding Custom Chunkers](#adding-custom-chunkers)
-- [Data Model](#data-model)
-- [Vector Store](#vector-store)
-- [Development](#development)
-- [Privacy](#privacy)
-
----
-
-## Features
-
-| Feature | Description |
-|---------|-------------|
-| **AST-aware chunking** | Splits code into functions, classes, and methods via tree-sitter for 16 languages; regex-based for Markdown, Razor, `.sln`, and LaTeX; line-based fallback for everything else |
-| **Incremental indexing** | Skips unchanged files, removes deleted entries, re-indexes only what changed |
-| **Watch mode** | `index --watch` debounces file changes and re-indexes automatically |
-| **Pluggable chunkers** | Add custom language chunkers via config file or programmatic API |
-| **Configurable embeddings** | Ollama (default, fully local) or any OpenAI-compatible provider; configurable batch size |
-| **Hybrid search** | TF×IDF keyword index fused with vector similarity — better precision on identifiers and function names |
-| **Local vector store** | LanceDB with L2 distance scoring; in-memory mode for testing |
-| **CLI** | `index`, `query`, `clear`, `status` commands |
-| **OpenCode integration** | Auto-injects relevant code chunks into each message; suggests related files; exposes a retrieval tool the agent can call directly |
-
----
-
-## Prerequisites
-
-- **[OpenCode](https://opencode.ai)** installed and configured
-- **Node.js v22+** (required for native ESM and `fetch`)
-- **[Ollama](https://ollama.ai)** running locally with an embedding model (default: `embeddinggemma`)
-  — or any OpenAI-compatible embedding API
+- [Quick Start](#-quick-start)
+- [How it Works](#-how-it-works)
+- [OpenCode Integration](#-opencode-integration)
+- [Configuration](#-configuration)
+- [CLI Usage (Standalone)](#-cli-interface)
+- [Supported Languages](#-supported-languages)
+- [Developer Guide & Architecture](#-developer-guide--architecture)
+- [Privacy & Security](#-privacy--security)
 
 ---
 
 ## Quick Start
+
+### Prerequisites
+- **Node.js v22+** (required for native ESM and `fetch`).
+- **[Ollama](https://ollama.ai)** running locally (default model: `embeddinggemma`) OR an OpenAI-compatible API.
+- *(Optional)* **[OpenCode](https://opencode.ai)** if you want to use the automated agent features.
+
+### Installation
 
 ```bash
 # 1. Clone the repository
@@ -69,136 +45,45 @@ cd OpenCodeRAG
 ./install.sh          # Linux/macOS
 .\install.ps1         # Windows
 
-# 3. Go to your project and initialize
+# 3. Initialize in your project
 cd /path/to/your/project
 opencode-rag init
 
-# 4. Index the workspace
+# 4. Index your workspace
 opencode-rag index
-
-# 5. Restart OpenCode — the plugin is active
 ```
 
-### Uninstallation
-
-```bash
-# Linux/macOS
-./install.sh uninstall
-
-# Windows
-.\install.ps1 uninstall
-```
+*(To uninstall, simply run `./install.sh uninstall` or `.\install.ps1 uninstall`)*
 
 ---
 
-## Usage
+## How it Works
 
-OpenCodeRAG provides two interfaces:
-
-| Interface | Best for |
-|-----------|----------|
-| **OpenCode Plugin** | Automatic retrieval and file suggestions while chatting |
-| **OpenCodeRAG CLI Interface** | Manual indexing, searching, and diagnostics |
-
----
-
-### OpenCode Plugin
-
-The OpenCode plugin registers two hooks:
-
-| Hook | What it does |
-|------|-------------|
-| `opencode-rag-context` | A retrieval tool the agent can call directly to fetch code chunks with file paths and line ranges |
-| `chat.message` | After each user message, retrieves relevant files and appends them to the message |
-
-
-#### Auto-Injection
-
-After each message you send, the plugin:
-
-1. Extracts your message text
-2. Runs semantic retrieval against the indexed workspace
-3. **High-confidence results** (relevance ≥ `autoInject.minScore`, default `0.75`): injects the actual code chunks directly into the message — the agent gets context without a tool-call round-trip:
-   ```
-   ---
-   **Auto-retrieved code context** _(context: 2 chunks, 1 file, relevance 0.88–0.92)_
-   ---
-   [src/auth.ts:12-30] (typescript, score: 0.92)
-   ```typescript
-   function login() { ... }
-   ```
-   ---
-   ```
-4. **No high-confidence results**: falls back to a compact file list (max 10 files):
-   ```
-   src/plugin.ts (typescript, lines 10-42, relevance 0.87)
-   src/core/config.ts (typescript, lines 66-145, relevance 0.72)
-   ```
-
-This eliminates a tool-call round-trip for roughly 70% of code-related messages. The agent can still call `opencode-rag-context` for more targeted or additional context.
-
-> **Note:** Retrieval errors are silently caught — a failed search will never break the chat.
+OpenCodeRAG intelligently processes your query in OpenCode and your codebase for high-precision retrieval:
+1. **AST-aware chunking:** Intelligently splits code into functions, methods, and classes using `tree-sitter`.
+2. **Local Vector Database:** Uses LanceDB to store embeddings locally without cloud dependencies.
+3. **Hybrid Search:** Combines TF×IDF keyword matching with vector similarity for superior precision on identifiers.
+4. **Incremental Indexing:** Only updates files that have changed, ensuring lightning-fast re-indexing.
 
 ---
 
-## Configuration
+## OpenCode Integration
 
-`opencode-rag init` creates `opencode-rag.json` in your project root for configuring the plugin settings.
-**Partial overrides:** only the keys you set are applied — everything else falls back to defaults. Sections are deep-merged.
+If you are using OpenCode, the plugin enhances your agent seamlessly with two main features:
 
----
+### 1. Auto-Injection (Background Context)
+After every message you send, the plugin silently searches your codebase.
+- **High-confidence results (score ≥ 0.75):** Actual code chunks are injected directly into your prompt, giving the agent instant context without a tool-call round-trip.
+- **Lower-confidence results:** A compact list of suggested files is appended instead (e.g., `src/plugin.ts (lines 10-42)`).
 
-### Embedding Providers
+### 2. Direct Tool Call (`opencode-rag-context`)
+The OpenCode agent can actively invoke the RAG tool to fetch specific code chunks, filter by exact file paths, or target specific programming languages.
 
-| Provider | `baseUrl` | Notes |
-|----------|-----------|-------|
-| `ollama` | `http://localhost:11434/api` | **Default.** No API key required. |
-| `openai` | `https://api.openai.com/v1` | Requires `apiKey`. Sends all texts in one batch request. |
+### Required Setup: `AGENTS.md`
+To ensure the OpenCode agent knows how to leverage the plugin, add this snippet to your workspace's `AGENTS.md`:
 
-- `embedding.timeoutMs` defaults to `30000` ms. Increase it if your local model has a slow cold start.
-- Ollama sends one request per batch to `/api/embed`. Set `embedding.proxy.url` to route through a standard HTTP proxy.
-
----
-
-### Logging
-
-```json
-{
-  "logging": {
-    "level": "info",
-    "logFilePath": "./.opencode/opencode-rag.log"
-  }
-}
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `level` | `"info"` | `"debug"`, `"info"`, or `"error"` |
-| `logFilePath` | `"./.opencode/opencode-rag.log"` | Relative paths resolve against the workspace root |
-
-The `LOG_FILE_PATH` environment variable is a fallback when no config value is set. Config takes precedence over the env var.
-
----
-
-### OpenCode Plugin Configuration Reference
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `openCode.readOverride` | `false` | When `true`, registers a RAG-backed `read` tool that shadows OpenCode's built-in file reader — returns full file contents with relevant RAG chunks appended as supplementary context |
-| `openCode.maxContextChunks` | `5` | Maximum chunks returned by `opencode-rag-context` |
-| `openCode.autoInject.enabled` | `true` | Enable or disable auto-injection |
-| `openCode.autoInject.minScore` | `0.75` | Minimum relevance score for auto-injection (0–1) |
-| `openCode.autoInject.maxChunks` | `3` | Maximum chunks to inject per message |
-| `openCode.autoInject.maxTokens` | `2000` | Token budget for injected content (~4 chars/token) |
-| `retrieval.topK` | `10` | Chunks fetched per query (controls file suggestion breadth) |
-| `retrieval.hybridSearch.enabled` | `true` | Enable or disable hybrid TF×IDF + vector search |
-| `retrieval.hybridSearch.keywordWeight` | `0.4` | Keyword weight in hybrid fusion (0–1; higher = more keyword influence) |
-
----
-
-### AGENTS.md Snippet
-
-Add this section to your workspace's `AGENTS.md` so the agent knows how to use the plugin:
+<details>
+<summary>Click to view the AGENTS.md snippet</summary>
 
 ```markdown
 ## OpenCodeRAG Plugin
@@ -206,160 +91,120 @@ Add this section to your workspace's `AGENTS.md` so the agent knows how to use t
 This workspace has OpenCodeRAG installed for semantic code retrieval.
 
 ### `opencode-rag-context` tool
-Before planning, editing, or answering questions, use this tool to retrieve relevant
-code chunks with file paths, line ranges, and surrounding implementation.
+Before planning, editing, or answering questions, use this tool to retrieve relevant code chunks with file paths, line ranges, and surrounding implementation.
 - `query` (required) — narrow, specific search, e.g. `"authentication middleware setup"`
 - `pathHints` (optional) — up to 10 path filters, e.g. `["src/auth/"]`
 - `languageHints` (optional) — up to 10 language filters, e.g. `["typescript"]`
 - `topK` (optional) — result count (1–25, default 10)
 
 ### File suggestions
-After each user message, a `chat.message` hook appends up to 10 relevant file
-suggestions. Look for lines like `src/file.ts (typescript, lines 10-42)` at the
-bottom of user input.
+After each user message, a `chat.message` hook appends up to 10 relevant file suggestions. Look for lines like `src/file.ts (typescript, lines 10-42)` at the bottom of user input.
 
 ### Indexing
-- Changed files are auto-indexed in the background (debounced 5 s).
-- If searches return no results, the workspace may not be indexed yet —
-  run `opencode-rag index` from the terminal (or `npx opencode-rag-plugin`).
-- Files under 1 KB, excluded extensions, and excluded directories
-  (`node_modules`, `.git`, `.opencode`, `dist`, etc.) are silently skipped.
+- Changed files are auto-indexed in the background.
+- If searches return no results, run `opencode-rag index` in the terminal.
 ```
-
-The plugin also injects a reminder about `opencode-rag-context` into the agent's system prompt via `experimental.chat.system.transform`.
+</details>
 
 ---
 
-### OpenCodeRAG CLI Interface
-The CLI interface is intended for debugging/testing purposes only.
+## Configuration
 
-Relevant commands:
+Running `opencode-rag init` creates the config file `opencode-rag.json` in your project root. You only need to define the values you want to override.
+
+### Embedding Providers
+```json
+{
+  "embedding": {
+    "provider": "ollama",
+    "baseUrl": "http://localhost:11434/api",
+    "timeoutMs": 30000
+  }
+}
+```
+* **Ollama (Default):** Local, private, no API key needed. *(Increase `timeoutMs` if your model has a slow cold start)*.
+* **OpenAI:** Set `provider` to `"openai"`, change `baseUrl` to `"https://api.openai.com/v1"`, and provide your `apiKey`.
+
+### Plugin Settings
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `openCode.readOverride` | `false` | If `true`, overrides OpenCode's default file reader to append RAG chunks as supplementary context. |
+| `openCode.autoInject.enabled` | `true` | Turn background auto-injection on/off. |
+| `openCode.autoInject.minScore` | `0.75` | Minimum relevance score to inject actual code (0–1). |
+| `retrieval.topK` | `10` | Default number of chunks fetched per query. |
+| `retrieval.hybridSearch.enabled` | `true` | Enables combined TF×IDF + vector search. |
+
+<details>
+<summary>View Logging Configuration</summary>
+
+```json
+{
+  "logging": {
+    "level": "info", // Options: "debug", "info", or "error"
+    "logFilePath": "./.opencode/opencode-rag.log"
+  }
+}
+```
+</details>
+
+---
+
+## CLI Interface
+
+The CLI interface (`opencode-rag`) provides full access to build, manage, and search your project's vector database, even without opening OpenCode.
+This is mainly intended for testing/debugging purposes, but can also be integrated into your own applications or scripts.
+
 ```bash
 # Index the workspace (incremental by default)
 opencode-rag index
 
-# Force a complete re-index
+# Watch for file changes and re-index automatically
+opencode-rag index --watch
+
+# Force a complete rebuild of the index
 opencode-rag index --force
 
-# Watch for changes and re-index automatically
-opencode-rag index --watch
+# Semantic search directly from the terminal
+opencode-rag query "How is authentication handled?" --top-k 5
 
-# Semantic search
-opencode-rag query "How is authentication handled?"
-opencode-rag query "error handling" --top-k 5
-
-# Show index statistics
+# Show index statistics or clear data
 opencode-rag status
-
-# Clear all indexed data
 opencode-rag clear
-
-# Use a custom config file
-opencode-rag index --config ./my-config.json
-```
-
-#### How Incremental Indexing Works
-
-A manifest is stored at `<vectorStore.path>/manifest.json` and tracks file hashes, chunk counts, and the last successful index timestamp.
-
-- Only **changed files** are re-embedded; **deleted files** are removed from the store.
-- If the manifest is missing or corrupt while the store already has data, the next pass **clears and rebuilds** the entire store to prevent duplicates.
-
-#### Watch Mode
-The watcher tracks file changes and automatically re-indexes changed files.
-You can run the watcher from the command line:
-```bash
-opencode-rag index --watch
-```
-
-- Runs a full initial index pass, then listens for `add`, `change`, `unlink`, and `unlinkDir` events.
-- The watcher ignores excluded directories, the vector store path, and the manifest file itself.
-- Press `Ctrl+C` to stop.
-
----
-
-## Architecture
-
-```
-Workspace Files
-      │
-      ▼
-┌──────────────┐
-│   Chunker    │  AST-based (tree-sitter) or line-based fallback
-└──────┬───────┘
-       │ chunks
-       ▼
-┌──────────────┐
-│   Embedder   │  Ollama / OpenAI-compatible API
-└──────┬───────┘
-       │ vectors
-       ▼
-┌──────────────┐
-│  VectorStore │  LanceDB (local files or memory:// for tests)
-└──────┬───────┘
-       │ + manifest.json
-       ▼
-┌──────────────┐
-│ Indexer/Retr.│  incremental index or query/search
-└──────┬───────┘
-       │ results
-       ▼
-   LLM Context
 ```
 
 ---
 
-## Tech Stack
+## Supported Languages
 
-| Layer | Technology |
-|-------|------------|
-| Runtime | Node.js v22 + tsx (ESM) |
-| Language | TypeScript 5.8 |
-| Chunking | web-tree-sitter (WASM) + tree-sitter-wasm grammars |
-| Embeddings | Ollama / OpenAI-compatible (native fetch) |
-| Vector DB | LanceDB (`@lancedb/lancedb`) |
-| CLI | commander |
-| Tests | Node built-in test runner (`node --test`) |
-| Package manager | npm (with `--legacy-peer-deps`) |
+OpenCodeRAG uses advanced AST (Abstract Syntax Tree) parsing via `tree-sitter` for major languages, falling back to regex or line-based chunking for others.
+
+* **AST Support:** TypeScript, JavaScript, Python, Java, Go, Rust, C, C++, C#, Ruby, Kotlin, Swift, JSON, XML, HTML, CSS.
+* **Regex / Structure Support:** Markdown, Razor, `.sln`, LaTeX, PDF, Word (`.docx`/`.doc`), Excel.
+* **Fallback:** Raw text blocks (100 lines/chunk).
 
 ---
 
-## Chunking Language Support
+## 🛠 Developer Guide & Architecture
 
-| Language | Strategy | Captures |
-|----------|----------|---------|
-| TypeScript | AST (tree-sitter) | functions, methods, classes, interfaces |
-| JavaScript | AST (tree-sitter) | functions, classes, arrow functions, exports |
-| Python | AST (tree-sitter) | functions, classes, decorated definitions |
-| Java | AST (tree-sitter) | methods, classes, interfaces, enums |
-| Go | AST (tree-sitter) | functions, methods, type declarations |
-| Rust | AST (tree-sitter) | functions, structs, enums, traits, impl blocks, modules, types |
-| C | AST (tree-sitter) | functions, structs, enums, unions, typedefs |
-| C++ | AST (tree-sitter) | functions, classes, structs, enums, namespaces, templates |
-| C# | AST (tree-sitter) | classes, interfaces, structs, enums, methods, namespaces, records |
-| Ruby | AST (tree-sitter) | methods, classes, modules, singleton methods |
-| Kotlin | AST (tree-sitter) | functions, classes, interfaces, objects, properties |
-| Swift | AST (tree-sitter) | functions, classes, structs, enums, protocols, extensions, variables |
-| JSON | AST (tree-sitter) | key-value pairs |
-| XML | AST (tree-sitter) | elements (1 chunk per root element) |
-| HTML | AST (tree-sitter) | `<script>` / `<style>` blocks |
-| CSS | AST (tree-sitter) | rule sets, at-rules, media, keyframes |
-| Razor | Regex (brace matching) | `@code` / `@functions` blocks, template regions |
-| Markdown | Regex heading split | h1/h2 sections + trailing content |
-| Solution (`.sln`) | Regex (section boundary) | project entries and global sections |
-| LaTeX | Regex section split | chapter/section/subsection/subsubsection boundaries |
-| PDF | Paragraph-based | groups small paragraphs, splits oversized ones |
-| Word (`.docx`) | Paragraph-based | extracts via mammoth; groups small paragraphs, splits oversized |
-| Word (`.doc`) | Paragraph-based | extracts via word-extractor; groups small paragraphs, splits oversized |
-| Excel (`.xls`/`.xlsx`) | Row-batch | extracts CSV per sheet via `@e965/xlsx`; splits by sheet, then by row batch |
-| *(other)* | Line-based (100 lines/chunk) | raw text blocks |
+### Architecture Flow
+```text
+Workspace Files ──> Chunker (tree-sitter/regex) ──> Chunks
+                      │
+Chunks ──> Embedder (Ollama/OpenAI) ──> Vectors
+                      │
+Vectors ──> VectorStore (LanceDB) <──> Indexer / Retriever ──> CLI / Agent Context
+```
+
+### Tech Stack
+- **Runtime:** Node.js v22 + `tsx` (ESM), TypeScript 5.8
+- **Chunking:** `web-tree-sitter` (WASM) + grammars
+- **Vector DB:** LanceDB (`@lancedb/lancedb`) stored locally (`.opencode/rag_db`)
+- **Tests:** Node built-in test runner (`npm test`)
+
 
 ### Adding Custom Chunkers
-
-Custom chunkers can be registered without modifying the project source.
-
-**Via config file** — add to `opencode-rag.json`:
-
+You can easily inject custom chunkers without modifying the source code via `opencode-rag.json`:
 ```json
 {
   "chunkers": [
@@ -368,84 +213,10 @@ Custom chunkers can be registered without modifying the project source.
 }
 ```
 
-The module path is resolved relative to the config file. The module must export (as default or named) an object implementing the `Chunker` interface:
-
-```typescript
-interface Chunker {
-  readonly language: string;
-  readonly fileExtensions?: string[];
-  chunk(filePath: string, content: string): Promise<Chunk[]>;
-}
-```
-
-**Via programmatic API:**
-
-```typescript
-import { registerChunker } from "opencode-rag-plugin/library";
-registerChunker(myChunker, [".xyz"]); // second arg overrides fileExtensions
-```
-
-> If a built-in chunker already handles the requested extension, the new registration is skipped and a warning is emitted.
-
 ---
 
-## Data Model
+## Privacy & Security
 
-```typescript
-interface Chunk {
-  id: string;
-  content: string;
-  embedding?: number[];
-  metadata: {
-    filePath: string;
-    startLine: number;
-    endLine: number;
-    language: string;
-  };
-}
-
-interface SearchResult {
-  chunk: Chunk;
-  score: number; // 1 / (1 + L2_distance), range [0, 1]
-}
+**100% Local Processing by Default.**  
+Whether you use it via CLI or as an agent plugin, OpenCodeRAG honors privacy strictly. Embeddings are generated locally by Ollama, and the vector database (LanceDB) is stored right in your project's directory. **No source code or embeddings ever leave your machine** unless you explicitly configure a third-party API like OpenAI.
 ```
-
----
-
-## Vector Store
-
-LanceDB stores chunks in a `chunks` table with columns: `id`, `content`, `embedding` (vector), `filePath`, `startLine`, `endLine`, `language`.
-
-| Mode | Description |
-|------|-------------|
-| **Disk** | Files written to `vectorStore.path` (default: `.opencode/rag_db`) |
-| **Memory** | `memory://` URI — for tests only; data is lost when the process exits |
-
-Additional details:
-- Schema is auto-inferred from a seed row on first table creation
-- L2 distance search; score = `1 / (1 + distance)`
-- File paths are normalized to absolute forward-slash paths
-- `manifest.json` in the store directory tracks indexed files for incremental updates
-
----
-
-## Development
-
-```bash
-# TypeScript typecheck
-npm run typecheck
-
-# Run all tests
-npm test
-
-# Run a specific test file
-node --import tsx --test src/__tests__/chunker/fallback.test.ts
-```
-
-Tests use Node's built-in runner (`node:test`) with `tsx` for TypeScript imports. No external test library is required.
-
----
-
-## Privacy
-
-All processing runs locally. By default, embeddings are generated by Ollama on your own machine. **No data leaves your machine** unless you configure a remote embedding API.
