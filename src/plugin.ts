@@ -11,7 +11,7 @@ import { appendDebugLog } from "./core/fileLogger.js";
 import { loadRuntimeOverrides, applyRuntimeOverrides } from "./core/runtime-overrides.js";
 import { createBackgroundIndexer } from "./watcher.js";
 import { createRagReadTool } from "./opencode/create-read-tool.js";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const configCache = new Map<string, RagConfig>();
@@ -662,6 +662,74 @@ async function loadKeywordIndex(storePath: string, logFilePath: string): Promise
   }
 }
 
+/**
+ * Resolve missing API keys from OpenCode provider config files.
+ * Reads the workspace and global OpenCode config to find the provider
+ * and extract its apiKey. Falls back to env vars.
+ */
+function resolveApiKeyFromProviderConfig(
+  cfg: RagConfig,
+  worktree: string,
+  logFilePath: string
+): void {
+  function stripJsoncComments(text: string): string {
+    return text.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  }
+
+  function readOpenCodeProviderKey(providerId: string): string | undefined {
+    const locations = [
+      path.join(worktree, ".opencode", "opencode.json"),
+      path.join(worktree, "opencode.json"),
+    ];
+    const homeDir = process.env.USERPROFILE || process.env.HOME;
+    if (homeDir) {
+      locations.push(path.join(homeDir, ".config", "opencode", "opencode.jsonc"));
+    }
+
+    for (const loc of locations) {
+      try {
+        const raw = readFileSync(loc, "utf-8");
+        const cleaned = stripJsoncComments(raw);
+        const config = JSON.parse(cleaned) as Record<string, unknown>;
+        const providerSection = config.provider as Record<string, unknown> | undefined;
+        if (!providerSection) continue;
+        const providerConfig = providerSection[providerId] as Record<string, unknown> | undefined;
+        if (!providerConfig) continue;
+        const options = providerConfig.options as Record<string, unknown> | undefined;
+        const key = options?.apiKey as string | undefined;
+        if (key) return key;
+      } catch {
+        // skip unreadable or unparseable files
+      }
+    }
+    return undefined;
+  }
+
+  // Resolve embedding API key
+  if (cfg.embedding.provider === "openai" && !cfg.embedding.apiKey) {
+    const key = readOpenCodeProviderKey("openai");
+    if (key) {
+      cfg.embedding.apiKey = key;
+      appendDebugLog(logFilePath, {
+        scope: "plugin",
+        message: "Resolved OpenAI API key for embedding from OpenCode provider config",
+      });
+    }
+  }
+
+  // Resolve description API key
+  if (cfg.description?.provider === "openai" && cfg.description && !cfg.description.apiKey) {
+    const key = readOpenCodeProviderKey("openai");
+    if (key) {
+      cfg.description.apiKey = key;
+      appendDebugLog(logFilePath, {
+        scope: "plugin",
+        message: "Resolved OpenAI API key for description from OpenCode provider config",
+      });
+    }
+  }
+}
+
 export const ragPlugin: Plugin = async (
   input: PluginInput,
   _options?: Record<string, unknown>
@@ -674,6 +742,13 @@ export const ragPlugin: Plugin = async (
   }
 
   const storePath = path.resolve(input.directory, cfg.vectorStore.path);
+
+  // Apply runtime overrides before creating services
+  const overrides = loadRuntimeOverrides(storePath);
+  const effectiveCfg = applyRuntimeOverrides(cfg, overrides);
+
+  // Resolve API keys from OpenCode provider config if not set in opencode-rag.json
+  resolveApiKeyFromProviderConfig(effectiveCfg, input.directory, logFilePath);
 
   // Close existing indexer for this directory if one exists (e.g. on plugin reload)
   const existingIndexer = backgroundIndexers.get(input.directory);
@@ -696,7 +771,7 @@ export const ragPlugin: Plugin = async (
   });
 
   // Probe vector dimension and create store with correct dimension
-  const embedder = createEmbedder(cfg);
+  const embedder = createEmbedder(effectiveCfg);
   let vectorDimension = 384;
   try {
     const probe = await embedder.embed(["dimension-probe"]);
@@ -721,13 +796,13 @@ export const ragPlugin: Plugin = async (
   const keywordIndex = await loadKeywordIndex(storePath, logFilePath);
 
   // Create description provider (enabled by default)
-  const descriptionConfig = cfg.description ?? { enabled: true, provider: "ollama" as const, baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
+  const descriptionConfig = effectiveCfg.description ?? { enabled: true, provider: "ollama" as const, baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
   const descriptionProvider = descriptionConfig.enabled
     ? createDescriptionProvider(descriptionConfig)
     : undefined;
 
   const hooks = createRagHooks({
-    cfg,
+    cfg: effectiveCfg,
     storePath,
     logFilePath,
     worktree: input.directory,
@@ -738,12 +813,12 @@ export const ragPlugin: Plugin = async (
   });
 
   // Start background auto-indexer if enabled
-  const autoIndexCfg = cfg.openCode.autoIndex ?? { enabled: true, debounceMs: 5000, intervalMs: 300000 };
+  const autoIndexCfg = effectiveCfg.openCode.autoIndex ?? { enabled: true, debounceMs: 5000, intervalMs: 300000 };
   if (autoIndexCfg.enabled) {
     const indexer = createBackgroundIndexer({
       cwd: input.directory,
       storePath,
-      config: cfg,
+      config: effectiveCfg,
       store,
       embedder,
       logFilePath,
