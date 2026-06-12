@@ -119,9 +119,6 @@ await db.createTable({ data: [seed] as unknown as Record<string, unknown>[] });
 auto-install fails.
 
 ### tree-sitter WASM
-- Native tree-sitter requires C++ build tools → unavailable on Win without
-  Visual Studio
-- Switched to `web-tree-sitter` (runs as WASM, no native compilation)
 - `tree-sitter-wasm` package provides pre-built `.wasm` grammar files via
   `getWasmPath()`
 - web-tree-sitter uses `Node` type (not `SyntaxNode`), `Parser` is a class
@@ -188,15 +185,6 @@ affects quality — the gap between best and worst models can be 8×:
 | MiniLM-L6 | general | 384 | 80.1% | 69% | Free |
 | GraphCodeBERT | code-specific | 768 | 50.9% | 39% | Free |
 | CodeBERT | code-specific | 768 | 11.7% | 6.5% | Free |
-
-Key takeaways:
-- General-purpose models (OpenAI, Cohere) outperform most open-source
-  code-specific models. Invest in model quality, not code-specificity.
-- The `description.enabled: true` pipeline (LLM-describes-chunk → embed
-  description) is an effective way to bridge code and natural language,
-  making general-purpose models perform well on code.
-- Model dimension size does not predict quality — MiniLM-L6 (384d)
-  outperformed CodeBERT (768d) by 7×.
 
 Recommended embedding models for Ollama (ranked):
 1. `bge-m3` (1024d) — multilingual, top-tier quality

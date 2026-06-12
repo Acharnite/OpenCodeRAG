@@ -85,12 +85,12 @@ export class LLMDescriptionProvider implements DescriptionProvider {
     messages: ChatMessage[],
     timeoutMs: number
   ): Promise<string> {
-    const baseUrl = this.config.baseUrl.replace(/\/+$/, "").replace(/\/api$/, "");
+    const baseUrl = this.config.baseUrl.replace(/\/+$/, "");
     const isOllama = this.config.provider === "ollama";
 
     const url = isOllama
-      ? `${baseUrl}/api/chat`
-      : `${baseUrl}/v1/chat/completions`;
+      ? `${baseUrl}/chat`
+      : `${baseUrl}${baseUrl.endsWith("/v1") ? "" : "/v1"}/chat/completions`;
 
     const body = isOllama
       ? { model: this.config.model, messages, stream: false }
