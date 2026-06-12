@@ -348,15 +348,15 @@ For binary or document formats:
 
 Description-based embedding is **enabled by default**. The indexer calls an LLM
 to generate a natural-language description of each code chunk before embedding.
-The description is embedded instead of the raw code, improving semantic search
-quality for natural language queries.
+The description is combined with the chunk's raw code for embedding, capturing
+both semantic meaning and code-level similarity.
 
-**Pipeline:** `Chunk.content` → LLM → `Chunk.description` → embedder → vector store
+**Pipeline:** `Chunk.content` → LLM → `Chunk.description` → embedder `(description + "\n\n" + content)` → vector store
 
 **Key behavior:**
 - Keyword search still uses `chunk.content` (raw code) for TF-IDF
-- Vector search uses the embedding of `chunk.description`
-- Both `content` and `description` are stored in LanceDB
+- Vector search uses the embedding of `description + "\n\n" + content`
+- Both `content` and `description` are stored separately in LanceDB
 - On LLM failure, falls back to embedding raw content and logs a warning
 - Set `description.enabled: false` in config to disable and embed raw code instead
 - Config is in `src/core/config.ts` (`DescriptionConfig`), provider in `src/describer/`

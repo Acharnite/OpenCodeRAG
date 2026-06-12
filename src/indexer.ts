@@ -297,11 +297,11 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
         const batchDesc = descriptionMap?.get(chunk.id);
         if (batchDesc && batchDesc.trim().length > 0) {
           chunk.description = batchDesc;
-          textToEmbed.push(docPrefix + chunk.description);
+          textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
         } else {
           try {
             chunk.description = await options.descriptionProvider.generateDescription(chunk);
-            textToEmbed.push(docPrefix + chunk.description);
+            textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
           } catch (err) {
             logger.warn(`Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
             textToEmbed.push(docPrefix + chunk.content);

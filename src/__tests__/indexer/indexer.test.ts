@@ -315,7 +315,7 @@ describe("indexer", () => {
       };
     }
 
-    it("generates descriptions and embeds them instead of content", async () => {
+    it("generates descriptions and embeds description + content together", async () => {
       await writeFile(path.join(workspaceDir, "src", "a.ts"), "function alpha() { return 1; }\n");
 
       const descriptions = new Map<string, string>();
@@ -356,9 +356,9 @@ describe("indexer", () => {
 
       assert.equal(stats.newFiles, 1);
       assert.ok(stats.totalChunks > 0);
-      // Verify that the embedded text contains the description, not the raw code
+      // Verify that the embedded text contains both the description and the code
       assert.ok(embeddedTexts.some((t) => t.includes("Description for")));
-      assert.ok(embeddedTexts.every((t) => !t.includes("function alpha")));
+      assert.ok(embeddedTexts.some((t) => t.includes("function alpha")));
     });
 
     it("falls back to content when description generation fails", async () => {

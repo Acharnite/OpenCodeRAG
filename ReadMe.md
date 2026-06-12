@@ -113,7 +113,7 @@ Running `opencode-rag init` creates the config file `opencode-rag.json` in your 
 
 ### Description-Based Embedding (Optional)
 
-When enabled, the indexer uses an LLM to generate natural-language descriptions of code chunks before embedding. This dramatically improves semantic search quality for natural language queries.
+When enabled, the indexer uses an LLM to generate natural-language descriptions of code chunks, then combines the description with the raw code for embedding. This captures both semantic meaning (from the description) and code-level similarity (from the code itself), dramatically improving search quality for natural language and code-based queries alike.
 
 ```json
 {
@@ -136,7 +136,7 @@ When enabled, the indexer uses an LLM to generate natural-language descriptions 
 | `description.systemPrompt` | *(see above)* | Customizable system prompt for the LLM. |
 | `description.timeoutMs` | `60000` | Timeout per LLM call. |
 
-Set `description.enabled` to `false` to disable and embed raw code content instead. If the LLM call fails during indexing, the chunk falls back to embedding raw content with a warning logged.
+The embedded text is formed as `description + "\n\n" + code content`. The description and code are still stored as separate fields in LanceDB. Keyword search continues to use the raw code content. Set `description.enabled` to `false` to disable and embed raw code content instead. If the LLM call fails during indexing, the chunk falls back to embedding raw content with a warning logged.
 
 <details>
 <summary>View Logging Configuration</summary>
