@@ -6,9 +6,12 @@ import { normalizeFilePath } from "../core/manifest.js";
 const TABLE_NAME = "chunks";
 const VECTOR_COLUMN = "embedding";
 
+const QUERY_COLUMNS = ["id", "content", "description", "filePath", "startLine", "endLine", "language"];
+
 interface ChunkRow {
   id: string;
   content: string;
+  description: string;
   embedding: number[];
   filePath: string;
   startLine: number;
@@ -46,6 +49,7 @@ export class LanceDBStore implements VectorStore {
       const seedRow: ChunkRow = {
         id: "__seed__",
         content: "",
+        description: "",
         embedding: new Array(this.vectorDimension).fill(0),
         filePath: "",
         startLine: 0,
@@ -74,6 +78,7 @@ export class LanceDBStore implements VectorStore {
       .map((c) => ({
         id: c.id,
         content: c.content,
+        description: c.description ?? "",
         embedding: c.embedding!,
         filePath: normalizeFilePath(c.metadata.filePath),
         startLine: c.metadata.startLine,
@@ -100,6 +105,85 @@ export class LanceDBStore implements VectorStore {
     }
   }
 
+  private rowToSearchResult(row: Record<string, unknown>): SearchResult {
+    return {
+      score: 1 / (1 + ((row._distance as number) ?? 0)),
+      chunk: {
+        id: row.id as string,
+        content: row.content as string,
+        description: (row.description as string) ?? "",
+        metadata: {
+          filePath: row.filePath as string,
+          startLine: row.startLine as number,
+          endLine: row.endLine as number,
+          language: row.language as string,
+        },
+      },
+    };
+  }
+
+  async listFiles(): Promise<{ filePath: string; language: string; chunkCount: number }[]> {
+    const table = await this.getTable();
+    const count = await table.countRows();
+    if (count === 0) return [];
+
+    const rows = await table.query().select(["filePath", "language"]).toArray();
+    const fileMap = new Map<string, { language: string; chunkCount: number }>();
+    for (const row of rows) {
+      const filePath = row.filePath as string;
+      const language = row.language as string;
+      const existing = fileMap.get(filePath);
+      if (existing) {
+        existing.chunkCount++;
+      } else {
+        fileMap.set(filePath, { language, chunkCount: 1 });
+      }
+    }
+    return Array.from(fileMap.entries())
+      .map(([filePath, info]) => ({ filePath, ...info }))
+      .sort((a, b) => a.filePath.localeCompare(b.filePath));
+  }
+
+  async getChunksByFilePath(filePath: string): Promise<Chunk[]> {
+    const table = await this.getTable();
+    const normalizedPath = normalizeFilePath(filePath).replace(/'/g, "''");
+    const rows = await table.query()
+      .select(QUERY_COLUMNS)
+      .where(`filePath = '${normalizedPath}'`)
+      .toArray();
+
+    return rows
+      .map((row: Record<string, unknown>) => ({
+        id: row.id as string,
+        content: row.content as string,
+        description: (row.description as string) ?? "",
+        metadata: {
+          filePath: row.filePath as string,
+          startLine: row.startLine as number,
+          endLine: row.endLine as number,
+          language: row.language as string,
+        },
+      }))
+      .sort((a, b) => a.metadata.startLine - b.metadata.startLine);
+  }
+
+  async getChunks(offset: number, limit: number): Promise<{ filePath: string; language: string; startLine: number; endLine: number; content: string }[]> {
+    const table = await this.getTable();
+    const rows = await table.query()
+      .select(QUERY_COLUMNS)
+      .offset(offset)
+      .limit(limit)
+      .toArray();
+
+    return rows.map((row: Record<string, unknown>) => ({
+      filePath: row.filePath as string,
+      language: row.language as string,
+      startLine: row.startLine as number,
+      endLine: row.endLine as number,
+      content: row.content as string,
+    }));
+  }
+
   private async searchInternal(embedding: number[], topK: number): Promise<SearchResult[]> {
     const db = await this.getDb();
     const tableNames = await db.tableNames();
@@ -110,24 +194,7 @@ export class LanceDBStore implements VectorStore {
     if (count === 0) return [];
 
     const results = await table.search(embedding).limit(topK).toArray();
-
-    return results.map((row: Record<string, unknown>) => {
-      const distance = (row._distance as number) ?? 0;
-      const score = 1 / (1 + distance);
-      return {
-        score,
-        chunk: {
-          id: row.id as string,
-          content: row.content as string,
-          metadata: {
-            filePath: row.filePath as string,
-            startLine: row.startLine as number,
-            endLine: row.endLine as number,
-            language: row.language as string,
-          },
-        },
-      };
-    });
+    return results.map((row) => this.rowToSearchResult(row));
   }
 
   async count(): Promise<number> {

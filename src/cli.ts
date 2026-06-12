@@ -6,10 +6,12 @@ import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import chokidar from "chokidar";
+import pc from "picocolors";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { appendDebugLog } from "./core/fileLogger.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { createEmbedder } from "./embedder/factory.js";
+import { createDescriptionProvider } from "./describer/factory.js";
 import { retrieve } from "./retriever/retriever.js";
 import type { KeywordIndex } from "./core/interfaces.js";
 import {
@@ -20,11 +22,33 @@ import {
   type IndexRunStats,
 } from "./indexer.js";
 
+const c = {
+  heading: (s: string) => pc.bold(pc.cyan(s)),
+  label: (s: string) => pc.dim(s),
+  dim: (s: string) => pc.dim(s),
+  value: (s: string) => pc.green(s),
+  num: (s: string | number) => pc.green(String(s)),
+  file: (s: string) => pc.yellow(s),
+  lang: (s: string) => pc.cyan(s),
+  score: (s: string) => pc.magenta(s),
+  desc: (s: string) => pc.dim(s),
+  success: (s: string) => pc.green(s),
+  warn: (s: string) => pc.yellow(s),
+  error: (s: string) => pc.red(s),
+  enabled: (s: string) => pc.green(s),
+  disabled: (s: string) => pc.yellow(s),
+  created: (s: string) => pc.green(s),
+  updated: (s: string) => pc.yellow(s),
+  exists: (s: string) => pc.dim(s),
+};
+
 interface CliOptions {
   config?: string;
   force?: boolean;
   watch?: boolean;
   topK?: string;
+  offset?: string;
+  limit?: string;
 }
 
 interface InitOptions {
@@ -40,7 +64,7 @@ interface PackageMetadata {
 }
 
 function logCliError(logFilePath: string, scope: string, message: string, error: unknown): void {
-  console.error(message);
+  console.error(c.error(message));
   //appendDebugLog(logFilePath, { scope, message, error });
 }
 
@@ -55,11 +79,11 @@ async function resolveConfig(opt: CliOptions, logFilePath: string): Promise<RagC
       const configPath = path.resolve(opt.config);
       const cfg = loadConfig(configPath);
       await loadChunkersFromConfig(cfg, path.dirname(configPath));
-      logCliInfo(logFilePath, "config", `Config: ${configPath}`);
+      logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.file(configPath)}`);
       return logConfigDetails(logFilePath,cfg);
     } catch (err) {
       logCliError(logFilePath, "config", `Could not load config from ${opt.config}, using defaults`, err);
-      console.error(`Could not load config from ${opt.config}, using defaults`);
+      console.error(c.warn(`Could not load config from ${opt.config}, using defaults`));
     }
   }
   for (const loc of ["opencode-rag.json", ".opencode/opencode-rag.json", ".opencode/rag.json"]) {
@@ -67,13 +91,13 @@ async function resolveConfig(opt: CliOptions, logFilePath: string): Promise<RagC
     try {
       const cfg = loadConfig(configPath);
       await loadChunkersFromConfig(cfg, path.dirname(configPath));
-      logCliInfo(logFilePath, "config", `Config: ${configPath}`);
+      logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.file(configPath)}`);
       return logConfigDetails(logFilePath, cfg);
     } catch (err) {
       logCliError(logFilePath, "config", `Failed to load config from ${configPath}`, err);
     }
   }
-  logCliInfo(logFilePath, "config", `Config: using defaults (no opencode-rag.json found)`);
+  logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.dim("using defaults (no opencode-rag.json found)")}`);
   return logConfigDetails(logFilePath, DEFAULT_CONFIG);
 }
 
@@ -81,18 +105,18 @@ async function loadCliKeywordIndex(storePath: string, logFilePath: string): Prom
   const { KeywordIndex } = await import("./retriever/keyword-index.js");
   try {
     const index = await KeywordIndex.load(storePath);
-    logCliInfo(logFilePath, "keyword-index", `Keyword index loaded (${index.count()} chunks)`);
+    logCliInfo(logFilePath, "keyword-index", `${c.label("Keyword index loaded")} (${c.num(index.count())} chunks)`);
     return index;
   } catch {
-    logCliInfo(logFilePath, "keyword-index", "Creating keyword index");
+    logCliInfo(logFilePath, "keyword-index", c.warn("Creating keyword index"));
     return new KeywordIndex(storePath);
   }
 }
 
 function logConfigDetails(logFilePath: string, config: RagConfig): RagConfig {
-  logCliInfo(logFilePath, "config", `  Embedding provider: ${config.embedding.provider}`);
-  logCliInfo(logFilePath, "config", `  Embedding model:    ${config.embedding.model}`);
-  logCliInfo(logFilePath, "config", `  Vector store:       ${config.vectorStore.path}`);
+  logCliInfo(logFilePath, "config", `  ${c.label("Embedding provider:")} ${c.value(config.embedding.provider)}`);
+  logCliInfo(logFilePath, "config", `  ${c.label("Embedding model:")}    ${c.value(config.embedding.model)}`);
+  logCliInfo(logFilePath, "config", `  ${c.label("Vector store:")}       ${c.file(config.vectorStore.path)}`);
   return config;
 }
 
@@ -102,14 +126,14 @@ function formatTimestamp(timestamp?: number): string {
 }
 
 function logIndexSummary(logFilePath: string, stats: IndexRunStats): void {
-  logCliInfo(logFilePath, "index", `  New:              ${stats.newFiles}`);
-  logCliInfo(logFilePath, "index", `  Modified:         ${stats.modifiedFiles}`);
-  logCliInfo(logFilePath, "index", `  Unchanged:        ${stats.unchangedFiles}`);
-  logCliInfo(logFilePath, "index", `  Deleted:          ${stats.deletedFiles}`);
-  logCliInfo(logFilePath, "index", `  Removed:          ${stats.removedFiles}`);
-  logCliInfo(logFilePath, "index", `  Empty skipped:    ${stats.skippedEmptyFiles}`);
-  logCliInfo(logFilePath, "index", `  Small skipped:    ${stats.skippedSmallFiles}`);
-  logCliInfo(logFilePath, "index", `  Chunks written:   ${stats.totalChunks}`);
+  logCliInfo(logFilePath, "index", `  ${c.label("New:")}              ${c.num(stats.newFiles)}`);
+  logCliInfo(logFilePath, "index", `  ${c.label("Modified:")}         ${c.num(stats.modifiedFiles)}`);
+  logCliInfo(logFilePath, "index", `  ${c.label("Unchanged:")}        ${c.num(stats.unchangedFiles)}`);
+  logCliInfo(logFilePath, "index", `  ${c.label("Deleted:")}          ${c.num(stats.deletedFiles)}`);
+  logCliInfo(logFilePath, "index", `  ${c.label("Removed:")}          ${c.num(stats.removedFiles)}`);
+  logCliInfo(logFilePath, "index", `  ${c.label("Empty skipped:")}    ${c.num(stats.skippedEmptyFiles)}`);
+  logCliInfo(logFilePath, "index", `  ${c.label("Small skipped:")}    ${c.num(stats.skippedSmallFiles)}`);
+  logCliInfo(logFilePath, "index", `  ${c.label("Chunks written:")}   ${c.num(stats.totalChunks)}`);
 }
 
 function formatDuration(ms: number): string {
@@ -318,7 +342,7 @@ function installWorkspaceDependencies(opencodeDir: string): void {
 
   for (const attempt of attempts) {
     if (attempt.retry) {
-      console.log("  Retrying dependency install without native module compilation...");
+      console.log(c.warn("  Retrying dependency install without native module compilation..."));
     }
 
     const result =
@@ -366,7 +390,7 @@ program
       const config = await resolveConfig(options, logFilePath);
       logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
 
-      logCliInfo(logFilePath, "index", "\nIndexing workspace...");
+      logCliInfo(logFilePath, "index", `\n${c.heading("Indexing workspace...")}`);
 
       const embedder = createEmbedder(config);
 
@@ -376,7 +400,7 @@ program
       if (probe && probe[0] && probe[0].length > 0 && typeof probe[0][0] === "number") {
         vectorDimension = (probe[0] as number[]).length;
       }
-      logCliInfo(logFilePath, "index", `  Vector dimension:   ${vectorDimension}`);
+      logCliInfo(logFilePath, "index", `  ${c.label("Vector dimension:")}   ${c.num(vectorDimension)}`);
 
       const { LanceDBStore } = await import("./vectorstore/lancedb.js");
       const store = new LanceDBStore(
@@ -386,7 +410,16 @@ program
 
       const keywordIndex = await loadCliKeywordIndex(path.resolve(cwd, config.vectorStore.path), logFilePath);
 
-      logCliInfo(logFilePath, "index", `Scanning: ${cwd}`);
+      // Create description provider (enabled by default)
+      const descriptionConfig = config.description ?? { enabled: true, provider: "ollama" as const, baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
+      const descriptionProvider = descriptionConfig.enabled
+        ? createDescriptionProvider(descriptionConfig)
+        : undefined;
+      if (descriptionProvider) {
+        logCliInfo(logFilePath, "index", `  ${c.label("Description LLM:")}  ${c.value(descriptionConfig.model)} (${descriptionConfig.provider})`);
+      }
+
+      logCliInfo(logFilePath, "index", `${c.label("Scanning:")} ${c.file(cwd)}`);
       const runPass = async (watchTriggered: boolean = false): Promise<void> => {
         const passStarted = Date.now();
         const stats = await runIndexPass({
@@ -396,6 +429,7 @@ program
           store,
           embedder,
           keywordIndex,
+          descriptionProvider,
           force: Boolean(options.force && !watchTriggered),
           logger: {
             info: (message) => logCliInfo(logFilePath, "index", message),
@@ -407,7 +441,7 @@ program
         logCliInfo(
           logFilePath,
           "index",
-          `\nIndexing complete. ${stats.finalCount} chunks stored (${formatDuration(Date.now() - passStarted)}).`
+          `\n${c.success("Indexing complete.")} ${c.num(stats.finalCount)} chunks stored (${formatDuration(Date.now() - passStarted)}).`
         );
       };
 
@@ -417,13 +451,12 @@ program
         return;
       }
 
-      logCliInfo(logFilePath, "index", "\nWatching for changes...");
+      logCliInfo(logFilePath, "index", `\n${c.heading("Watching for changes...")}`);
       const scheduler = createWatchPassScheduler(
         () => runPass(true),
         (error) => {
           const message = (error as Error).message || String(error);
-          logCliError(logFilePath, "watch", `Watch reindex failed: ${message}`, error);
-          console.error(`\nWatch reindex failed: ${message}`);
+          logCliError(logFilePath, "watch", `\nWatch reindex failed: ${message}`, error);
         },
         300
       );
@@ -442,7 +475,7 @@ program
       watcher.on("addDir", handleChange);
       watcher.on("error", (error) => {
         logCliError(logFilePath, "watch", `Watcher error: ${(error as Error).message}`, error);
-        console.error(`\nWatcher error: ${(error as Error).message}`);
+        console.error(c.error(`\nWatcher error: ${(error as Error).message}`));
       });
 
       const shutdown = async () => {
@@ -455,14 +488,13 @@ program
       process.once("SIGTERM", () => void shutdown());
 
       const duration = formatDuration(Date.now() - started);
-      logCliInfo(logFilePath, "index", `Watcher ready (${duration} startup). Press Ctrl+C to stop.`);
+      logCliInfo(logFilePath, "index", `${c.success("Watcher ready")} (${duration} startup). Press Ctrl+C to stop.`);
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
-      logCliError(logFilePath, "index", `Indexing failed: ${message}`, err);
-      console.error(`\nIndexing failed: ${message}`);
+      logCliError(logFilePath, "index", `\nIndexing failed: ${message}`, err);
       if (message.toLowerCase().includes("fetch") || message.toLowerCase().includes("econnrefused")) {
-        console.error("Hint: Is your embedding provider running?");
+        console.error(c.warn("Hint: Is your embedding provider running?"));
       }
       process.exit(1);
     }
@@ -483,8 +515,8 @@ program
       const config = await resolveConfig(options, logFilePath);
       logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
 
-      logCliInfo(logFilePath, "query", `\nQuerying: "${query}"`);
-      logCliInfo(logFilePath, "query", `Top-K: ${parseInt(options.topK ?? "10", 10)}`);
+      logCliInfo(logFilePath, "query", `\n${c.heading("Querying:")} "${query}"`);
+      logCliInfo(logFilePath, "query", `${c.label("Top-K:")} ${c.num(parseInt(options.topK ?? "10", 10))}`);
 
       const embedder = createEmbedder(config);
       const { LanceDBStore } = await import("./vectorstore/lancedb.js");
@@ -492,10 +524,10 @@ program
 
       const indexedCount = await store.count();
       if (indexedCount === 0) {
-        logCliInfo(logFilePath, "query", "No indexed chunks found. Run 'opencode-rag index' first.");
+        logCliInfo(logFilePath, "query", `${c.warn("No indexed chunks found.")} Run 'opencode-rag index' first.`);
         return;
       }
-      logCliInfo(logFilePath, "query", `Searching ${indexedCount} indexed chunks...`);
+      logCliInfo(logFilePath, "query", `${c.label("Searching")} ${c.num(indexedCount)} indexed chunks...`);
 
       const topK = parseInt(options.topK ?? "10", 10);
       const minScore = config.retrieval.minScore;
@@ -504,25 +536,24 @@ program
       const results = await retrieve(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight: hybridCfg?.keywordWeight, queryPrefix: config.embedding.queryPrefix });
 
       if (results.length === 0) {
-        logCliInfo(logFilePath, "query", "No results found.");
+        logCliInfo(logFilePath, "query", c.warn("No results found."));
         return;
       }
 
       const duration = formatDuration(Date.now() - started);
-      logCliInfo(logFilePath, "query", `\n${results.length} result(s) in ${duration}:\n`);
+      logCliInfo(logFilePath, "query", `\n${c.num(results.length)} result(s) in ${duration}:\n`);
 
       for (const r of results) {
-        logCliInfo(logFilePath, "query", `  ${r.chunk.metadata.filePath}:${r.chunk.metadata.startLine}-${r.chunk.metadata.endLine}`);
-        logCliInfo(logFilePath, "query", `  Score: ${r.score.toFixed(4)}`);
-        logCliInfo(logFilePath, "query", `  ${r.chunk.content.slice(0, 200).replace(/\n/g, "\n  ")}`);
+        logCliInfo(logFilePath, "query", `  ${c.file(r.chunk.metadata.filePath)}:${c.value(String(r.chunk.metadata.startLine))}-${c.value(String(r.chunk.metadata.endLine))}`);
+        logCliInfo(logFilePath, "query", `  ${c.label("Score:")} ${c.score(r.score.toFixed(4))}`);
+        logCliInfo(logFilePath, "query", `  ${pc.dim(r.chunk.content.slice(0, 200).replace(/\n/g, "\n  "))}`);
       }
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
-      logCliError(logFilePath, "query", `Query failed: ${message}`, err);
-      console.error(`\nQuery failed: ${message}`);
+      logCliError(logFilePath, "query", `\nQuery failed: ${message}`, err);
       if (message.toLowerCase().includes("fetch") || message.toLowerCase().includes("econnrefused")) {
-        console.error("Hint: Is your embedding provider running?");
+        console.error(c.warn("Hint: Is your embedding provider running?"));
       }
       process.exit(1);
     }
@@ -544,20 +575,19 @@ program
       const prevCount = await store.count();
 
       if (prevCount === 0) {
-        logCliInfo(logFilePath, "clear", "No indexed data to clear.");
+        logCliInfo(logFilePath, "clear", c.warn("No indexed data to clear."));
         return;
       }
 
-      logCliInfo(logFilePath, "clear", `Clearing ${prevCount} indexed chunks...`);
+      logCliInfo(logFilePath, "clear", `${c.label("Clearing")} ${c.num(prevCount)} indexed chunks...`);
       await store.clear();
       const { KeywordIndex } = await import("./retriever/keyword-index.js");
       await KeywordIndex.clearFile(path.resolve(cwd, config.vectorStore.path));
-      logCliInfo(logFilePath, "clear", `Done. ${prevCount} chunks removed, keyword index cleared.`);
+      logCliInfo(logFilePath, "clear", `${c.success("Done.")} ${c.num(prevCount)} chunks removed, keyword index cleared.`);
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
-      logCliError(logFilePath, "clear", `Clear failed: ${message}`, err);
-      console.error(`\nClear failed: ${message}`);
+      logCliError(logFilePath, "clear", `\nClear failed: ${message}`, err);
       process.exit(1);
     }
   });
@@ -583,32 +613,142 @@ program
         store
       );
 
-      logCliInfo(logFilePath, "status", `\nIndexed chunks:    ${count}`);
-      logCliInfo(logFilePath, "status", `Store path:        ${path.resolve(cwd, config.vectorStore.path)}`);
-      logCliInfo(logFilePath, "status", `Embedding provider: ${config.embedding.provider}`);
-      logCliInfo(logFilePath, "status", `Embedding model:   ${config.embedding.model}`);
-      logCliInfo(logFilePath, "status", `File extensions:   ${config.indexing.includeExtensions.join(", ")}`);
-      logCliInfo(logFilePath, "status", `Excluded dirs:     ${config.indexing.excludeDirs.join(", ")}`);
-      logCliInfo(logFilePath, "status", `Default top-K:     ${config.retrieval.topK}`);
-      logCliInfo(logFilePath, "status", `Plugin enabled:    ${config.openCode.enabled}`);
-      logCliInfo(logFilePath, "status", `Manifest status:   ${summary.manifestStatus}`);
-      logCliInfo(logFilePath, "status", `Manifest entries:  ${summary.manifestEntries}`);
-      logCliInfo(logFilePath, "status", `Last indexed:      ${formatTimestamp(summary.lastIndexedAt)}`);
-      logCliInfo(logFilePath, "status", `Up-to-date files:  ${summary.upToDateFiles}`);
-      logCliInfo(logFilePath, "status", `Pending files:     ${summary.pendingFiles}`);
-      logCliInfo(logFilePath, "status", `Watch mode:        off`);
+      logCliInfo(logFilePath, "status", `\n${c.heading("Indexed chunks:")}    ${c.num(count)}`);
+      logCliInfo(logFilePath, "status", `${c.label("Store path:")}        ${c.file(path.resolve(cwd, config.vectorStore.path))}`);
+      logCliInfo(logFilePath, "status", `${c.label("Embedding provider:")} ${c.value(config.embedding.provider)}`);
+      logCliInfo(logFilePath, "status", `${c.label("Embedding model:")}   ${c.value(config.embedding.model)}`);
+      logCliInfo(logFilePath, "status", `${c.label("File extensions:")}   ${config.indexing.includeExtensions.join(", ")}`);
+      logCliInfo(logFilePath, "status", `${c.label("Excluded dirs:")}     ${config.indexing.excludeDirs.join(", ")}`);
+      logCliInfo(logFilePath, "status", `${c.label("Default top-K:")}     ${c.num(config.retrieval.topK)}`);
+      logCliInfo(logFilePath, "status", `${c.label("Plugin enabled:")}    ${config.openCode.enabled ? c.enabled("yes") : c.disabled("no")}`);
+      logCliInfo(logFilePath, "status", `${c.label("Manifest status:")}   ${summary.manifestStatus}`);
+      logCliInfo(logFilePath, "status", `${c.label("Manifest entries:")}  ${c.num(summary.manifestEntries)}`);
+      logCliInfo(logFilePath, "status", `${c.label("Last indexed:")}      ${c.value(formatTimestamp(summary.lastIndexedAt))}`);
+      logCliInfo(logFilePath, "status", `${c.label("Up-to-date files:")}  ${c.num(summary.upToDateFiles)}`);
+      logCliInfo(logFilePath, "status", `${c.label("Pending files:")}     ${c.num(summary.pendingFiles)}`);
+      logCliInfo(logFilePath, "status", `${c.label("Watch mode:")}        ${c.dim("off")}`);
       const kiCount = config.retrieval.hybridSearch?.enabled
         ? (await loadCliKeywordIndex(path.resolve(cwd, config.vectorStore.path), logFilePath))?.count() ?? 0
         : 0;
-      logCliInfo(logFilePath, "status", `Keyword index:     ${config.retrieval.hybridSearch?.enabled ? "enabled" : "disabled"} (${kiCount} chunks)`);
+      logCliInfo(logFilePath, "status", `${c.label("Keyword index:")}     ${config.retrieval.hybridSearch?.enabled ? c.enabled("enabled") : c.disabled("disabled")} (${c.num(kiCount)} chunks)`);
       if (summary.rebuildRequired) {
-        logCliInfo(logFilePath, "status", `Rebuild required:  yes (manifest missing/corrupt)`);
+        logCliInfo(logFilePath, "status", `${c.label("Rebuild required:")}  ${c.warn("yes")} (manifest missing/corrupt)`);
       }
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
-      logCliError(logFilePath, "status", `Status check failed: ${message}`, err);
-      console.error(`\nStatus check failed: ${message}`);
+      logCliError(logFilePath, "status", `\nStatus check failed: ${message}`, err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("list")
+  .description("List all indexed files with chunk counts")
+  .option("-c, --config <path>", "path to config file")
+  .action(async (options: CliOptions) => {
+    try {
+      const cwd = process.cwd();
+      let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      const config = await resolveConfig(options, logFilePath);
+      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+
+      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
+      const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
+      const files = await store.listFiles();
+
+      if (files.length === 0) {
+        logCliInfo(logFilePath, "list", `${c.warn("No indexed files found.")} Run 'opencode-rag index' first.`);
+        return;
+      }
+
+      logCliInfo(logFilePath, "list", `\n${c.num(files.length)} file(s) indexed:\n`);
+      for (const f of files) {
+        logCliInfo(logFilePath, "list", `  ${c.file(f.filePath)}  ${c.label("(")}${c.lang(f.language)}${c.label(", ")}${c.num(f.chunkCount)} chunk${f.chunkCount === 1 ? "" : "s"}${c.label(")")}`);
+      }
+    } catch (err) {
+      const message = (err as Error).message || String(err);
+      const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
+      logCliError(logFilePath, "list", `\nList failed: ${message}`, err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("show <file>")
+  .description("Show chunks for a specific file")
+  .option("-c, --config <path>", "path to config file")
+  .action(async (file: string, options: CliOptions) => {
+    try {
+      const cwd = process.cwd();
+      let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      const config = await resolveConfig(options, logFilePath);
+      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+
+      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
+      const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
+      const chunks = await store.getChunksByFilePath(file);
+
+      if (chunks.length === 0) {
+        logCliInfo(logFilePath, "show", `${c.warn(`No chunks found for '${file}'.`)}`);
+        return;
+      }
+
+      logCliInfo(logFilePath, "show", `\n${c.num(chunks.length)} chunk(s) for ${c.file(file)}:\n`);
+      for (const chunk of chunks) {
+        logCliInfo(logFilePath, "show", `  ${c.label("[")}${c.value(String(chunk.metadata.startLine))}${c.label("-")}${c.value(String(chunk.metadata.endLine))}${c.label("]")} ${c.label("(")}${c.lang(chunk.metadata.language)}${c.label(")")} ${pc.dim(chunk.id)}`);
+        if (chunk.description) {
+          logCliInfo(logFilePath, "show", `  ${c.desc(">")} ${c.desc(chunk.description)}`);
+        }
+        logCliInfo(logFilePath, "show", `  ${chunk.content}\n`);
+      }
+    } catch (err) {
+      const message = (err as Error).message || String(err);
+      const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
+      logCliError(logFilePath, "show", `\nShow failed: ${message}`, err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("dump")
+  .description("Dump all indexed chunks")
+  .option("-c, --config <path>", "path to config file")
+  .option("--offset <number>", "start at chunk offset", "0")
+  .option("--limit <number>", "max number of chunks to dump", "25")
+  .action(async (options: CliOptions) => {
+    try {
+      const cwd = process.cwd();
+      let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      const config = await resolveConfig(options, logFilePath);
+      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+
+      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
+      const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
+      const total = await store.count();
+
+      if (total === 0) {
+        logCliInfo(logFilePath, "dump", `${c.warn("No indexed chunks found.")} Run 'opencode-rag index' first.`);
+        return;
+      }
+
+      const offset = parseInt(options.offset ?? "0", 10);
+      const limit = parseInt(options.limit ?? "25", 10);
+      const chunks = await store.getChunks(offset, limit);
+
+      logCliInfo(logFilePath, "dump", `\n${c.heading("Chunks")} ${c.value(String(offset + 1))}${c.label("-")}${c.value(String(offset + chunks.length))} of ${c.num(total)}:\n`);
+      for (const chunk of chunks) {
+        logCliInfo(logFilePath, "dump", `  ${c.file(chunk.filePath)}:${c.value(String(chunk.startLine))}${c.label("-")}${c.value(String(chunk.endLine))} ${c.label("(")}${c.lang(chunk.language)}${c.label(")")}`);
+        logCliInfo(logFilePath, "dump", `  ${chunk.content}\n`);
+      }
+
+      if (offset + limit < total) {
+        logCliInfo(logFilePath, "dump", `  ${c.dim(`... ${total - offset - limit} more (use --offset ${offset + limit} to continue)`)}`);
+      }
+    } catch (err) {
+      const message = (err as Error).message || String(err);
+      const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
+      logCliError(logFilePath, "dump", `\nDump failed: ${message}`, err);
       process.exit(1);
     }
   });
@@ -683,20 +823,20 @@ program
     const tuiConfigPath = path.join(opencodeDir, "tui.json");
     const opencodePackagePath = path.join(opencodeDir, "package.json");
 
-    console.log("Initializing OpenCodeRAG in workspace...\n");
+    console.log(`\n${c.heading("Initializing OpenCodeRAG in workspace...")}\n`);
 
     if (!existsSync(opencodeDir)) {
       mkdirSync(opencodeDir, { recursive: true });
-      console.log("  Created:  .opencode/");
+      console.log(`  ${c.created("Created:")}  .opencode/`);
     } else {
-      console.log("  Exists:   .opencode/");
+      console.log(`  ${c.exists("Exists:")}   .opencode/`);
     }
 
     if (!existsSync(pluginsDir)) {
       mkdirSync(pluginsDir, { recursive: true });
-      console.log("  Created:  .opencode/plugins/");
+      console.log(`  ${c.created("Created:")}  .opencode/plugins/`);
     } else {
-      console.log("  Exists:   .opencode/plugins/");
+      console.log(`  ${c.exists("Exists:")}   .opencode/plugins/`);
     }
 
     const gitignoreExists = existsSync(gitignorePath);
@@ -705,95 +845,95 @@ program
     );
     if (!gitignoreExists || options.force || readFileSync(gitignorePath, "utf-8") !== nextGitignoreContent) {
       writeFileSync(gitignorePath, nextGitignoreContent, "utf-8");
-      console.log(`  ${gitignoreExists ? "Updated" : "Created"}: .opencode/.gitignore`);
+      console.log(`  ${gitignoreExists ? c.updated("Updated:") : c.created("Created:")} .opencode/.gitignore`);
     } else {
-      console.log("  Exists:   .opencode/.gitignore");
+      console.log(`  ${c.exists("Exists:")}   .opencode/.gitignore`);
     }
 
     const opencodeConfigExists = existsSync(opencodeConfigPath);
     const nextOpencodeConfig = buildOpencodeConfig(readJsonObject(opencodeConfigPath));
     if (!opencodeConfigExists || options.force) {
       writeJsonFile(opencodeConfigPath, nextOpencodeConfig);
-      console.log(`  ${opencodeConfigExists ? "Updated" : "Created"}: .opencode/opencode.json`);
+      console.log(`  ${opencodeConfigExists ? c.updated("Updated:") : c.created("Created:")} .opencode/opencode.json`);
     } else if (JSON.stringify(readJsonObject(opencodeConfigPath)) !== JSON.stringify(nextOpencodeConfig)) {
       writeJsonFile(opencodeConfigPath, nextOpencodeConfig);
-      console.log("  Updated:  .opencode/opencode.json");
+      console.log(`  ${c.updated("Updated:")}  .opencode/opencode.json`);
     } else {
-      console.log("  Exists:   .opencode/opencode.json");
+      console.log(`  ${c.exists("Exists:")}   .opencode/opencode.json`);
     }
 
     const pluginEntryExists = existsSync(pluginEntryPath);
     const pluginEntryContent = generateWorkspacePluginFile(packageMetadata.name);
     if (!pluginEntryExists || options.force) {
       writeFileSync(pluginEntryPath, pluginEntryContent, "utf-8");
-      console.log(`  ${pluginEntryExists ? "Updated" : "Created"}: .opencode/plugins/rag-plugin.js`);
+      console.log(`  ${pluginEntryExists ? c.updated("Updated:") : c.created("Created:")} .opencode/plugins/rag-plugin.js`);
     } else if (readFileSync(pluginEntryPath, "utf-8") !== pluginEntryContent) {
       writeFileSync(pluginEntryPath, pluginEntryContent, "utf-8");
-      console.log("  Updated:  .opencode/plugins/rag-plugin.js");
+      console.log(`  ${c.updated("Updated:")}  .opencode/plugins/rag-plugin.js`);
     } else {
-      console.log("  Exists:   .opencode/plugins/rag-plugin.js");
+      console.log(`  ${c.exists("Exists:")}   .opencode/plugins/rag-plugin.js`);
     }
 
     const tuiPluginEntryExists = existsSync(tuiPluginEntryPath);
     const tuiPluginEntryContent = generateWorkspaceTuiPluginFile(packageMetadata.name);
     if (!tuiPluginEntryExists || options.force) {
       writeFileSync(tuiPluginEntryPath, tuiPluginEntryContent, "utf-8");
-      console.log(`  ${tuiPluginEntryExists ? "Updated" : "Created"}: .opencode/plugins/rag-tui.js`);
+      console.log(`  ${tuiPluginEntryExists ? c.updated("Updated:") : c.created("Created:")} .opencode/plugins/rag-tui.js`);
     } else if (readFileSync(tuiPluginEntryPath, "utf-8") !== tuiPluginEntryContent) {
       writeFileSync(tuiPluginEntryPath, tuiPluginEntryContent, "utf-8");
-      console.log("  Updated:  .opencode/plugins/rag-tui.js");
+      console.log(`  ${c.updated("Updated:")}  .opencode/plugins/rag-tui.js`);
     } else {
-      console.log("  Exists:   .opencode/plugins/rag-tui.js");
+      console.log(`  ${c.exists("Exists:")}   .opencode/plugins/rag-tui.js`);
     }
 
     const tuiConfigExists = existsSync(tuiConfigPath);
     const nextTuiConfig = { plugin: ["./plugins/rag-tui.js"] };
     if (!tuiConfigExists || options.force) {
       writeJsonFile(tuiConfigPath, nextTuiConfig);
-      console.log(`  ${tuiConfigExists ? "Updated" : "Created"}: .opencode/tui.json`);
+      console.log(`  ${tuiConfigExists ? c.updated("Updated:") : c.created("Created:")} .opencode/tui.json`);
     } else if (JSON.stringify(readJsonObject(tuiConfigPath)) !== JSON.stringify(nextTuiConfig)) {
       writeJsonFile(tuiConfigPath, nextTuiConfig);
-      console.log("  Updated:  .opencode/tui.json");
+      console.log(`  ${c.updated("Updated:")}  .opencode/tui.json`);
     } else {
-      console.log("  Exists:   .opencode/tui.json");
+      console.log(`  ${c.exists("Exists:")}   .opencode/tui.json`);
     }
 
     const workspacePackageExists = existsSync(opencodePackagePath);
     const nextWorkspacePackage = buildWorkspacePackageJson(readJsonObject(opencodePackagePath), packageMetadata, opencodeDir);
     if (!workspacePackageExists || options.force) {
       writeJsonFile(opencodePackagePath, nextWorkspacePackage);
-      console.log(`  ${workspacePackageExists ? "Updated" : "Created"}: .opencode/package.json`);
+      console.log(`  ${workspacePackageExists ? c.updated("Updated:") : c.created("Created:")} .opencode/package.json`);
     } else if (JSON.stringify(readJsonObject(opencodePackagePath)) !== JSON.stringify(nextWorkspacePackage)) {
       writeJsonFile(opencodePackagePath, nextWorkspacePackage);
-      console.log("  Updated:  .opencode/package.json");
+      console.log(`  ${c.updated("Updated:")}  .opencode/package.json`);
     } else {
-      console.log("  Exists:   .opencode/package.json");
+      console.log(`  ${c.exists("Exists:")}   .opencode/package.json`);
     }
 
     const configExists = existsSync(configPath);
     if (!configExists || options.force) {
       writeFileSync(configPath, generateDefaultConfigJson(), "utf-8");
-      console.log(`  ${configExists ? "Updated" : "Created"}: opencode-rag.json`);
+      console.log(`  ${configExists ? c.updated("Updated:") : c.created("Created:")} opencode-rag.json`);
     } else {
-      console.log("  Exists:   opencode-rag.json");
+      console.log(`  ${c.exists("Exists:")}   opencode-rag.json`);
     }
 
     if (!options.skipInstall) {
-      console.log("\nInstalling workspace-local plugin dependencies...\n");
+      console.log(`\n${c.heading("Installing workspace-local plugin dependencies...")}\n`);
       installWorkspaceDependencies(opencodeDir);
-      console.log("\n  Installed: .opencode/node_modules/");
+      console.log(`\n  ${c.success("Installed:")} .opencode/node_modules/`);
       const updatedGlobalConfigs = removeStaleGlobalPluginRegistrations(os.homedir(), packageMetadata.name);
       if (updatedGlobalConfigs.length > 0) {
         for (const configPath of updatedGlobalConfigs) {
-          console.log(`  Removed stale plugin registration from ${configPath}`);
+          console.log(`  ${c.warn("Removed stale plugin registration from")} ${configPath}`);
         }
       }
-      console.log("  OpenCode loads the plugin from .opencode/plugins/rag-plugin.js; no global plugin registration is required.");
+      console.log(`  ${c.dim("OpenCode loads the plugin from .opencode/plugins/rag-plugin.js; no global plugin registration is required.")}`);
     } else {
-      console.log("\n  Skipped:   dependency installation (--skip-install)");
+      console.log(`\n  ${c.exists("Skipped:")}   dependency installation (--skip-install)`);
     }
 
-    console.log("\nDone. Restart OpenCode if it is running, then run `opencode-rag index` in this workspace.");
+    console.log(`\n${c.success("Done.")} Restart OpenCode if it is running, then run ${c.file("'opencode-rag index'")} in this workspace.`);
   });
 
 /**
@@ -820,7 +960,7 @@ if (shouldAutoRunCli(import.meta.url, process.argv[1])) {
 } else {
   // Fallback: if the module appears to be running as a CLI (has argv with commands like 'init', 'index', etc.)
   // and not being imported as a library, parse the arguments anyway
-  const commands = ['init', 'index', 'query', 'clear', 'status'];
+  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump'];
   const cmd = process.argv[2];
   if (process.argv.length > 2 && cmd && commands.includes(cmd.toLowerCase())) {
     void program.parseAsync(process.argv);

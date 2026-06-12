@@ -30,6 +30,17 @@ export interface AutoInjectConfig {
   maxTokens: number;
 }
 
+export interface DescriptionConfig {
+  enabled: boolean;
+  provider: "ollama" | "openai";
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  timeoutMs?: number;
+  proxy?: ProxyConfig;
+  systemPrompt: string;
+}
+
 export interface RagConfig {
   embedding: {
     provider: "ollama" | "openai";
@@ -69,6 +80,7 @@ export interface RagConfig {
     readRelatedFilesMax?: number;
   };
   chunkers?: ChunkerConfig[];
+  description?: DescriptionConfig;
   logging: LoggingConfig;
 }
 
@@ -166,6 +178,15 @@ export const DEFAULT_CONFIG: RagConfig = {
       maxTokens: 2000,
     },
   },
+  description: {
+    enabled: true,
+    provider: "ollama",
+    baseUrl: "http://127.0.0.1:11434/api",
+    model: "qwen2.5:3b",
+    timeoutMs: 60000,
+    systemPrompt:
+      "You are a code analysis assistant. Given a code snippet, write a short (2-3 sentence) description of what the code does, its purpose, and key functionality. Focus on semantic meaning that would help someone searching for this code. Do not include code in your response.",
+  },
   logging: {
     level: "info",
     logFilePath: "./.opencode/opencode-rag.log",
@@ -229,6 +250,10 @@ export function loadConfig(filePath: string): RagConfig {
       return merged;
     })(),
     chunkers: parsed.chunkers ?? DEFAULT_CONFIG.chunkers,
+    description: {
+      ...DEFAULT_CONFIG.description,
+      ...((parsed as { description?: Partial<DescriptionConfig> }).description ?? {}),
+    } as DescriptionConfig,
     logging: {
       ...DEFAULT_CONFIG.logging,
       ...(parsed.logging ?? {}),

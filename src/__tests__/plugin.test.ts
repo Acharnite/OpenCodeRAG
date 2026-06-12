@@ -43,13 +43,15 @@ function makeResult(
   endLine: number,
   language: string,
   content: string,
-  score: number
+  score: number,
+  description?: string
 ): SearchResult {
   return {
     score,
     chunk: {
       id,
       content,
+      description,
       metadata: { filePath, startLine, endLine, language },
     },
   };
@@ -263,6 +265,55 @@ describe("ragPlugin", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("includes description in formatted context when present", async () => {
+    const results = [
+      makeResult(
+        "chunk-1",
+        "src/plugin.ts",
+        12,
+        20,
+        "typescript",
+        "export function chunkEntryPoint() { return true; }",
+        0.93,
+        "A function that serves as the entry point for chunking operations."
+      ),
+      makeResult(
+        "chunk-2",
+        "src/retriever.ts",
+        1,
+        10,
+        "typescript",
+        "export async function retrieve() {}",
+        0.82
+      ),
+    ];
+
+    const { dependencies } = makeDependencies(results, 2);
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        retrieval: { topK: 7, minScore: 0 },
+        openCode: { enabled: true, maxContextChunks: 5 },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: populatedStore,
+      dependencies,
+      worktree: testWorktree,
+    });
+
+    const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
+    const result = await retrievalTool.execute(
+      { query: "chunk entry point" },
+      makeToolContext() as never
+    );
+
+    const structured = result as { output: string };
+    assert.match(structured.output, /A function that serves as the entry point/);
+    assert.match(structured.output, /export function chunkEntryPoint/);
+    // Second chunk has no description, so no blockquote for it
+    assert.match(structured.output, /export async function retrieve/);
   });
 
   it("returns a helpful message when the index is empty", async () => {

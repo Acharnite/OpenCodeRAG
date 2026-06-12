@@ -2,7 +2,7 @@ import chokidar from "chokidar";
 import path from "node:path";
 import { appendDebugLog } from "./core/fileLogger.js";
 import type { RagConfig } from "./core/config.js";
-import type { EmbeddingProvider, KeywordIndex, VectorStore } from "./core/interfaces.js";
+import type { DescriptionProvider, EmbeddingProvider, KeywordIndex, VectorStore } from "./core/interfaces.js";
 import {
   createWatchPassScheduler,
   createWatchIgnore,
@@ -21,10 +21,11 @@ export interface CreateBackgroundIndexerOptions {
   embedder: EmbeddingProvider;
   logFilePath: string;
   keywordIndex?: KeywordIndex;
+  descriptionProvider?: DescriptionProvider;
 }
 
 export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions): BackgroundIndexer {
-  const { cwd, storePath, config, store, embedder, logFilePath, keywordIndex } = options;
+  const { cwd, storePath, config, store, embedder, logFilePath, keywordIndex, descriptionProvider } = options;
 
   // Fire-and-forget initial index pass
   runIndexPass({
@@ -34,6 +35,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
     store,
     embedder,
     keywordIndex,
+    descriptionProvider,
     logger: {
       //info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
       warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
@@ -55,6 +57,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
         store,
         embedder,
         keywordIndex,
+        descriptionProvider,
         logger: {
           //info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
           warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),

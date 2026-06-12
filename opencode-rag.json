@@ -2,8 +2,10 @@
   "embedding": {
     "provider": "ollama",
     "baseUrl": "http://127.0.0.1:11434/api",
-    "model": "manutic/nomic-embed-code",
-    "timeoutMs": 60000
+    "model": "embeddinggemma:latest",
+    "timeoutMs": 60000,
+    "documentPrefix": "search_document: ",
+    "queryPrefix": "search_query: "
   },
   "indexing": {
     "includeExtensions": [
@@ -87,8 +89,16 @@
       "maxTokens": 2000
     }
   },
+  "description": {
+    "enabled": true,
+    "provider": "ollama",
+    "baseUrl": "http://127.0.0.1:11434/api",
+    "model": "qwen2.5:3b",
+    "timeoutMs": 60000,
+    "systemPrompt": "Describe code for embedding search. Output must be caveman style: short simple words, rough grammar. Include what code do, main names, data in, data out, side effects, errors, and search words. No markdown, no code. No line-by-line talk."
+  },
   "logging": {
-    "level": "info",
+    "level": "debug",
     "logFilePath": "./.opencode/opencode-rag.log"
   }
 }

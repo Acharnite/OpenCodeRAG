@@ -1,8 +1,9 @@
 import type { Plugin, PluginInput, Hooks, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
-import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult } from "./core/interfaces.js";
+import type { EmbeddingProvider, DescriptionProvider, KeywordIndex, VectorStore, SearchResult } from "./core/interfaces.js";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { createEmbedder } from "./embedder/factory.js";
+import { createDescriptionProvider } from "./describer/factory.js";
 import { LanceDBStore } from "./vectorstore/lancedb.js";
 import { retrieve } from "./retriever/retriever.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
@@ -162,6 +163,9 @@ function formatContext(
     parts.push(
       `[${m.filePath}:${m.startLine}-${m.endLine}] (${m.language}, score: ${r.score.toFixed(2)})`
     );
+    if (r.chunk.description) {
+      parts.push(`> ${r.chunk.description}`);
+    }
     parts.push("```" + m.language);
     parts.push(r.chunk.content);
     parts.push("```\n");
@@ -199,6 +203,9 @@ function formatAutoInjectContext(
       const m = r.chunk.metadata;
       const relPath = path.relative(worktree, m.filePath).replace(/\\/g, "/");
       lines.push(`[${relPath}:${m.startLine}-${m.endLine}] (${m.language}, score: ${r.score.toFixed(2)})`);
+      if (r.chunk.description) {
+        lines.push(`> ${r.chunk.description}`);
+      }
       lines.push("```" + m.language);
       lines.push(r.chunk.content);
       lines.push("```\n");
@@ -313,6 +320,7 @@ type CreateRagHooksOptions = {
   store?: VectorStore;
   embedder?: EmbeddingProvider;
   keywordIndex?: KeywordIndex;
+  descriptionProvider?: DescriptionProvider;
 };
 
 function formatFileList(results: SearchResult[], worktree: string): string {
@@ -696,6 +704,12 @@ export const ragPlugin: Plugin = async (
   // Load or create keyword index for hybrid search
   const keywordIndex = await loadKeywordIndex(storePath, logFilePath);
 
+  // Create description provider (enabled by default)
+  const descriptionConfig = cfg.description ?? { enabled: true, provider: "ollama" as const, baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
+  const descriptionProvider = descriptionConfig.enabled
+    ? createDescriptionProvider(descriptionConfig)
+    : undefined;
+
   const hooks = createRagHooks({
     cfg,
     storePath,
@@ -704,6 +718,7 @@ export const ragPlugin: Plugin = async (
     embedder,
     store,
     keywordIndex,
+    descriptionProvider,
   });
 
   // Start background auto-indexer if enabled
@@ -717,6 +732,7 @@ export const ragPlugin: Plugin = async (
       embedder,
       logFilePath,
       keywordIndex,
+      descriptionProvider,
     });
 
     backgroundIndexers.set(input.directory, indexer);

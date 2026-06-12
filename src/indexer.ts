@@ -14,7 +14,7 @@ import {
   saveManifest,
   type FileManifest,
 } from "./core/manifest.js";
-import type { Chunk, EmbeddingProvider, KeywordIndex, VectorStore } from "./core/interfaces.js";
+import type { Chunk, DescriptionProvider, EmbeddingProvider, KeywordIndex, VectorStore } from "./core/interfaces.js";
 import { embedBatch } from "./embedder/factory.js";
 
 export interface IndexRunStats {
@@ -65,6 +65,7 @@ export interface RunIndexPassOptions {
   force?: boolean;
   logger?: Partial<Logger>;
   keywordIndex?: KeywordIndex;
+  descriptionProvider?: DescriptionProvider;
 }
 
 export interface WatchPassScheduler {
@@ -279,10 +280,21 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
     options.keywordIndex?.addChunks(chunks);
 
     const docPrefix = options.config.embedding.documentPrefix ?? "";
-    const embeddings = await embedBatch(
-      options.embedder,
-      chunks.map((chunk) => docPrefix + chunk.content)
-    );
+    const textToEmbed: string[] = [];
+    for (const chunk of chunks) {
+      if (options.descriptionProvider) {
+        try {
+          chunk.description = await options.descriptionProvider.generateDescription(chunk);
+          textToEmbed.push(docPrefix + chunk.description);
+        } catch (err) {
+          logger.warn(`  Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
+          textToEmbed.push(docPrefix + chunk.content);
+        }
+      } else {
+        textToEmbed.push(docPrefix + chunk.content);
+      }
+    }
+    const embeddings = await embedBatch(options.embedder, textToEmbed);
 
     for (let i = 0; i < chunks.length; i++) {
       const emb = embeddings[i];

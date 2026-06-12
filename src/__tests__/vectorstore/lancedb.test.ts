@@ -180,6 +180,173 @@ describe("LanceDBStore (memory)", () => {
     assert.equal(results.length, 1);
     assert.equal(results[0]!.chunk.metadata.filePath, normalizeFilePath("src/keep-me.ts"));
   });
+
+  it("stores and retrieves description field", async () => {
+    await store.clear();
+
+    const chunks = [
+      {
+        id: "desc-1",
+        content: "function hello() { return 'world'; }",
+        description: "A function that returns the greeting 'world'.",
+        embedding: new Array(384).fill(0).map((_, i) => (i % 2 === 0 ? 0.1 : -0.1)),
+        metadata: {
+          filePath: "src/hello.ts",
+          startLine: 1,
+          endLine: 3,
+          language: "typescript",
+        },
+      },
+      {
+        id: "desc-2",
+        content: "function noDesc() { return 42; }",
+        embedding: new Array(384).fill(0).map((_, i) => (i % 2 === 0 ? -0.1 : 0.1)),
+        metadata: {
+          filePath: "src/no-desc.ts",
+          startLine: 1,
+          endLine: 3,
+          language: "typescript",
+        },
+      },
+    ];
+
+    await store.addChunks(chunks);
+    const count = await store.count();
+    assert.equal(count, 2);
+
+    const results = await store.search(new Array(384).fill(0).map((_, i) => (i % 2 === 0 ? 0.1 : -0.1)), 2);
+    assert.equal(results.length, 2);
+
+    const withDesc = results.find((r) => r.chunk.id === "desc-1");
+    const withoutDesc = results.find((r) => r.chunk.id === "desc-2");
+
+    assert.ok(withDesc);
+    assert.equal(withDesc.chunk.description, "A function that returns the greeting 'world'.");
+    assert.equal(withDesc.chunk.content, "function hello() { return 'world'; }");
+
+    assert.ok(withoutDesc);
+    assert.equal(withoutDesc.chunk.description, "");
+  });
+
+  it("lists files with chunk counts", async () => {
+    await store.clear();
+
+    await store.addChunks([
+      {
+        id: "lf-1",
+        content: "a",
+        embedding: new Array(384).fill(0.1),
+        metadata: { filePath: "src/a.ts", startLine: 1, endLine: 1, language: "typescript" },
+      },
+      {
+        id: "lf-2",
+        content: "b",
+        embedding: new Array(384).fill(0.2),
+        metadata: { filePath: "src/a.ts", startLine: 2, endLine: 2, language: "typescript" },
+      },
+      {
+        id: "lf-3",
+        content: "c",
+        embedding: new Array(384).fill(0.3),
+        metadata: { filePath: "src/b.py", startLine: 1, endLine: 1, language: "python" },
+      },
+    ]);
+
+    const files = await store.listFiles();
+    assert.equal(files.length, 2);
+
+    assert.equal(files[0]!.filePath, normalizeFilePath("src/a.ts"));
+    assert.equal(files[0]!.language, "typescript");
+    assert.equal(files[0]!.chunkCount, 2);
+
+    assert.equal(files[1]!.filePath, normalizeFilePath("src/b.py"));
+    assert.equal(files[1]!.language, "python");
+    assert.equal(files[1]!.chunkCount, 1);
+  });
+
+  it("returns empty array for listFiles on empty store", async () => {
+    await store.clear();
+    const files = await store.listFiles();
+    assert.deepEqual(files, []);
+  });
+
+  it("retrieves chunks by file path sorted by startLine", async () => {
+    await store.clear();
+
+    await store.addChunks([
+      {
+        id: "gbfp-2",
+        content: "second chunk",
+        embedding: new Array(384).fill(0.2),
+        metadata: { filePath: "src/target.ts", startLine: 10, endLine: 20, language: "typescript" },
+      },
+      {
+        id: "gbfp-1",
+        content: "first chunk",
+        embedding: new Array(384).fill(0.1),
+        metadata: { filePath: "src/target.ts", startLine: 1, endLine: 9, language: "typescript" },
+      },
+      {
+        id: "gbfp-other",
+        content: "other file",
+        embedding: new Array(384).fill(0.3),
+        metadata: { filePath: "src/other.ts", startLine: 1, endLine: 1, language: "typescript" },
+      },
+    ]);
+
+    const chunks = await store.getChunksByFilePath("src/target.ts");
+    assert.equal(chunks.length, 2);
+    assert.equal(chunks[0]!.id, "gbfp-1");
+    assert.equal(chunks[0]!.metadata.startLine, 1);
+    assert.equal(chunks[1]!.id, "gbfp-2");
+    assert.equal(chunks[1]!.metadata.startLine, 10);
+  });
+
+  it("returns empty array for getChunksByFilePath with no match", async () => {
+    await store.clear();
+    const chunks = await store.getChunksByFilePath("nonexistent.ts");
+    assert.deepEqual(chunks, []);
+  });
+
+  it("retrieves chunks with pagination via getChunks", async () => {
+    await store.clear();
+
+    await store.addChunks([
+      {
+        id: "gc-1",
+        content: "one",
+        embedding: new Array(384).fill(0.1),
+        metadata: { filePath: "a.ts", startLine: 1, endLine: 1, language: "typescript" },
+      },
+      {
+        id: "gc-2",
+        content: "two",
+        embedding: new Array(384).fill(0.2),
+        metadata: { filePath: "b.ts", startLine: 1, endLine: 1, language: "python" },
+      },
+      {
+        id: "gc-3",
+        content: "three",
+        embedding: new Array(384).fill(0.3),
+        metadata: { filePath: "c.ts", startLine: 1, endLine: 1, language: "go" },
+      },
+    ]);
+
+    const page1 = await store.getChunks(0, 2);
+    assert.equal(page1.length, 2);
+
+    const page2 = await store.getChunks(2, 2);
+    assert.equal(page2.length, 1);
+
+    const allIds = new Set([...page1.map((c) => c.filePath), page2[0]!.filePath]);
+    assert.equal(allIds.size, 3);
+  });
+
+  it("returns empty array for getChunks beyond range", async () => {
+    await store.clear();
+    const chunks = await store.getChunks(100, 10);
+    assert.deepEqual(chunks, []);
+  });
 });
 
 describe("LanceDBStore (disk corruption recovery)", () => {

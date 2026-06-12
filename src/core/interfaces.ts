@@ -1,6 +1,7 @@
 export interface Chunk {
   id: string;
   content: string;
+  description?: string;
   embedding?: number[];
   metadata: {
     filePath: string;
@@ -8,6 +9,10 @@ export interface Chunk {
     endLine: number;
     language: string;
   };
+}
+
+export interface DescriptionProvider {
+  generateDescription(chunk: Chunk): Promise<string>;
 }
 
 export interface SearchResult {

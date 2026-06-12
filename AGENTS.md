@@ -7,7 +7,7 @@ MVP implemented. All core modules are built and tested:
 - Embedding (Ollama + OpenAI)
 - Vector storage (LanceDB)
 - Retrieval pipeline (vector + hybrid keyword/vector)
-- CLI (index, query, clear, status)
+- CLI (index, query, clear, status, list, show, dump)
 - OpenCode plugin (chat.message hook + auto-context injection + background auto-indexing + read-override)
 - Test suite (511 tests, 0 failures)
 
@@ -53,8 +53,11 @@ src/
     ollama.ts         — POST /embed, one text per request
     openai.ts         — POST /embed, batched input with auth header
     factory.ts        — createEmbedder(config), embedBatch()
+  describer/
+    describer.ts      — LLMDescriptionProvider: LLM-based chunk description generation
+    factory.ts        — createDescriptionProvider(config)
   vectorstore/
-    lancedb.ts        — LanceDBStore with memory:// support for tests
+    lancedb.ts        — LanceDBStore with memory:// support, listFiles, getChunksByFilePath, getChunks
   retriever/
     retriever.ts      — retrieve(query, embedder, store, options)
     keyword-index.ts  — KeywordIndex (inverted index, TF×IDF scoring, serialization)
@@ -62,7 +65,7 @@ src/
     opencode-plugin.d.ts  — local type declaration for @opencode-ai/plugin
   indexer.ts          — runIndexPass, scanWorkspace, createWatchPassScheduler, createWatchIgnore
   watcher.ts          — createBackgroundIndexer (chokidar + debounced scheduler + periodic timer)
-  cli.ts              — commander: index, query, clear, status
+  cli.ts              — commander: index, query, clear, status, list, show, dump
   plugin.ts           — ragPlugin: context tool + chat.message hook + background auto-indexing
   index.ts            — public API re-exports + plugin default export
   __tests__/          — mirrors module structure
@@ -81,7 +84,7 @@ npm run cli           # tsx src/cli.ts
 - **ESM only** — all imports use `.js` extensions and `node:` prefixes
 - **Interfaces over classes** — module boundaries defined by interfaces in
   `core/interfaces.ts`; concrete implementations implement them
-- **Factory pattern** — `getChunker()` and `createEmbedder()` for dispatch
+- **Factory pattern** — `getChunker()`, `createEmbedder()`, and `createDescriptionProvider()` for dispatch
 - **Adapter pattern** — `LanceDBStore` implements `VectorStore`; provider classes
   implement `EmbeddingProvider`
 - **Error resilience** — plugin and CLI catch errors silently where appropriate;
@@ -298,6 +301,23 @@ For binary or document formats:
 1. Create `src/embedder/<name>.ts` implementing `EmbeddingProvider`
 2. Add provider dispatch in `createEmbedder()` in `factory.ts`
 3. Update `RagConfig.embedding.provider` union type in `config.ts`
+
+## Description-Based Embedding
+
+Description-based embedding is **enabled by default**. The indexer calls an LLM
+to generate a natural-language description of each code chunk before embedding.
+The description is embedded instead of the raw code, improving semantic search
+quality for natural language queries.
+
+**Pipeline:** `Chunk.content` → LLM → `Chunk.description` → embedder → vector store
+
+**Key behavior:**
+- Keyword search still uses `chunk.content` (raw code) for TF-IDF
+- Vector search uses the embedding of `chunk.description`
+- Both `content` and `description` are stored in LanceDB
+- On LLM failure, falls back to embedding raw content and logs a warning
+- Set `description.enabled: false` in config to disable and embed raw code instead
+- Config is in `src/core/config.ts` (`DescriptionConfig`), provider in `src/describer/`
 
 ## OpenCodeRAG Plugin
 

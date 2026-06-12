@@ -111,6 +111,33 @@ Running `opencode-rag init` creates the config file `opencode-rag.json` in your 
 | `retrieval.topK` | `10` | Default number of chunks fetched per query. |
 | `retrieval.hybridSearch.enabled` | `true` | Enables combined TF×IDF + vector search. |
 
+### Description-Based Embedding (Optional)
+
+When enabled, the indexer uses an LLM to generate natural-language descriptions of code chunks before embedding. This dramatically improves semantic search quality for natural language queries.
+
+```json
+{
+  "description": {
+    "enabled": true,
+    "provider": "ollama",
+    "baseUrl": "http://localhost:11434/api",
+    "model": "qwen2.5:3b",
+    "timeoutMs": 60000,
+    "systemPrompt": "You are a code analysis assistant. Given a code snippet, write a short (2-3 sentence) description of what the code does, its purpose, and key functionality. Focus on semantic meaning that would help someone searching for this code. Do not include code in your response."
+  }
+}
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `description.enabled` | `true` | Enable description-based embedding. Set to `false` to embed raw code instead. |
+| `description.provider` | `"ollama"` | LLM provider (`"ollama"` or `"openai"`). |
+| `description.model` | `"qwen2.5:3b"` | Model name for description generation. |
+| `description.systemPrompt` | *(see above)* | Customizable system prompt for the LLM. |
+| `description.timeoutMs` | `60000` | Timeout per LLM call. |
+
+Set `description.enabled` to `false` to disable and embed raw code content instead. If the LLM call fails during indexing, the chunk falls back to embedding raw content with a warning logged.
+
 <details>
 <summary>View Logging Configuration</summary>
 
@@ -174,6 +201,11 @@ opencode-rag query "How is authentication handled?" --top-k 5
 # Show index statistics or clear data
 opencode-rag status
 opencode-rag clear
+
+# Inspect indexed data
+opencode-rag list               # list all indexed files with chunk counts
+opencode-rag show src/auth.ts   # show chunks for a specific file
+opencode-rag dump --limit 50    # dump all chunks (paginated)
 ```
 
 ---

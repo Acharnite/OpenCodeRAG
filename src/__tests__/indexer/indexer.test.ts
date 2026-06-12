@@ -11,7 +11,7 @@ import {
   getIndexStatusSummary,
   runIndexPass,
 } from "../../indexer.js";
-import type { EmbeddingProvider } from "../../core/interfaces.js";
+import type { Chunk, DescriptionProvider, EmbeddingProvider } from "../../core/interfaces.js";
 import { LanceDBStore } from "../../vectorstore/lancedb.js";
 
 class TestEmbedder implements EmbeddingProvider {
@@ -292,5 +292,150 @@ describe("indexer", () => {
     scheduler.close();
 
     assert.equal(runs, 2);
+  });
+
+  describe("description provider integration", () => {
+    function makeTestDescriptionProvider(descriptions: Map<string, string>): DescriptionProvider {
+      return {
+        async generateDescription(chunk: Chunk): Promise<string> {
+          const desc = descriptions.get(chunk.id);
+          if (!desc) throw new Error(`No description for chunk ${chunk.id}`);
+          return desc;
+        },
+      };
+    }
+
+    it("generates descriptions and embeds them instead of content", async () => {
+      await writeFile(path.join(workspaceDir, "src", "a.ts"), "function alpha() { return 1; }\n");
+
+      const descriptions = new Map<string, string>();
+      const descProvider: DescriptionProvider = {
+        async generateDescription(chunk: Chunk): Promise<string> {
+          const desc = `Description for ${chunk.metadata.filePath}`;
+          descriptions.set(chunk.id, desc);
+          return desc;
+        },
+      };
+
+      // Track what text is sent to the embedder
+      const embeddedTexts: string[] = [];
+      const trackingEmbedder: EmbeddingProvider = {
+        name: "test",
+        async embed(texts: string[]): Promise<number[][]> {
+          embeddedTexts.push(...texts);
+          return texts.map((_, index) => [texts.length, index + 1, 0.5, -0.5]);
+        },
+      };
+
+      const stats = await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder: trackingEmbedder,
+        descriptionProvider: descProvider,
+      });
+
+      assert.equal(stats.newFiles, 1);
+      assert.ok(stats.totalChunks > 0);
+      // Verify that the embedded text contains the description, not the raw code
+      assert.ok(embeddedTexts.some((t) => t.includes("Description for")));
+      assert.ok(embeddedTexts.every((t) => !t.includes("function alpha")));
+    });
+
+    it("falls back to content when description generation fails", async () => {
+      await writeFile(path.join(workspaceDir, "src", "b.ts"), "function beta() { return 2; }\n");
+
+      const failingProvider: DescriptionProvider = {
+        async generateDescription(): Promise<string> {
+          throw new Error("LLM unavailable");
+        },
+      };
+
+      const embeddedTexts: string[] = [];
+      const trackingEmbedder: EmbeddingProvider = {
+        name: "test",
+        async embed(texts: string[]): Promise<number[][]> {
+          embeddedTexts.push(...texts);
+          return texts.map((_, index) => [texts.length, index + 1, 0.5, -0.5]);
+        },
+      };
+
+      const stats = await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder: trackingEmbedder,
+        descriptionProvider: failingProvider,
+      });
+
+      assert.equal(stats.newFiles, 1);
+      // Should fall back to embedding raw content
+      assert.ok(embeddedTexts.some((t) => t.includes("function beta")));
+    });
+
+    it("embeds content when no description provider is given", async () => {
+      await writeFile(path.join(workspaceDir, "src", "c.ts"), "function gamma() { return 3; }\n");
+
+      const embeddedTexts: string[] = [];
+      const trackingEmbedder: EmbeddingProvider = {
+        name: "test",
+        async embed(texts: string[]): Promise<number[][]> {
+          embeddedTexts.push(...texts);
+          return texts.map((_, index) => [texts.length, index + 1, 0.5, -0.5]);
+        },
+      };
+
+      const stats = await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder: trackingEmbedder,
+      });
+
+      assert.equal(stats.newFiles, 1);
+      assert.ok(embeddedTexts.some((t) => t.includes("function gamma")));
+    });
+
+    it("uses document prefix with descriptions", async () => {
+      await writeFile(path.join(workspaceDir, "src", "d.ts"), "function delta() { return 4; }\n");
+
+      const descProvider: DescriptionProvider = {
+        async generateDescription(): Promise<string> {
+          return "A delta function.";
+        },
+      };
+
+      const embeddedTexts: string[] = [];
+      const trackingEmbedder: EmbeddingProvider = {
+        name: "test",
+        async embed(texts: string[]): Promise<number[][]> {
+          embeddedTexts.push(...texts);
+          return texts.map(() => [0.1, 0.2, 0.3, 0.4]);
+        },
+      };
+
+      const configWithPrefix: RagConfig = {
+        ...testConfig(),
+        embedding: {
+          ...testConfig().embedding,
+          documentPrefix: "search_document: ",
+        },
+      };
+
+      await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: configWithPrefix,
+        store,
+        embedder: trackingEmbedder,
+        descriptionProvider: descProvider,
+      });
+
+      assert.ok(embeddedTexts.every((t) => t.startsWith("search_document: ")));
+      assert.ok(embeddedTexts.some((t) => t.includes("A delta function.")));
+    });
   });
 });
