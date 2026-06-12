@@ -23,13 +23,13 @@ export interface RuntimeOverrides {
     };
   };
   embedding?: {
-    provider?: "ollama" | "openai";
+    provider?: string;
     model?: string;
     baseUrl?: string;
   };
   description?: {
     enabled?: boolean;
-    provider?: "ollama" | "openai";
+    provider?: string;
     model?: string;
     baseUrl?: string;
   };

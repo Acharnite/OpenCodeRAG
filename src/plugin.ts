@@ -11,7 +11,8 @@ import { appendDebugLog } from "./core/fileLogger.js";
 import { loadRuntimeOverrides, applyRuntimeOverrides } from "./core/runtime-overrides.js";
 import { createBackgroundIndexer } from "./watcher.js";
 import { createRagReadTool } from "./opencode/create-read-tool.js";
-import { existsSync, readFileSync } from "node:fs";
+import { resolveApiKey } from "./core/resolve-api-key.js";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 const configCache = new Map<string, RagConfig>();
@@ -662,73 +663,7 @@ async function loadKeywordIndex(storePath: string, logFilePath: string): Promise
   }
 }
 
-/**
- * Resolve missing API keys from OpenCode provider config files.
- * Reads the workspace and global OpenCode config to find the provider
- * and extract its apiKey. Falls back to env vars.
- */
-function resolveApiKeyFromProviderConfig(
-  cfg: RagConfig,
-  worktree: string,
-  logFilePath: string
-): void {
-  function stripJsoncComments(text: string): string {
-    return text.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  }
 
-  function readOpenCodeProviderKey(providerId: string): string | undefined {
-    const locations = [
-      path.join(worktree, ".opencode", "opencode.json"),
-      path.join(worktree, "opencode.json"),
-    ];
-    const homeDir = process.env.USERPROFILE || process.env.HOME;
-    if (homeDir) {
-      locations.push(path.join(homeDir, ".config", "opencode", "opencode.jsonc"));
-    }
-
-    for (const loc of locations) {
-      try {
-        const raw = readFileSync(loc, "utf-8");
-        const cleaned = stripJsoncComments(raw);
-        const config = JSON.parse(cleaned) as Record<string, unknown>;
-        const providerSection = config.provider as Record<string, unknown> | undefined;
-        if (!providerSection) continue;
-        const providerConfig = providerSection[providerId] as Record<string, unknown> | undefined;
-        if (!providerConfig) continue;
-        const options = providerConfig.options as Record<string, unknown> | undefined;
-        const key = options?.apiKey as string | undefined;
-        if (key) return key;
-      } catch {
-        // skip unreadable or unparseable files
-      }
-    }
-    return undefined;
-  }
-
-  // Resolve embedding API key
-  if (cfg.embedding.provider === "openai" && !cfg.embedding.apiKey) {
-    const key = readOpenCodeProviderKey("openai");
-    if (key) {
-      cfg.embedding.apiKey = key;
-      appendDebugLog(logFilePath, {
-        scope: "plugin",
-        message: "Resolved OpenAI API key for embedding from OpenCode provider config",
-      });
-    }
-  }
-
-  // Resolve description API key
-  if (cfg.description?.provider === "openai" && cfg.description && !cfg.description.apiKey) {
-    const key = readOpenCodeProviderKey("openai");
-    if (key) {
-      cfg.description.apiKey = key;
-      appendDebugLog(logFilePath, {
-        scope: "plugin",
-        message: "Resolved OpenAI API key for description from OpenCode provider config",
-      });
-    }
-  }
-}
 
 export const ragPlugin: Plugin = async (
   input: PluginInput,
@@ -747,8 +682,22 @@ export const ragPlugin: Plugin = async (
   const overrides = loadRuntimeOverrides(storePath);
   const effectiveCfg = applyRuntimeOverrides(cfg, overrides);
 
-  // Resolve API keys from OpenCode provider config if not set in opencode-rag.json
-  resolveApiKeyFromProviderConfig(effectiveCfg, input.directory, logFilePath);
+  // Resolve API keys from env vars or OpenCode provider config if not set in opencode-rag.json
+  const hadEmbeddingKey = !!effectiveCfg.embedding.apiKey;
+  const hadDescriptionKey = !!effectiveCfg.description?.apiKey;
+  resolveApiKey(effectiveCfg, input.directory);
+  if (!hadEmbeddingKey && effectiveCfg.embedding.apiKey) {
+    appendDebugLog(logFilePath, {
+      scope: "plugin",
+      message: `Resolved OpenAI API key for embedding from ${process.env.OPENAI_API_KEY ? "OPENAI_API_KEY env var" : "OpenCode provider config"}`,
+    });
+  }
+  if (!hadDescriptionKey && effectiveCfg.description?.apiKey) {
+    appendDebugLog(logFilePath, {
+      scope: "plugin",
+      message: `Resolved OpenAI API key for description from ${process.env.OPENAI_API_KEY ? "OPENAI_API_KEY env var" : "OpenCode provider config"}`,
+    });
+  }
 
   // Close existing indexer for this directory if one exists (e.g. on plugin reload)
   const existingIndexer = backgroundIndexers.get(input.directory);
@@ -774,7 +723,7 @@ export const ragPlugin: Plugin = async (
   const embedder = createEmbedder(effectiveCfg);
   let vectorDimension = 384;
   try {
-    const probe = await embedder.embed(["dimension-probe"]);
+    const probe = await embedder.embed(["dimension-probe"], "query");
     if (probe && probe[0] && probe[0].length > 0 && typeof probe[0][0] === "number") {
       vectorDimension = (probe[0] as number[]).length;
     }

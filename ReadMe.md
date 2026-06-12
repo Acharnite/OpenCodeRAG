@@ -110,7 +110,6 @@ Running `opencode-rag init` creates the config file `opencode-rag.json` in your 
 | `openCode.autoInject.minScore` | `0.75` | Minimum relevance score to inject actual code (0–1). |
 | `retrieval.topK` | `10` | Default number of chunks fetched per query. |
 | `retrieval.hybridSearch.enabled` | `true` | Enables combined TF×IDF + vector search. |
-
 ### TUI Settings Menu
 
 When running inside OpenCode, the plugin provides a settings panel accessible from the OpenCode sidebar:

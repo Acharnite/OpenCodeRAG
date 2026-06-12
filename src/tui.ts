@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Provider } from "@opencode-ai/sdk/v2";
 import { loadRuntimeOverrides, saveRuntimeOverride } from "./core/runtime-overrides.js";
+import { PROVIDER_DEFAULTS } from "./core/provider-defaults.js";
 
 let _version: string | undefined;
 function getVersion(): string {
@@ -242,8 +243,10 @@ function buildModelOptions(providers: readonly Provider[]): { title: string; val
   return options;
 }
 
-function providerIdToRagProvider(providerId: string): "ollama" | "openai" {
+function providerIdToRagProvider(providerId: string): string {
   if (providerId === "ollama") return "ollama";
+  const defaults = PROVIDER_DEFAULTS[providerId];
+  if (defaults) return providerId;
   return "openai";
 }
 
@@ -251,9 +254,10 @@ function resolveProviderBaseUrl(provider: Provider): string {
   const baseUrl = (provider.options?.baseURL as string) ?? "";
   if (provider.id === "ollama") {
     const clean = baseUrl.replace(/\/+$/, "");
-    return clean ? `${clean}/api` : "http://127.0.0.1:11434/api";
+    return clean ? `${clean}/api` : PROVIDER_DEFAULTS.ollama!.defaultBaseUrl + "/api";
   }
-  return baseUrl || "https://api.openai.com/v1";
+  const defaults = PROVIDER_DEFAULTS[provider.id];
+  return baseUrl || (defaults?.defaultBaseUrl ?? "https://api.openai.com/v1");
 }
 
 function saveConfigValue(configPath: string, path: string[], value: unknown): void {
@@ -301,6 +305,12 @@ function saveModelSelection(
   if (baseUrl) {
     saveRuntimeOverride(storePath, [section, "baseUrl"], baseUrl);
     saveConfigValue(configPath, [section, "baseUrl"], baseUrl);
+  }
+
+  const apiKey = (provider?.options?.apiKey as string) ?? "";
+  if (apiKey) {
+    saveRuntimeOverride(storePath, [section, "apiKey"], apiKey);
+    saveConfigValue(configPath, [section, "apiKey"], apiKey);
   }
 
   return selectionValue;
