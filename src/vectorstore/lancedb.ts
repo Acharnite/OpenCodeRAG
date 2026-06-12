@@ -88,7 +88,7 @@ export class LanceDBStore implements VectorStore {
 
   private async tableHasDescriptionColumn(): Promise<boolean> {
     try {
-      const schema = await this.table!.schema;
+      const schema = await this.table!.schema();
       return schema.fields.some((f: { name: string }) => f.name === "description");
     } catch {
       return false;
