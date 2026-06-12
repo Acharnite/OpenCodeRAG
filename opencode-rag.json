@@ -5,7 +5,8 @@
     "model": "nvidia/llama-nemotron-embed-vl-1b-v2",
     "timeoutMs": 60000,
     "documentPrefix": "",
-    "queryPrefix": ""
+    "queryPrefix": "",
+    "apiKey": "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"
   },
   "indexing": {
     "includeExtensions": [
@@ -92,11 +93,11 @@
   "description": {
     "enabled": true,
     "provider": "openai",
-    "baseUrl": "https://api.openai.com/v1",
+    "baseUrl": "https://opencode.ai/zen/v1/models",
     "model": "north-mini-code-free",
     "timeoutMs": 60000,
     "systemPrompt": "Describe code for semantic search in short simple words, simple grammar, no code, no comments. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, output description directly.",
-    "apiKey": "public"
+    "apiKey": "sk-m3weYo25XBq5qLG6DxMM0B2fXre5cpAcsZ4BneH97R58LzfNu7jvlmwQAFMGPzlA"
   },
   "logging": {
     "level": "debug",
