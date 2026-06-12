@@ -4,8 +4,8 @@
     "baseUrl": "http://127.0.0.1:11434/api",
     "model": "embeddinggemma",
     "timeoutMs": 60000,
-    "documentPrefix": "search_document: ",
-    "queryPrefix": "search_query: "
+    "documentPrefix": "",
+    "queryPrefix": ""
   },
   "indexing": {
     "includeExtensions": [
@@ -95,7 +95,7 @@
     "baseUrl": "http://127.0.0.1:11434/api",
     "model": "qwen2.5:3b",
     "timeoutMs": 60000,
-    "systemPrompt": "Describe code for semantic search. Output must be caveman style: short simple words, simple grammar. Include what code do, main names, data in, data out, side effects, errors. No markdown, no code, no comments. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, output description directly."
+    "systemPrompt": "Describe code for semantic search in short simple words, simple grammar, no code, no comments. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, output description directly."
   },
   "logging": {
     "level": "debug",
