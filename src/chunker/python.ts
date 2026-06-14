@@ -6,8 +6,6 @@ export class PythonChunker extends TreeSitterChunker {
   readonly grammarName = "python";
   readonly nodeTypes = new Set([
     "function_definition",
-    "class_definition",
-    "decorated_definition",
   ]);
 }
 

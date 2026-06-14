@@ -7,7 +7,6 @@ export class GoChunker extends TreeSitterChunker {
   readonly nodeTypes = new Set([
     "function_declaration",
     "method_declaration",
-    "type_declaration",
   ]);
 }
 

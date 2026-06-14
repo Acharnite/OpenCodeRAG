@@ -19,7 +19,7 @@ describe("GoChunker", () => {
     const types = goChunker.nodeTypes;
     assert.ok(types.has("function_declaration"));
     assert.ok(types.has("method_declaration"));
-    assert.ok(types.has("type_declaration"));
+    assert.ok(!types.has("type_declaration"), "type_declaration removed for function-level chunking");
   });
 
   it("chunk returns empty array for empty content", async () => {
@@ -59,11 +59,11 @@ describe("GoChunker", () => {
     assert.ok(methodChunks.length > 0, "expected Increment method chunk");
   });
 
-  it("chunk parses a type declaration", async () => {
-    const code = "package main\n\ntype User struct {\n\tName string\n\tAge  int\n}\n";
+  it("chunk parses a method on a type", async () => {
+    const code = "package main\n\ntype User struct {\n\tName string\n\tAge  int\n}\n\nfunc (u *User) GetName() string {\n\treturn u.Name\n}\n";
     const chunks = await goChunker.chunk("user.go", code);
     assert.ok(chunks.length > 0, "expected at least one chunk");
-    assert.ok(chunks.some((c) => c.content.includes("type User")));
+    assert.ok(chunks.some((c) => c.content.includes("GetName")), "should capture method");
   });
 
   it("chunk generates unique IDs for multiple declarations", async () => {

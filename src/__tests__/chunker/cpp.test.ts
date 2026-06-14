@@ -22,12 +22,12 @@ describe("CppChunker", () => {
   it("nodeTypes contains expected types", () => {
     const types = cppChunker.nodeTypes;
     assert.ok(types.has("function_definition"));
-    assert.ok(types.has("class_specifier"));
     assert.ok(types.has("struct_specifier"));
     assert.ok(types.has("enum_specifier"));
     assert.ok(types.has("union_specifier"));
-    assert.ok(types.has("namespace_definition"));
-    assert.ok(types.has("template_declaration"));
+    assert.ok(!types.has("class_specifier"), "class_specifier removed for function-level chunking");
+    assert.ok(!types.has("namespace_definition"), "namespace_definition removed for function-level chunking");
+    assert.ok(!types.has("template_declaration"), "template_declaration removed for function-level chunking");
   });
 
   it("chunk returns empty array for empty content", async () => {
@@ -49,30 +49,33 @@ describe("CppChunker", () => {
     assert.ok(chunks[0]!.content.includes("add"));
   });
 
-  it("chunk parses a class definition", async () => {
+  it("chunk extracts methods from class definition", async () => {
     const code = [
       "class Calculator {",
       "public:",
       "  int add(int a, int b) { return a + b; }",
+      "  int sub(int a, int b) { return a - b; }",
       "};",
     ].join("\n");
     const chunks = await cppChunker.chunk("calc.cpp", code);
-    assert.ok(chunks.length > 0, "expected at least one chunk");
-    assert.ok(chunks.some((c) => c.content.includes("class Calculator")));
+    assert.ok(chunks.length >= 2, "expected at least two chunks (one per method)");
+    assert.ok(chunks.some((c) => c.content.includes("add")), "should have add method chunk");
+    assert.ok(chunks.some((c) => c.content.includes("sub")), "should have sub method chunk");
+    assert.ok(!chunks.some((c) => c.content.includes("class Calculator")), "should not have class-level chunk");
   });
 
-  it("chunk parses a namespace definition", async () => {
-    const code = "namespace utils {\n  int value = 0;\n}\n";
+  it("chunk parses a namespace with functions", async () => {
+    const code = "namespace utils {\n  int value() { return 0; }\n}\n";
     const chunks = await cppChunker.chunk("ns.cpp", code);
     assert.ok(chunks.length > 0, "expected at least one chunk");
-    assert.ok(chunks.some((c) => c.content.includes("namespace utils")));
+    assert.ok(chunks.some((c) => c.content.includes("value")), "should capture function inside namespace");
   });
 
-  it("chunk parses a template declaration", async () => {
+  it("chunk parses a template function declaration", async () => {
     const code = "template<typename T>\nT max(T a, T b) {\n  return a > b ? a : b;\n}\n";
     const chunks = await cppChunker.chunk("tmpl.cpp", code);
     assert.ok(chunks.length > 0, "expected at least one chunk");
-    assert.ok(chunks.some((c) => c.content.includes("template")));
+    assert.ok(chunks.some((c) => c.content.includes("max")), "should capture function body");
   });
 
   it("chunk generates unique IDs for multiple declarations", async () => {

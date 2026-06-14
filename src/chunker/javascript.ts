@@ -7,9 +7,7 @@ export class JavaScriptChunker extends TreeSitterChunker {
   readonly nodeTypes = new Set([
     "function_declaration",
     "method_definition",
-    "class_declaration",
     "arrow_function",
-    "export_statement",
   ]);
 }
 

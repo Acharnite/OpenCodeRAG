@@ -6,8 +6,6 @@ export class RubyChunker extends TreeSitterChunker {
   readonly grammarName = "ruby";
   readonly nodeTypes = new Set([
     "method",
-    "class",
-    "module",
     "singleton_method",
   ]);
 }

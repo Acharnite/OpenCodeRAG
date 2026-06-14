@@ -6,9 +6,6 @@ export class KotlinChunker extends TreeSitterChunker {
   readonly grammarName = "kotlin";
   readonly nodeTypes = new Set([
     "function_declaration",
-    "class_declaration",
-    "interface_declaration",
-    "object_declaration",
     "property_declaration",
   ]);
 }

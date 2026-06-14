@@ -18,9 +18,9 @@ describe("JavaChunker", () => {
   it("nodeTypes contains expected types", () => {
     const types = javaChunker.nodeTypes;
     assert.ok(types.has("method_declaration"));
-    assert.ok(types.has("class_declaration"));
-    assert.ok(types.has("interface_declaration"));
-    assert.ok(types.has("enum_declaration"));
+    assert.ok(!types.has("class_declaration"), "class_declaration removed for function-level chunking");
+    assert.ok(!types.has("interface_declaration"), "interface_declaration removed for function-level chunking");
+    assert.ok(!types.has("enum_declaration"), "enum_declaration removed for function-level chunking");
   });
 
   it("chunk returns empty array for empty content", async () => {
@@ -33,30 +33,33 @@ describe("JavaChunker", () => {
     assert.deepStrictEqual(chunks, []);
   });
 
-  it("chunk parses a class declaration with a method", async () => {
+  it("chunk extracts methods from class declaration", async () => {
     const code =
-      "class Foo {\n  void bar() {\n    return;\n  }\n}";
+      "class Foo {\n  void bar() {\n    return;\n  }\n  void baz() {\n    return;\n  }\n}";
     const chunks = await javaChunker.chunk("test.java", code);
-    assert.ok(chunks.length > 0, "expected at least one chunk");
+    assert.ok(chunks.length >= 2, "expected at least two chunks (one per method)");
     assert.equal(chunks[0]!.metadata.language, "java");
     assert.equal(chunks[0]!.metadata.filePath, "test.java");
-    assert.ok(chunks[0]!.content.includes("class Foo"));
+    assert.ok(chunks.some((c) => c.content.includes("bar")), "should have bar method chunk");
+    assert.ok(chunks.some((c) => c.content.includes("baz")), "should have baz method chunk");
+    assert.ok(!chunks.some((c) => c.content.includes("class Foo")), "should not have class-level chunk");
   });
 
-  it("chunk parses an interface declaration", async () => {
+  it("chunk extracts methods from interface declaration", async () => {
     const code =
-      "interface Runnable {\n  void run();\n}";
+      "interface Runnable {\n  void run();\n  void stop();\n}";
     const chunks = await javaChunker.chunk("Runnable.java", code);
-    assert.ok(chunks.length > 0, "expected at least one chunk");
-    assert.ok(chunks[0]!.content.includes("interface Runnable"));
+    assert.ok(chunks.length >= 1, "expected at least one chunk");
+    assert.ok(chunks.some((c) => c.content.includes("run")), "should capture run method");
   });
 
-  it("chunk parses an enum declaration", async () => {
+  it("chunk parses standalone enum declaration", async () => {
     const code =
       "enum Color {\n  RED, GREEN, BLUE\n}";
     const chunks = await javaChunker.chunk("Color.java", code);
-    assert.ok(chunks.length > 0, "expected at least one chunk");
-    assert.ok(chunks[0]!.content.includes("enum Color"));
+    // enum_declaration was removed, so this may produce no chunks or a fallback
+    // The test just verifies no crash
+    assert.ok(Array.isArray(chunks));
   });
 
   it("chunk generates unique IDs for multiple declarations", async () => {
@@ -87,10 +90,10 @@ describe("JavaChunker", () => {
       "}",
     ].join("\n");
     const chunks = await javaChunker.chunk("lines.java", code);
-    const classChunks = chunks.filter((c) => c.content.includes("class "));
-    assert.ok(classChunks.length >= 2, "expected at least two class chunks");
-    const firstClass = classChunks.find((c) => c.content.includes("First"));
-    assert.ok(firstClass, "should find First class chunk");
-    assert.equal(firstClass!.metadata.startLine, 3);
+    const methodChunks = chunks.filter((c) => c.content.includes("void "));
+    assert.ok(methodChunks.length >= 2, "expected at least two method chunks");
+    const firstMethod = methodChunks.find((c) => c.content.includes("doThing"));
+    assert.ok(firstMethod, "should find doThing chunk");
+    assert.equal(firstMethod!.metadata.startLine, 4);
   });
 });
