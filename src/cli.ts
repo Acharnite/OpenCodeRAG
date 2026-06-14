@@ -437,7 +437,7 @@ program
           descriptionProvider,
           force: Boolean(options.force && !watchTriggered),
           logger: {
-            info: (message) => logCliInfo(logFilePath, "index", message),
+            info: (message) => appendDebugLog(logFilePath, { scope: "index", message }),
             warn: (message) => console.warn(message),
           },
         });

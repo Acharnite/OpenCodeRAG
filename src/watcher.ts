@@ -64,6 +64,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
         keywordIndex,
         descriptionProvider,
         logger: {
+          info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
           warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
         },
       });
@@ -87,6 +88,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
             keywordIndex,
             descriptionProvider,
             logger: {
+              info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
               warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
             },
           });
