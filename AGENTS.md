@@ -118,6 +118,14 @@ await db.createTable({ data: [seed] as unknown as Record<string, unknown>[] });
 `@lancedb/lancedb` requires `apache-arrow` at runtime. Install it explicitly if
 auto-install fails.
 
+### LanceDB concurrent table initialization
+When processing files concurrently (via `p-limit` in `runIndexPass`), multiple
+workers call `store.addChunks()` simultaneously. The `getTable()` method does
+lazy initialization — without a promise guard, concurrent calls race to create
+the table. `LanceDBStore` now uses a `tableInit` promise guard to serialize
+initialization. If you modify the vector store, ensure `getTable()` remains
+safe against concurrent calls.
+
 ### tree-sitter WASM
 - `tree-sitter-wasm` package provides pre-built `.wasm` grammar files via
   `getWasmPath()`
@@ -340,6 +348,12 @@ OpenCode config. Instead, rely on `.opencode/plugins/*.js` auto-discovery:
 4. Verify the grammar exists in `tree-sitter-wasm` (see
    `node_modules/tree-sitter-wasm/README.md` for supported names)
 5. Add extension to defaults in `DEFAULT_CONFIG.indexing.includeExtensions`
+
+By default, `nodeTypes` should target **function-level declarations** (functions,
+methods, arrows) rather than class-level blobs. This optimizes retrieval precision
+for agent workflows. Keep class/type/container declarations out of `nodeTypes` unless
+the grammar requires it (e.g. Kotlin interfaces use `class_declaration`).
+See `doc/chunking.md` for the full strategy and configurable `nodeTypes` overrides.
 
 ## Adding a Non-Code Chunker (e.g. PDF)
 

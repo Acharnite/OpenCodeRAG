@@ -22,9 +22,9 @@ describe("JavaScriptChunker", () => {
     const types = javascriptChunker.nodeTypes;
     assert.ok(types.has("function_declaration"));
     assert.ok(types.has("method_definition"));
-    assert.ok(types.has("class_declaration"));
     assert.ok(types.has("arrow_function"));
-    assert.ok(types.has("export_statement"));
+    assert.ok(!types.has("class_declaration"), "class_declaration removed for function-level chunking");
+    assert.ok(!types.has("export_statement"), "export_statement removed for function-level chunking");
   });
 
   it("chunk returns empty array for empty content", async () => {
@@ -46,11 +46,13 @@ describe("JavaScriptChunker", () => {
     assert.ok(chunks[0]!.content.includes("hello"));
   });
 
-  it("chunk parses a class declaration", async () => {
-    const code = "class Counter { increment() { this.value++; } }";
+  it("chunk extracts methods from class declaration", async () => {
+    const code = "class Counter { increment() { this.value++; } decrement() { this.value--; } }";
     const chunks = await javascriptChunker.chunk("counter.js", code);
-    assert.ok(chunks.length > 0, "expected at least one chunk");
-    assert.ok(chunks.some((c) => c.content.includes("class Counter")));
+    assert.ok(chunks.length >= 2, "expected at least two chunks (one per method)");
+    assert.ok(chunks.some((c) => c.content.includes("increment")), "should have increment method chunk");
+    assert.ok(chunks.some((c) => c.content.includes("decrement")), "should have decrement method chunk");
+    assert.ok(!chunks.some((c) => c.content.includes("class Counter")), "should not have class-level chunk");
   });
 
   it("chunk parses an arrow function", async () => {
@@ -60,11 +62,11 @@ describe("JavaScriptChunker", () => {
     assert.ok(chunks.some((c) => c.content.includes("=>")));
   });
 
-  it("chunk parses an export statement", async () => {
+  it("chunk parses exported function declaration", async () => {
     const code = "export function greet() { return 'hi'; }";
     const chunks = await javascriptChunker.chunk("mod.js", code);
     assert.ok(chunks.length > 0, "expected at least one chunk");
-    assert.ok(chunks.some((c) => c.content.includes("export")));
+    assert.ok(chunks.some((c) => c.content.includes("greet")), "should capture function body");
   });
 
   it("chunk generates unique IDs for multiple declarations", async () => {

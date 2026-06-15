@@ -18,8 +18,8 @@ describe("PythonChunker", () => {
   it("nodeTypes contains expected types", () => {
     const types = pythonChunker.nodeTypes;
     assert.ok(types.has("function_definition"));
-    assert.ok(types.has("class_definition"));
-    assert.ok(types.has("decorated_definition"));
+    assert.ok(types.has("decorated_definition"), "decorated_definition preserves @decorators");
+    assert.ok(!types.has("class_definition"), "class_definition removed for function-level chunking");
   });
 
   it("chunk returns empty array for empty content", async () => {
@@ -41,23 +41,22 @@ describe("PythonChunker", () => {
     assert.ok(chunks[0]!.content.includes("hello"));
   });
 
-  it("chunk parses a class definition", async () => {
-    const code = "class Animal:\n    def speak(self):\n        return 'hello'\n";
+  it("chunk extracts methods from class definition", async () => {
+    const code = "class Animal:\n    def speak(self):\n        return 'hello'\n    def eat(self):\n        pass\n";
     const chunks = await pythonChunker.chunk("animals.py", code);
-    assert.ok(chunks.length > 0, "expected at least one chunk");
+    assert.ok(chunks.length >= 2, "expected at least two chunks (one per method)");
     assert.equal(chunks[0]!.metadata.language, "python");
-    assert.ok(chunks[0]!.content.includes("class Animal"));
+    assert.ok(chunks.some((c) => c.content.includes("speak")), "should have speak method chunk");
+    assert.ok(chunks.some((c) => c.content.includes("eat")), "should have eat method chunk");
+    assert.ok(!chunks.some((c) => c.content.includes("class Animal")), "should not have class-level chunk");
   });
 
-  it("chunk parses a decorated definition", async () => {
+  it("chunk parses a decorated function definition with decorator", async () => {
     const code = "@staticmethod\ndef helper():\n    pass\n";
     const chunks = await pythonChunker.chunk("utils.py", code);
     assert.ok(chunks.length > 0, "expected at least one chunk");
-    assert.ok(
-      chunks.some(
-        (c) => c.content.includes("@staticmethod") || c.content.includes("helper")
-      )
-    );
+    assert.ok(chunks.some((c) => c.content.includes("@staticmethod")), "should preserve decorator");
+    assert.ok(chunks.some((c) => c.content.includes("helper")), "should capture function body");
   });
 
   it("chunk generates unique IDs for multiple definitions", async () => {

@@ -6,7 +6,6 @@ export class JavaChunker extends TreeSitterChunker {
   readonly grammarName = "java";
   readonly nodeTypes = new Set([
     "method_declaration",
-    "class_declaration",
     "interface_declaration",
     "enum_declaration",
   ]);

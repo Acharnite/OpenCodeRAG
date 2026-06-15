@@ -36,6 +36,7 @@ export class LanceDBStore implements VectorStore {
   private vectorDimension: number;
   private db: Connection | null = null;
   private table: Table | null = null;
+  private tableInit: Promise<Table> | null = null;
 
   constructor(dbPath: string, vectorDimension: number = 384) {
     this.dbPath = dbPath;
@@ -52,6 +53,17 @@ export class LanceDBStore implements VectorStore {
   private async getTable(): Promise<Table> {
     if (this.table) return this.table;
 
+    if (this.tableInit) return this.tableInit;
+
+    this.tableInit = this.initTable();
+    try {
+      return await this.tableInit;
+    } finally {
+      this.tableInit = null;
+    }
+  }
+
+  private async initTable(): Promise<Table> {
     const db = await this.getDb();
     const tableNames = await db.tableNames();
 

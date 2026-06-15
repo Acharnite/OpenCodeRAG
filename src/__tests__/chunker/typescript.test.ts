@@ -20,11 +20,11 @@ describe("TypeScriptChunker", () => {
     const types = typescriptChunker.nodeTypes;
     assert.ok(types.has("function_declaration"));
     assert.ok(types.has("method_definition"));
-    assert.ok(types.has("class_declaration"));
     assert.ok(types.has("arrow_function"));
     assert.ok(types.has("interface_declaration"));
     assert.ok(types.has("type_alias_declaration"));
-    assert.ok(types.has("export_statement"));
+    assert.ok(!types.has("class_declaration"), "class_declaration removed for function-level chunking");
+    assert.ok(!types.has("export_statement"), "export_statement removed for function-level chunking");
   });
 
   it("chunk returns empty array for empty content", async () => {
@@ -47,13 +47,15 @@ describe("TypeScriptChunker", () => {
     assert.ok(chunks[0]!.content.includes("hello"));
   });
 
-  it("chunk parses a class declaration", async () => {
-    const code = "class Foo { bar(): string { return 'baz'; } }";
+  it("chunk extracts methods from class declaration", async () => {
+    const code = "class Foo { bar(): string { return 'baz'; } baz(): number { return 42; } }";
     const chunks = await typescriptChunker.chunk("/src/Foo.ts", code);
-    assert.ok(chunks.length > 0, "expected at least one chunk");
+    assert.ok(chunks.length >= 2, "expected at least two chunks (one per method)");
     assert.equal(chunks[0]!.metadata.language, "typescript");
     assert.equal(chunks[0]!.metadata.filePath, "/src/Foo.ts");
-    assert.ok(chunks[0]!.content.includes("class Foo"));
+    assert.ok(chunks.some((c) => c.content.includes("bar")), "should have bar method chunk");
+    assert.ok(chunks.some((c) => c.content.includes("baz")), "should have baz method chunk");
+    assert.ok(!chunks.some((c) => c.content.includes("class Foo")), "should not have class-level chunk");
   });
 
   it("chunk parses an interface declaration", async () => {

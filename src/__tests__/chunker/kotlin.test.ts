@@ -13,12 +13,12 @@ describe("KotlinChunker", () => {
     assert.equal(kotlinChunker.fileExtensions.length, 2);
   });
 
-  it("nodeTypes contains function_declaration, class_declaration, interface_declaration, object_declaration, property_declaration", () => {
+  it("nodeTypes contains function_declaration, object_declaration, property_declaration", () => {
     assert.ok(kotlinChunker.nodeTypes.has("function_declaration"));
-    assert.ok(kotlinChunker.nodeTypes.has("class_declaration"));
-    assert.ok(kotlinChunker.nodeTypes.has("interface_declaration"));
-    assert.ok(kotlinChunker.nodeTypes.has("object_declaration"));
+    assert.ok(kotlinChunker.nodeTypes.has("object_declaration"), "object_declaration restored for singleton objects");
     assert.ok(kotlinChunker.nodeTypes.has("property_declaration"));
+    assert.ok(!kotlinChunker.nodeTypes.has("class_declaration"), "class_declaration removed for function-level chunking");
+    assert.ok(!kotlinChunker.nodeTypes.has("interface_declaration"), "not available in kotlin tree-sitter grammar (interfaces use class_declaration)");
   });
 
   it("chunk returns empty for empty content", async () => {
@@ -33,11 +33,11 @@ describe("KotlinChunker", () => {
     assert.ok(chunks[0]!.content.includes("fun greet"));
   });
 
-  it("chunk parses a class definition", async () => {
-    const code = "class Point(val x: Double, val y: Double)";
-    const chunks = await kotlinChunker.chunk("test.kt", code);
-    assert.equal(chunks.length, 1);
-    assert.ok(chunks[0]!.content.includes("class Point"));
+  it("chunk parses an object declaration", async () => {
+    const code = "object MySingleton {\n    fun doStuff() {}\n}";
+    const chunks = await kotlinChunker.chunk("singleton.kt", code);
+    assert.ok(chunks.length >= 1, "expected at least one chunk");
+    assert.ok(chunks.some((c) => c.content.includes("object MySingleton")), "should have object-level chunk");
   });
 
   it("chunk generates unique IDs", async () => {

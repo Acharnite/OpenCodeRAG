@@ -257,3 +257,22 @@ describe("chunkFile oversize splitting", () => {
     }
   });
 });
+
+describe("chunkFile with nodeTypes overrides", () => {
+  it("applies nodeTypes override to chunk a file differently", async () => {
+    const code = "class Foo {\n  bar() { return 1; }\n  baz() { return 2; }\n}";
+    const chunksDefault = await chunkFile("test.ts", code);
+    const chunksOverride = await chunkFile("test.ts", code, {
+      typescript: ["function_declaration", "method_definition", "class_declaration", "arrow_function"],
+    });
+    assert.ok(chunksDefault.length > 0, "default should produce chunks");
+    assert.ok(chunksOverride.length > 0, "override should produce chunks");
+    assert.ok(chunksOverride.some((c) => c.content.includes("class Foo")), "override should include class-level chunk");
+  });
+
+  it("ignores override for non-tree-sitter languages", async () => {
+    const code = "just some text";
+    const chunks = await chunkFile("test.txt", code, { text: ["paragraph"] });
+    assert.ok(chunks.length > 0, "should fall back to line-based chunking");
+  });
+});

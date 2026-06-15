@@ -1,4 +1,5 @@
 import type { Chunker, Chunk } from "../core/interfaces.js";
+import { TreeSitterChunker } from "./base.js";
 import { typescriptChunker } from "./typescript.js";
 import { pythonChunker } from "./python.js";
 import { javaChunker } from "./java.js";
@@ -163,9 +164,18 @@ function splitOversized(chunks: Chunk[], filePath: string): Chunk[] {
 
 export async function chunkFile(
   filePath: string,
-  content: string
+  content: string,
+  nodeTypesOverrides?: Record<string, string[]>
 ): Promise<Chunk[]> {
-  const chunker = getChunker(filePath);
+  let chunker = getChunker(filePath);
+
+  if (nodeTypesOverrides && chunker instanceof TreeSitterChunker) {
+    const overrideTypes = nodeTypesOverrides[chunker.language];
+    if (overrideTypes && overrideTypes.length > 0) {
+      chunker = chunker.withNodeTypes(new Set(overrideTypes));
+    }
+  }
+
   const chunks = await chunker.chunk(filePath, content);
 
   if (chunks.length === 0) {

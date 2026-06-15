@@ -12,14 +12,14 @@ describe("SwiftChunker", () => {
     assert.equal(swiftChunker.fileExtensions.length, 1);
   });
 
-  it("nodeTypes contains function_declaration, class_declaration, struct_declaration, enum_declaration, protocol_declaration, extension_declaration, variable_declaration", () => {
+  it("nodeTypes contains function_declaration, enum_declaration, protocol_declaration, variable_declaration", () => {
     assert.ok(swiftChunker.nodeTypes.has("function_declaration"));
-    assert.ok(swiftChunker.nodeTypes.has("class_declaration"));
-    assert.ok(swiftChunker.nodeTypes.has("struct_declaration"));
     assert.ok(swiftChunker.nodeTypes.has("enum_declaration"));
-    assert.ok(swiftChunker.nodeTypes.has("protocol_declaration"));
-    assert.ok(swiftChunker.nodeTypes.has("extension_declaration"));
+    assert.ok(swiftChunker.nodeTypes.has("protocol_declaration"), "protocol_declaration restored for protocol definitions");
     assert.ok(swiftChunker.nodeTypes.has("variable_declaration"));
+    assert.ok(!swiftChunker.nodeTypes.has("class_declaration"), "class_declaration removed for function-level chunking");
+    assert.ok(!swiftChunker.nodeTypes.has("struct_declaration"), "not available in swift tree-sitter grammar (structs use class_declaration)");
+    assert.ok(!swiftChunker.nodeTypes.has("extension_declaration"), "not available in swift tree-sitter grammar (extensions use class_declaration)");
   });
 
   it("chunk returns empty for empty content", async () => {
@@ -34,18 +34,20 @@ describe("SwiftChunker", () => {
     assert.ok(chunks[0]!.content.includes("func greet"));
   });
 
-  it("chunk parses a class definition", async () => {
-    const code = "class Point {\n    var x: Double\n    var y: Double\n}";
+  it("chunk extracts methods from class definition", async () => {
+    const code = "class Point { var x: Double; func distanceTo(other: Point) -> Double { return 0.0 } func description() -> String { return \"\" } }";
     const chunks = await swiftChunker.chunk("test.swift", code);
-    assert.equal(chunks.length, 1);
-    assert.ok(chunks[0]!.content.includes("class Point"));
+    assert.ok(chunks.length >= 2, "expected at least two chunks (one per method)");
+    assert.ok(chunks.some((c) => c.content.includes("distanceTo")), "should have distanceTo method chunk");
+    assert.ok(chunks.some((c) => c.content.includes("description")), "should have description method chunk");
+    assert.ok(!chunks.some((c) => c.content.includes("class Point")), "should not have class-level chunk");
   });
 
-  it("chunk parses a struct definition", async () => {
-    const code = "struct User {\n    let id: Int\n}";
+  it("chunk parses a protocol definition", async () => {
+    const code = "protocol Drawable {\n    func draw()\n}";
     const chunks = await swiftChunker.chunk("test.swift", code);
-    assert.equal(chunks.length, 1);
-    assert.ok(chunks[0]!.content.includes("struct User"));
+    assert.ok(chunks.length > 0, "expected at least one chunk");
+    assert.ok(chunks.some((c) => c.content.includes("protocol Drawable")), "should have protocol-level chunk");
   });
 
   it("chunk generates unique IDs", async () => {

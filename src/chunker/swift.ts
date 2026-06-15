@@ -6,11 +6,8 @@ export class SwiftChunker extends TreeSitterChunker {
   readonly grammarName = "swift";
   readonly nodeTypes = new Set([
     "function_declaration",
-    "class_declaration",
-    "struct_declaration",
     "enum_declaration",
     "protocol_declaration",
-    "extension_declaration",
     "variable_declaration",
   ]);
 }

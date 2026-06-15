@@ -75,7 +75,9 @@ Controls file discovery and chunking behavior.
       "__pycache__", ".venv"
     ],
     "chunkOverlap": 0,
-    "minFileSizeBytes": 0
+    "minFileSizeBytes": 0,
+    "concurrency": 4,
+    "embedBatchSize": 100
   }
 }
 ```
@@ -86,6 +88,8 @@ Controls file discovery and chunking behavior.
 | `excludeDirs` | *(7 dirs)* | Directories to skip |
 | `chunkOverlap` | `0` | Overlap between adjacent chunks |
 | `minFileSizeBytes` | `0` | Skip files smaller than this (files below threshold are also removed from index) |
+| `concurrency` | `4` | Max files processed in parallel during indexing. Higher values speed up indexing but increase memory and embedding API pressure |
+| `embedBatchSize` | `50` | Texts per embedding API call. Larger batches reduce round-trips. Ollama supports up to ~100 |
 
 ### `vectorStore`
 
@@ -221,6 +225,27 @@ Controls the OpenCode plugin integration.
 |---|---|---|
 | `level` | `"info"` | `"debug"`, `"info"`, or `"error"` |
 | `logFilePath` | `"./.opencode/opencode-rag.log"` | Path to log file |
+
+### `chunking`
+
+Overrides which AST node types are chunked per language. By default, chunkers use function-level node types. Use this to broaden or narrow chunking granularity.
+
+```json
+{
+  "chunking": {
+    "nodeTypes": {
+      "typescript": ["function_declaration", "method_definition", "class_declaration", "arrow_function"],
+      "python": ["function_definition", "decorated_definition", "class_definition"]
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `nodeTypes` | `Record<string, string[]>` | Map of language name to AST node types to chunk on |
+
+See [chunking.md](chunking.md) for the full strategy and per-language node type details.
 
 ### Custom Chunkers
 

@@ -482,8 +482,14 @@ program
           descriptionProvider,
           force: Boolean(options.force && !watchTriggered),
           logger: {
-            info: (message) => appendDebugLog(logFilePath, { scope: "index", message }),
-            warn: (message) => console.warn(message),
+            info: (message) => {
+              console.log(message);
+              appendDebugLog(logFilePath, { scope: "index", message });
+            },
+            warn: (message) => {
+              console.warn(message);
+              appendDebugLog(logFilePath, { scope: "index", message: `WARN: ${message}` });
+            },
           },
         });
 
@@ -816,6 +822,8 @@ function generateDefaultConfigJson(): string {
         excludeDirs: DEFAULT_CONFIG.indexing.excludeDirs,
         chunkOverlap: DEFAULT_CONFIG.indexing.chunkOverlap,
         minFileSizeBytes: DEFAULT_CONFIG.indexing.minFileSizeBytes,
+        concurrency: DEFAULT_CONFIG.indexing.concurrency,
+        embedBatchSize: DEFAULT_CONFIG.indexing.embedBatchSize,
       },
       vectorStore: {
         path: DEFAULT_CONFIG.vectorStore.path,
@@ -847,6 +855,9 @@ function generateDefaultConfigJson(): string {
       logging: {
         level: DEFAULT_CONFIG.logging.level,
         logFilePath: DEFAULT_CONFIG.logging.logFilePath,
+      },
+      chunking: {
+        nodeTypes: {},
       },
     },
     null,

@@ -4,8 +4,8 @@
     "baseUrl": "http://localhost:11434/api",
     "model": "qwen3-embedding:0.6b",
     "timeoutMs": 60000,
-    "documentPrefix": "document: ",
-    "queryPrefix": "query: "
+    "documentPrefix": "",
+    "queryPrefix": ""
   },
   "indexing": {
     "includeExtensions": [
@@ -92,11 +92,10 @@
   "description": {
     "enabled": true,
     "provider": "ollama",
-    "baseUrl": "https://localhost:11434/api",
-    "model": "qwen3:1.7b",
+    "baseUrl": "http://localhost:11434/api",
+    "model": "qwen2.5:3b",
     "timeoutMs": 60000,
-    "systemPrompt": "Describe code for semantic search in short simple words, simple grammar, no code, no comments. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, output description directly.",
-    "apiKey": ""
+    "systemPrompt": "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose."
   },
   "logging": {
     "level": "debug",

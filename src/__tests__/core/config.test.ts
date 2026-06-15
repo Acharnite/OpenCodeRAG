@@ -24,7 +24,7 @@ describe("loadConfig", () => {
   it("returns default config for empty file", () => {
     writeFileSync(tmpFile, "{}", "utf-8");
     const config = loadConfig(tmpFile);
-    assert.deepStrictEqual(config, { ...DEFAULT_CONFIG, chunkers: undefined });
+    assert.deepStrictEqual(config, { ...DEFAULT_CONFIG, chunkers: undefined, chunking: { nodeTypes: {} } });
   });
 
   it("allows partial override of embedding proxy setting", () => {

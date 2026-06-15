@@ -498,6 +498,7 @@ describe("ragPlugin", () => {
       cfg: makeConfig(),
       storePath: "memory://",
       logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: populatedStore,
       dependencies,
       worktree: testWorktree,
     });

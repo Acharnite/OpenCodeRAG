@@ -61,6 +61,8 @@ export interface RagConfig {
     excludeDirs: string[];
     chunkOverlap: number;
     minFileSizeBytes?: number;
+    concurrency: number;
+    embedBatchSize: number;
   };
   vectorStore: {
     path: string;
@@ -84,6 +86,9 @@ export interface RagConfig {
     readRelatedFilesMax?: number;
   };
   chunkers?: ChunkerConfig[];
+  chunking?: {
+    nodeTypes?: Record<string, string[]>;
+  };
   description?: DescriptionConfig;
   logging: LoggingConfig;
 }
@@ -154,6 +159,8 @@ export const DEFAULT_CONFIG: RagConfig = {
     ],
     chunkOverlap: 0,
     minFileSizeBytes: 0,
+    concurrency: 4,
+    embedBatchSize: 50,
   },
   vectorStore: {
     path: "./.opencode/rag_db",
@@ -257,8 +264,14 @@ export function loadConfig(filePath: string): RagConfig {
       };
       return merged;
     })(),
-    chunkers: parsed.chunkers ?? DEFAULT_CONFIG.chunkers,
-    description: {
+  chunkers: parsed.chunkers ?? DEFAULT_CONFIG.chunkers,
+  chunking: {
+    nodeTypes: {
+      ...((DEFAULT_CONFIG.chunking as Record<string, unknown>)?.nodeTypes as Record<string, string[]> | undefined ?? {}),
+      ...((parsed.chunking as Record<string, unknown>)?.nodeTypes as Record<string, string[]> | undefined ?? {}),
+    },
+  },
+  description: {
       ...DEFAULT_CONFIG.description,
       ...((parsed as { description?: Partial<DescriptionConfig> }).description ?? {}),
     } as DescriptionConfig,
