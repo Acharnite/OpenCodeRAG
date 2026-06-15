@@ -61,6 +61,8 @@ export interface RagConfig {
     excludeDirs: string[];
     chunkOverlap: number;
     minFileSizeBytes?: number;
+    concurrency: number;
+    embedBatchSize: number;
   };
   vectorStore: {
     path: string;
@@ -154,6 +156,8 @@ export const DEFAULT_CONFIG: RagConfig = {
     ],
     chunkOverlap: 0,
     minFileSizeBytes: 0,
+    concurrency: 4,
+    embedBatchSize: 50,
   },
   vectorStore: {
     path: "./.opencode/rag_db",

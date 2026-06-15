@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import pLimit from "p-limit";
 import { chunkFile } from "./chunker/factory.js";
 import { extractPdfText } from "./chunker/pdf.js";
 import { extractDocxText } from "./chunker/docx.js";
@@ -12,7 +13,6 @@ import {
   manifestPathFor,
   normalizeFilePath,
   saveManifest,
-  type FileManifest,
 } from "./core/manifest.js";
 import type { Chunk, DescriptionProvider, EmbeddingProvider, KeywordIndex, VectorStore } from "./core/interfaces.js";
 import { embedBatch } from "./embedder/factory.js";
@@ -73,8 +73,6 @@ export interface WatchPassScheduler {
   waitForIdle(): Promise<void>;
   close(): void;
 }
-
-const BATCH_SIZE = 50;
 
 function createLogger(logger?: Partial<Logger>): Logger {
   return {
@@ -172,20 +170,6 @@ function createIndexStats(totalFiles: number, manifestStatus: IndexRunStats["man
   };
 }
 
-function updateManifestEntry(manifest: FileManifest, file: WorkspaceFile, chunkCount: number): void {
-  manifest.files[file.normalizedPath] = {
-    hash: file.hash,
-    chunkCount,
-    indexedAt: Date.now(),
-  };
-}
-
-async function flushChunkBatch(store: VectorStore, chunkBatch: Chunk[]): Promise<boolean> {
-  if (chunkBatch.length === 0) return false;
-  await store.addChunks(chunkBatch.splice(0, chunkBatch.length));
-  return true;
-}
-
 export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexRunStats> {
   const logger = createLogger(options.logger);
   const workspaceFiles = await scanWorkspace(options.cwd, options.config);
@@ -222,135 +206,182 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
     }
   }
 
-  const chunkBatch: Chunk[] = [];
+  const limit = pLimit(options.config.indexing.concurrency);
 
-  for (const file of workspaceFiles) {
-    const previous = manifest.files[file.normalizedPath];
-
-    if (file.isEmpty) {
-      stats.skippedEmptyFiles++;
-      if (previous) {
-        await options.store.deleteByFilePath(file.normalizedPath);
-        options.keywordIndex?.removeByFilePath(file.normalizedPath);
-        delete manifest.files[file.normalizedPath];
-        stats.removedFiles++;
-        logger.info(`  ${path.relative(options.cwd, file.filePath)} (empty, removed from index)`);
-      } else {
-        logger.info(`  ${path.relative(options.cwd, file.filePath)} (empty, skipped)`);
-      }
-      continue;
-    }
-
-    if (file.isTooSmall) {
-      stats.skippedSmallFiles++;
-      if (previous) {
-        await options.store.deleteByFilePath(file.normalizedPath);
-        options.keywordIndex?.removeByFilePath(file.normalizedPath);
-        delete manifest.files[file.normalizedPath];
-        stats.removedFiles++;
-        logger.info(`  ${path.relative(options.cwd, file.filePath)} (too small, removed from index)`);
-      } else {
-        logger.info(`  ${path.relative(options.cwd, file.filePath)} (too small, skipped)`);
-      }
-      continue;
-    }
-
-    if (previous && previous.hash === file.hash) {
-      stats.unchangedFiles++;
-      logger.info(`  ${path.relative(options.cwd, file.filePath)} (unchanged)`);
-      continue;
-    }
-
-    if (previous) {
-      await options.store.deleteByFilePath(file.normalizedPath);
-      options.keywordIndex?.removeByFilePath(file.normalizedPath);
-      stats.modifiedFiles++;
-    } else {
-      stats.newFiles++;
-    }
-
-    const chunks = await chunkFile(file.filePath, file.content);
-    if (chunks.length === 0) {
-      delete manifest.files[file.normalizedPath];
-      stats.removedFiles++;
-      logger.info(`  ${path.relative(options.cwd, file.filePath)} (0 chunks, removed from index)`);
-      continue;
-    }
-
-    options.keywordIndex?.addChunks(chunks);
-
-    const docPrefix = options.config.embedding.documentPrefix ?? "";
-    const textToEmbed: string[] = [];
-
-    if (options.descriptionProvider) {
-      let descriptionMap: Map<string, string> | null = null;
-
-      if (chunks.length > 1) {
-        try {
-          descriptionMap = await options.descriptionProvider.generateBatchDescriptions(chunks);
-        } catch (err) {
-          logger.warn(`Batch description failed, falling back to individual: ${(err as Error).message}`);
-        }
-      }
-
-      for (const chunk of chunks) {
-        const batchDesc = descriptionMap?.get(chunk.id);
-        if (batchDesc && batchDesc.trim().length > 0) {
-          chunk.description = batchDesc;
-          logger.info(`  [desc] ${chunk.id} (batch): ${batchDesc.slice(0, 120)}${batchDesc.length > 120 ? "…" : ""}`);
-          logger.info(`  [chunk content] ${chunk.id}: ${chunk.content.slice(0, 120)}${chunk.content.length > 120 ? "…" : ""}`);
-          textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
-        } else {
-          try {
-            chunk.description = await options.descriptionProvider.generateDescription(chunk);
-            logger.info(`  [desc] ${chunk.id} (llm): ${chunk.description.slice(0, 120)}${chunk.description.length > 120 ? "…" : ""}`);
-            logger.info(`  [chunk content] ${chunk.id}: ${chunk.content.slice(0, 120)}${chunk.content.length > 120 ? "…" : ""}`);
-            textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
-          } catch (err) {
-            logger.warn(`Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
-            textToEmbed.push(docPrefix + chunk.content);
-          }
-        }
-      }
-    } else {
-      for (const chunk of chunks) {
-        const relPath = path.relative(options.cwd, chunk.metadata.filePath).replace(/\\/g, "/");
-        chunk.description = `${relPath}, lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}`;
-        logger.info(`  [desc] ${chunk.id}: ${chunk.description}`);
-        logger.info(`  [chunk content] ${chunk.id}: ${chunk.content.slice(0, 120)}${chunk.content.length > 120 ? "…" : ""}`);
-        textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
-      }
-    }
-    const embeddings = await embedBatch(options.embedder, textToEmbed, undefined, "document");
-
-    for (let i = 0; i < chunks.length; i++) {
-      const emb = embeddings[i];
-      if (Array.isArray(emb) && emb.length > 0 && typeof emb[0] === "number") {
-        chunks[i]!.embedding = emb as number[];
-      } else {
-        // Guard against malformed provider output so the chunk is skipped
-        // instead of corrupting the vector store.
-        chunks[i]!.embedding = undefined;
-      }
-    }
-
-    chunkBatch.push(...chunks);
-    stats.totalChunks += chunks.length;
-    updateManifestEntry(manifest, file, chunks.length);
-
-    if (chunkBatch.length >= BATCH_SIZE) {
-      if (await flushChunkBatch(options.store, chunkBatch)) {
-        stats.batchesFlushed++;
-      }
-    }
-
-    logger.info(
-      `  ${path.relative(options.cwd, file.filePath)} (${chunks.length} chunks${previous ? ", modified" : ", new"})`
-    );
+  interface WorkerResult {
+    normalizedPath: string;
+    hash: string;
+    chunkCount: number;
+    fileLabel: string;
+    isNew: boolean;
+    isModified: boolean;
+    isUnchanged: boolean;
+    isEmpty: boolean;
+    isTooSmall: boolean;
+    isRemoved: boolean;
+    hadChunks: boolean;
   }
 
-  if (await flushChunkBatch(options.store, chunkBatch)) {
-    stats.batchesFlushed++;
+  const workerResults = await Promise.all(
+    workspaceFiles.map((file) =>
+      limit(async (): Promise<WorkerResult> => {
+        const previous = manifest.files[file.normalizedPath];
+        const fileLabel = path.relative(options.cwd, file.filePath);
+
+        if (file.isEmpty) {
+          if (previous) {
+            await options.store.deleteByFilePath(file.normalizedPath);
+            options.keywordIndex?.removeByFilePath(file.normalizedPath);
+            logger.info(`  ${fileLabel} (empty, removed from index)`);
+            return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel, isNew: false, isModified: false, isUnchanged: false, isEmpty: true, isTooSmall: false, isRemoved: true, hadChunks: false };
+          }
+          logger.info(`  ${fileLabel} (empty, skipped)`);
+          return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel, isNew: false, isModified: false, isUnchanged: false, isEmpty: true, isTooSmall: false, isRemoved: false, hadChunks: false };
+        }
+
+        if (file.isTooSmall) {
+          if (previous) {
+            await options.store.deleteByFilePath(file.normalizedPath);
+            options.keywordIndex?.removeByFilePath(file.normalizedPath);
+            logger.info(`  ${fileLabel} (too small, removed from index)`);
+            return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel, isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: true, isRemoved: true, hadChunks: false };
+          }
+          logger.info(`  ${fileLabel} (too small, skipped)`);
+          return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel, isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: true, isRemoved: false, hadChunks: false };
+        }
+
+        if (previous && previous.hash === file.hash) {
+          logger.info(`  ${fileLabel} (unchanged)`);
+          return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel, isNew: false, isModified: false, isUnchanged: true, isEmpty: false, isTooSmall: false, isRemoved: false, hadChunks: false };
+        }
+
+        let isModified = false;
+        if (previous) {
+          await options.store.deleteByFilePath(file.normalizedPath);
+          options.keywordIndex?.removeByFilePath(file.normalizedPath);
+          isModified = true;
+        }
+
+        const chunks = await chunkFile(file.filePath, file.content);
+        if (chunks.length === 0) {
+          logger.info(`  ${fileLabel} (0 chunks, removed from index)`);
+          return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel, isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: false, isRemoved: true, hadChunks: false };
+        }
+
+        options.keywordIndex?.addChunks(chunks);
+
+        const docPrefix = options.config.embedding.documentPrefix ?? "";
+        const textToEmbed: string[] = [];
+
+        if (options.descriptionProvider) {
+          let descriptionMap: Map<string, string> | null = null;
+
+          if (chunks.length > 1) {
+            try {
+              descriptionMap = await options.descriptionProvider.generateBatchDescriptions(chunks);
+            } catch (err) {
+              logger.warn(`Batch description failed, falling back to individual: ${(err as Error).message}`);
+            }
+          }
+
+          for (const chunk of chunks) {
+            const batchDesc = descriptionMap?.get(chunk.id);
+            if (batchDesc && batchDesc.trim().length > 0) {
+              chunk.description = batchDesc;
+              textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
+            } else {
+              try {
+                chunk.description = await options.descriptionProvider.generateDescription(chunk);
+                textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
+              } catch (err) {
+                logger.warn(`Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
+                textToEmbed.push(docPrefix + chunk.content);
+              }
+            }
+          }
+        } else {
+          for (const chunk of chunks) {
+            const relPath = path.relative(options.cwd, chunk.metadata.filePath).replace(/\\/g, "/");
+            chunk.description = `${relPath}, lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}`;
+            textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
+          }
+        }
+
+        const embeddings = await embedBatch(options.embedder, textToEmbed, options.config.indexing.embedBatchSize, "document");
+
+        for (let i = 0; i < chunks.length; i++) {
+          const emb = embeddings[i];
+          if (Array.isArray(emb) && emb.length > 0 && typeof emb[0] === "number") {
+            chunks[i]!.embedding = emb as number[];
+          } else {
+            chunks[i]!.embedding = undefined;
+          }
+        }
+
+        const validChunks = chunks.filter((c) => c.embedding && c.embedding.length > 0);
+        if (validChunks.length > 0) {
+          await options.store.addChunks(validChunks);
+        }
+
+        logger.info(`  ${fileLabel} (${chunks.length} chunks${isModified ? ", modified" : ", new"})`);
+
+        return {
+          normalizedPath: file.normalizedPath,
+          hash: file.hash,
+          chunkCount: chunks.length,
+          fileLabel,
+          isNew: !isModified && !previous,
+          isModified,
+          isUnchanged: false,
+          isEmpty: false,
+          isTooSmall: false,
+          isRemoved: false,
+          hadChunks: chunks.length > 0,
+        };
+      })
+    )
+  );
+
+  for (const result of workerResults) {
+    if (result.isEmpty) {
+      stats.skippedEmptyFiles++;
+      if (result.isRemoved) {
+        delete manifest.files[result.normalizedPath];
+        stats.removedFiles++;
+      }
+      continue;
+    }
+    if (result.isTooSmall) {
+      stats.skippedSmallFiles++;
+      if (result.isRemoved) {
+        delete manifest.files[result.normalizedPath];
+        stats.removedFiles++;
+      }
+      continue;
+    }
+    if (result.isUnchanged) {
+      stats.unchangedFiles++;
+      continue;
+    }
+    if (result.isRemoved) {
+      delete manifest.files[result.normalizedPath];
+      stats.removedFiles++;
+      continue;
+    }
+    if (result.isModified) {
+      stats.modifiedFiles++;
+    } else if (result.isNew) {
+      stats.newFiles++;
+    }
+    if (result.chunkCount > 0) {
+      manifest.files[result.normalizedPath] = {
+        hash: result.hash,
+        chunkCount: result.chunkCount,
+        indexedAt: Date.now(),
+      };
+      stats.totalChunks += result.chunkCount;
+      stats.batchesFlushed++;
+    }
   }
 
   manifest.lastIndexedAt = Date.now();

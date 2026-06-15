@@ -118,6 +118,14 @@ await db.createTable({ data: [seed] as unknown as Record<string, unknown>[] });
 `@lancedb/lancedb` requires `apache-arrow` at runtime. Install it explicitly if
 auto-install fails.
 
+### LanceDB concurrent table initialization
+When processing files concurrently (via `p-limit` in `runIndexPass`), multiple
+workers call `store.addChunks()` simultaneously. The `getTable()` method does
+lazy initialization — without a promise guard, concurrent calls race to create
+the table. `LanceDBStore` now uses a `tableInit` promise guard to serialize
+initialization. If you modify the vector store, ensure `getTable()` remains
+safe against concurrent calls.
+
 ### tree-sitter WASM
 - `tree-sitter-wasm` package provides pre-built `.wasm` grammar files via
   `getWasmPath()`

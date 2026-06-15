@@ -4,8 +4,8 @@
     "baseUrl": "http://localhost:11434/api",
     "model": "qwen3-embedding:0.6b",
     "timeoutMs": 60000,
-    "documentPrefix": "document: ",
-    "queryPrefix": "query: "
+    "documentPrefix": "",
+    "queryPrefix": ""
   },
   "indexing": {
     "includeExtensions": [
@@ -93,9 +93,9 @@
     "enabled": true,
     "provider": "ollama",
     "baseUrl": "http://localhost:11434/api",
-    "model": "qwen3:1.7b",
+    "model": "qwen2.5:3b",
     "timeoutMs": 60000,
-    "systemPrompt": "Describe code in short simple words, simple grammar. Show no code, no comments. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, output description directly."
+    "systemPrompt": "Describe code precise and concise in 2 sentences."
   },
   "logging": {
     "level": "debug",

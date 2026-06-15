@@ -75,7 +75,9 @@ Controls file discovery and chunking behavior.
       "__pycache__", ".venv"
     ],
     "chunkOverlap": 0,
-    "minFileSizeBytes": 0
+    "minFileSizeBytes": 0,
+    "concurrency": 4,
+    "embedBatchSize": 100
   }
 }
 ```
@@ -86,6 +88,8 @@ Controls file discovery and chunking behavior.
 | `excludeDirs` | *(7 dirs)* | Directories to skip |
 | `chunkOverlap` | `0` | Overlap between adjacent chunks |
 | `minFileSizeBytes` | `0` | Skip files smaller than this (files below threshold are also removed from index) |
+| `concurrency` | `4` | Max files processed in parallel during indexing. Higher values speed up indexing but increase memory and embedding API pressure |
+| `embedBatchSize` | `50` | Texts per embedding API call. Larger batches reduce round-trips. Ollama supports up to ~100 |
 
 ### `vectorStore`
 
