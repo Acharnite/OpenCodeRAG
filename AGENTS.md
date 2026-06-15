@@ -349,6 +349,12 @@ OpenCode config. Instead, rely on `.opencode/plugins/*.js` auto-discovery:
    `node_modules/tree-sitter-wasm/README.md` for supported names)
 5. Add extension to defaults in `DEFAULT_CONFIG.indexing.includeExtensions`
 
+By default, `nodeTypes` should target **function-level declarations** (functions,
+methods, arrows) rather than class-level blobs. This optimizes retrieval precision
+for agent workflows. Keep class/type/container declarations out of `nodeTypes` unless
+the grammar requires it (e.g. Kotlin interfaces use `class_declaration`).
+See `doc/chunking.md` for the full strategy and configurable `nodeTypes` overrides.
+
 ## Adding a Non-Code Chunker (e.g. PDF)
 
 For binary or document formats:

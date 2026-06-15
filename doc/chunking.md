@@ -108,3 +108,53 @@ You can inject custom chunkers without modifying source code via `opencode-rag.j
 ```
 
 The module must export a class implementing the `Chunker` interface.
+
+## Function-Level Chunking Strategy
+
+By default, AST-based chunkers use **function-level chunking** — they split code at function/method boundaries rather than class or file boundaries. This is optimized for AI agent workflows where the agent typically needs to find, understand, and modify specific functions.
+
+### What's chunked per language
+
+| Language | Chunked node types | NOT chunked |
+|---|---|---|
+| TypeScript | functions, methods, arrows, interfaces, type aliases | classes, export statements |
+| JavaScript | functions, methods, arrows | classes, export statements |
+| Python | functions, decorated definitions (preserves @decorators) | classes |
+| Java | methods, interfaces, enums | classes |
+| Go | functions, methods | type declarations |
+| Rust | functions, structs, enums, traits, impls, type aliases | modules |
+| C# | methods, interfaces, structs, records, enums | classes, namespaces |
+| C++ | functions, structs, enums, unions | classes, namespaces, templates |
+| Kotlin | functions, objects, properties | classes, interfaces (use class_declaration in grammar) |
+| Swift | functions, enums, protocols | classes, structs, extensions (use class_declaration in grammar) |
+| Ruby | methods, singleton_methods | classes, modules |
+
+### Why function-level?
+
+- **Precision**: Each chunk contains exactly one function/method, so retrieval results are focused
+- **Token efficiency**: With `maxChunks=3` and `maxTokens=2000`, smaller chunks let the agent see more relevant code
+- **Keyword quality**: TF-IDF scoring is more precise when computed per-function rather than per-class
+- **Agent alignment**: Agents typically search for specific functions, not entire classes
+
+### Grammar limitations
+
+Some tree-sitter grammars don't have distinct node types for all constructs:
+- **Kotlin**: `interface` and `class` both use `class_declaration` — interfaces can't be distinguished at the AST level
+- **Swift**: `struct`, `extension`, and `class` all use `class_declaration` — only `protocol_declaration` is distinct
+
+### Configurable nodeTypes
+
+You can override which AST node types are chunked per language in `opencode-rag.json`:
+
+```json
+{
+  "chunking": {
+    "nodeTypes": {
+      "typescript": ["function_declaration", "method_definition", "class_declaration", "arrow_function"],
+      "python": ["function_definition", "decorated_definition", "class_definition"]
+    }
+  }
+}
+```
+
+This is useful when you want broader or narrower chunking granularity for specific languages. The overrides apply during indexing — re-index after changing them.

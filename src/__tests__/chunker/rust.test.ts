@@ -12,13 +12,13 @@ describe("RustChunker", () => {
     assert.equal(rustChunker.fileExtensions.length, 1);
   });
 
-  it("nodeTypes contains function_item, struct_item, enum_item, type_item", () => {
+  it("nodeTypes contains function_item, struct_item, enum_item, trait_item, impl_item, type_item", () => {
     assert.ok(rustChunker.nodeTypes.has("function_item"));
     assert.ok(rustChunker.nodeTypes.has("struct_item"));
     assert.ok(rustChunker.nodeTypes.has("enum_item"));
+    assert.ok(rustChunker.nodeTypes.has("trait_item"), "trait_item restored for trait definitions");
+    assert.ok(rustChunker.nodeTypes.has("impl_item"), "impl_item restored for implementation blocks");
     assert.ok(rustChunker.nodeTypes.has("type_item"));
-    assert.ok(!rustChunker.nodeTypes.has("trait_item"), "trait_item removed for function-level chunking");
-    assert.ok(!rustChunker.nodeTypes.has("impl_item"), "impl_item removed for function-level chunking");
     assert.ok(!rustChunker.nodeTypes.has("mod_item"), "mod_item removed for function-level chunking");
   });
 

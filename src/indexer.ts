@@ -262,7 +262,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
           isModified = true;
         }
 
-        const chunks = await chunkFile(file.filePath, file.content).catch((err) => {
+        const chunks = await chunkFile(file.filePath, file.content, options.config.chunking?.nodeTypes).catch((err) => {
           logger.warn(`  ${fileLabel} (chunking failed: ${(err as Error).message})`);
           return null;
         });

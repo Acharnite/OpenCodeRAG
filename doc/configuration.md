@@ -226,6 +226,27 @@ Controls the OpenCode plugin integration.
 | `level` | `"info"` | `"debug"`, `"info"`, or `"error"` |
 | `logFilePath` | `"./.opencode/opencode-rag.log"` | Path to log file |
 
+### `chunking`
+
+Overrides which AST node types are chunked per language. By default, chunkers use function-level node types. Use this to broaden or narrow chunking granularity.
+
+```json
+{
+  "chunking": {
+    "nodeTypes": {
+      "typescript": ["function_declaration", "method_definition", "class_declaration", "arrow_function"],
+      "python": ["function_definition", "decorated_definition", "class_definition"]
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `nodeTypes` | `Record<string, string[]>` | Map of language name to AST node types to chunk on |
+
+See [chunking.md](chunking.md) for the full strategy and per-language node type details.
+
 ### Custom Chunkers
 
 External chunkers can be injected without modifying the source:

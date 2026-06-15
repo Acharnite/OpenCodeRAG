@@ -6,6 +6,9 @@ export class CSharpChunker extends TreeSitterChunker {
   readonly grammarName = "c_sharp";
   readonly nodeTypes = new Set([
     "method_declaration",
+    "interface_declaration",
+    "struct_declaration",
+    "record_declaration",
     "enum_declaration",
   ]);
 }

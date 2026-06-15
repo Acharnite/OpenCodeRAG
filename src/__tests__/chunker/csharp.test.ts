@@ -18,12 +18,12 @@ describe("CSharpChunker", () => {
   it("nodeTypes contains expected types", () => {
     const types = csharpChunker.nodeTypes;
     assert.ok(types.has("method_declaration"));
+    assert.ok(types.has("interface_declaration"), "interface_declaration restored for contract definitions");
+    assert.ok(types.has("struct_declaration"), "struct_declaration restored for value types");
+    assert.ok(types.has("record_declaration"), "record_declaration restored for record types");
     assert.ok(types.has("enum_declaration"));
     assert.ok(!types.has("class_declaration"), "class_declaration removed for function-level chunking");
-    assert.ok(!types.has("interface_declaration"), "interface_declaration removed for function-level chunking");
-    assert.ok(!types.has("struct_declaration"), "struct_declaration removed for function-level chunking");
     assert.ok(!types.has("namespace_declaration"), "namespace_declaration removed for function-level chunking");
-    assert.ok(!types.has("record_declaration"), "record_declaration removed for function-level chunking");
   });
 
   it("chunk returns empty array for empty content", async () => {
@@ -54,20 +54,18 @@ describe("CSharpChunker", () => {
     assert.ok(chunks.some((c) => c.content.includes("enum Color")));
   });
 
-  it("chunk parses standalone interface methods", async () => {
+  it("chunk parses an interface declaration", async () => {
     const code = "interface IRepository { void Save(); void Load(); }";
     const chunks = await csharpChunker.chunk("repo.cs", code);
     assert.ok(chunks.length >= 1, "expected at least one chunk");
-    // interface_declaration was removed, so methods inside may or may not be captured
-    // depending on whether tree-sitter produces method_declaration nodes inside interfaces
-    assert.ok(Array.isArray(chunks));
+    assert.ok(chunks.some((c) => c.content.includes("interface IRepository")), "should have interface-level chunk");
   });
 
-  it("chunk parses standalone namespace members", async () => {
-    const code = "namespace MyApp.Utils { class Helper {} }";
-    const chunks = await csharpChunker.chunk("ns.cs", code);
-    // namespace_declaration was removed, so this may produce fewer chunks
-    assert.ok(Array.isArray(chunks));
+  it("chunk parses a struct declaration", async () => {
+    const code = "struct Point { double X; double Y; }";
+    const chunks = await csharpChunker.chunk("point.cs", code);
+    assert.ok(chunks.length >= 1, "expected at least one chunk");
+    assert.ok(chunks.some((c) => c.content.includes("struct Point")), "should have struct-level chunk");
   });
 
   it("chunk generates unique IDs for multiple declarations", async () => {

@@ -7,6 +7,7 @@ export class SwiftChunker extends TreeSitterChunker {
   readonly nodeTypes = new Set([
     "function_declaration",
     "enum_declaration",
+    "protocol_declaration",
     "variable_declaration",
   ]);
 }

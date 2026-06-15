@@ -18,9 +18,9 @@ describe("JavaChunker", () => {
   it("nodeTypes contains expected types", () => {
     const types = javaChunker.nodeTypes;
     assert.ok(types.has("method_declaration"));
+    assert.ok(types.has("interface_declaration"), "interface_declaration restored for contract definitions");
+    assert.ok(types.has("enum_declaration"), "enum_declaration restored for enum types");
     assert.ok(!types.has("class_declaration"), "class_declaration removed for function-level chunking");
-    assert.ok(!types.has("interface_declaration"), "interface_declaration removed for function-level chunking");
-    assert.ok(!types.has("enum_declaration"), "enum_declaration removed for function-level chunking");
   });
 
   it("chunk returns empty array for empty content", async () => {
@@ -45,21 +45,20 @@ describe("JavaChunker", () => {
     assert.ok(!chunks.some((c) => c.content.includes("class Foo")), "should not have class-level chunk");
   });
 
-  it("chunk extracts methods from interface declaration", async () => {
+  it("chunk parses an interface declaration", async () => {
     const code =
       "interface Runnable {\n  void run();\n  void stop();\n}";
     const chunks = await javaChunker.chunk("Runnable.java", code);
     assert.ok(chunks.length >= 1, "expected at least one chunk");
-    assert.ok(chunks.some((c) => c.content.includes("run")), "should capture run method");
+    assert.ok(chunks.some((c) => c.content.includes("interface Runnable")), "should have interface-level chunk");
   });
 
-  it("chunk parses standalone enum declaration", async () => {
+  it("chunk parses an enum declaration", async () => {
     const code =
       "enum Color {\n  RED, GREEN, BLUE\n}";
     const chunks = await javaChunker.chunk("Color.java", code);
-    // enum_declaration was removed, so this may produce no chunks or a fallback
-    // The test just verifies no crash
-    assert.ok(Array.isArray(chunks));
+    assert.ok(chunks.length > 0, "expected at least one chunk");
+    assert.ok(chunks.some((c) => c.content.includes("enum Color")), "should have enum-level chunk");
   });
 
   it("chunk generates unique IDs for multiple declarations", async () => {

@@ -86,6 +86,9 @@ export interface RagConfig {
     readRelatedFilesMax?: number;
   };
   chunkers?: ChunkerConfig[];
+  chunking?: {
+    nodeTypes?: Record<string, string[]>;
+  };
   description?: DescriptionConfig;
   logging: LoggingConfig;
 }
@@ -261,8 +264,14 @@ export function loadConfig(filePath: string): RagConfig {
       };
       return merged;
     })(),
-    chunkers: parsed.chunkers ?? DEFAULT_CONFIG.chunkers,
-    description: {
+  chunkers: parsed.chunkers ?? DEFAULT_CONFIG.chunkers,
+  chunking: {
+    nodeTypes: {
+      ...((DEFAULT_CONFIG.chunking as Record<string, unknown>)?.nodeTypes as Record<string, string[]> | undefined ?? {}),
+      ...((parsed.chunking as Record<string, unknown>)?.nodeTypes as Record<string, string[]> | undefined ?? {}),
+    },
+  },
+  description: {
       ...DEFAULT_CONFIG.description,
       ...((parsed as { description?: Partial<DescriptionConfig> }).description ?? {}),
     } as DescriptionConfig,

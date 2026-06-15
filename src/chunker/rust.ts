@@ -8,6 +8,8 @@ export class RustChunker extends TreeSitterChunker {
     "function_item",
     "struct_item",
     "enum_item",
+    "trait_item",
+    "impl_item",
     "type_item",
   ]);
 }

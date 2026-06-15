@@ -18,8 +18,8 @@ describe("PythonChunker", () => {
   it("nodeTypes contains expected types", () => {
     const types = pythonChunker.nodeTypes;
     assert.ok(types.has("function_definition"));
+    assert.ok(types.has("decorated_definition"), "decorated_definition preserves @decorators");
     assert.ok(!types.has("class_definition"), "class_definition removed for function-level chunking");
-    assert.ok(!types.has("decorated_definition"), "decorated_definition removed for function-level chunking");
   });
 
   it("chunk returns empty array for empty content", async () => {
@@ -51,10 +51,11 @@ describe("PythonChunker", () => {
     assert.ok(!chunks.some((c) => c.content.includes("class Animal")), "should not have class-level chunk");
   });
 
-  it("chunk parses a decorated function definition", async () => {
+  it("chunk parses a decorated function definition with decorator", async () => {
     const code = "@staticmethod\ndef helper():\n    pass\n";
     const chunks = await pythonChunker.chunk("utils.py", code);
     assert.ok(chunks.length > 0, "expected at least one chunk");
+    assert.ok(chunks.some((c) => c.content.includes("@staticmethod")), "should preserve decorator");
     assert.ok(chunks.some((c) => c.content.includes("helper")), "should capture function body");
   });
 
