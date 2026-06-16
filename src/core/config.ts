@@ -45,6 +45,11 @@ export interface DescriptionConfig {
   retryBaseDelayMs?: number;
 }
 
+export interface UiConfig {
+  port: number;
+  openBrowser: boolean;
+}
+
 export interface RagConfig {
   embedding: {
     provider: string;
@@ -90,6 +95,7 @@ export interface RagConfig {
     nodeTypes?: Record<string, string[]>;
   };
   description?: DescriptionConfig;
+  ui?: UiConfig;
   logging: LoggingConfig;
 }
 
@@ -202,6 +208,10 @@ export const DEFAULT_CONFIG: RagConfig = {
     retryMax: 3,
     retryBaseDelayMs: 1000,
   },
+  ui: {
+    port: 3210,
+    openBrowser: true,
+  },
   logging: {
     level: "info",
     logFilePath: "./.opencode/opencode-rag.log",
@@ -275,6 +285,10 @@ export function loadConfig(filePath: string): RagConfig {
       ...DEFAULT_CONFIG.description,
       ...((parsed as { description?: Partial<DescriptionConfig> }).description ?? {}),
     } as DescriptionConfig,
+    ui: {
+      ...DEFAULT_CONFIG.ui,
+      ...((parsed as { ui?: Partial<UiConfig> }).ui ?? {}),
+    } as UiConfig,
     logging: {
       ...DEFAULT_CONFIG.logging,
       ...(parsed.logging ?? {}),

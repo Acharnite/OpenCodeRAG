@@ -25,6 +25,10 @@
     "./tui": {
       "import": "./dist/tui.js",
       "types": "./dist/tui.d.ts"
+    },
+    "./ui": {
+      "import": "./dist/web/server.js",
+      "types": "./dist/web/server.d.ts"
     }
   },
   "files": [
@@ -37,7 +41,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "postbuild": "node -e \"const fs=require('fs');fs.mkdirSync('dist/types',{recursive:true});fs.copyFileSync('src/types/opencode-plugin.d.ts','dist/types/opencode-plugin.d.ts');\"",
+    "postbuild": "node -e \"const fs=require('fs'),path=require('path');fs.mkdirSync('dist/types',{recursive:true});fs.copyFileSync('src/types/opencode-plugin.d.ts','dist/types/opencode-plugin.d.ts');const uiDir=path.join('dist','web','ui');fs.mkdirSync(uiDir,{recursive:true});fs.copyFileSync('src/web/ui/index.html',path.join(uiDir,'index.html'));\"",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node -e \"const {spawnSync}=require('node:child_process');const {globSync}=require('node:fs');const testFiles=globSync('src/**/*.test.ts');if(testFiles.length===0){console.log('No test files found under src; skipping npm test.');process.exit(0);}const result=spawnSync(process.execPath,['--import','tsx','--test','--test-force-exit',...testFiles],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",

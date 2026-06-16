@@ -515,6 +515,8 @@ describe("ragPlugin", () => {
     assert.match(guidance, /search_semantic/);
     assert.match(guidance, /get_file_skeleton/);
     assert.match(guidance, /find_usages/);
+    assert.match(guidance, /BEFORE planning/);
+    assert.match(guidance, /find_usages.*before editing/i);
   });
 
   it("suggests related files on chat.message", async () => {

@@ -808,6 +808,60 @@ program
     }
   });
 
+program
+  .command("ui")
+  .description("Start the web UI for browsing the vector database")
+  .option("-c, --config <path>", "path to config file")
+  .option("-p, --port <number>", "port to listen on (default: from config or 3210)")
+  .option("--no-open", "do not open browser automatically")
+  .action(async (options: CliOptions & { port?: string; open?: boolean }) => {
+    try {
+      const cwd = process.cwd();
+      let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      const config = await resolveConfig(options, logFilePath);
+      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+
+      const port = parseInt(options.port ?? String(config.ui?.port ?? 3210), 10);
+      const openBrowser = options.open !== false && (config.ui?.openBrowser ?? true);
+
+      const { startWebUi } = await import("./web/server.js");
+      const server = await startWebUi(
+        path.resolve(cwd, config.vectorStore.path),
+        port
+      );
+
+      const url = `http://127.0.0.1:${server.port}`;
+      logCliInfo(logFilePath, "ui", `\n${c.heading("OpenCodeRAG Web UI")}`);
+      logCliInfo(logFilePath, "ui", `  ${c.label("URL:")} ${c.value(url)}`);
+      logCliInfo(logFilePath, "ui", `  ${c.dim("Press Ctrl+C to stop")}\n`);
+
+      if (openBrowser) {
+        const { spawn } = await import("node:child_process");
+        if (process.platform === "win32") {
+          spawn("cmd.exe", ["/c", "start", url], { detached: true, stdio: "ignore" }).unref();
+        } else {
+          const cmd = process.platform === "darwin" ? "open" : "xdg-open";
+          spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
+        }
+      }
+
+      process.on("SIGINT", async () => {
+        await server.close();
+        process.exit(0);
+      });
+
+      process.on("SIGTERM", async () => {
+        await server.close();
+        process.exit(0);
+      });
+    } catch (err) {
+      const message = (err as Error).message || String(err);
+      const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
+      logCliError(logFilePath, "ui", `\nUI failed: ${message}`, err);
+      process.exit(1);
+    }
+  });
+
 function generateDefaultConfigJson(): string {
   return JSON.stringify(
     {
@@ -1057,7 +1111,7 @@ if (shouldAutoRunCli(import.meta.url, process.argv[1])) {
 } else {
   // Fallback: if the module appears to be running as a CLI (has argv with commands like 'init', 'index', etc.)
   // and not being imported as a library, parse the arguments anyway
-  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump'];
+  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump', 'ui'];
   const cmd = process.argv[2];
   if (process.argv.length > 2 && cmd && commands.includes(cmd.toLowerCase())) {
     void program.parseAsync(process.argv);

@@ -48,7 +48,7 @@
 
 ### CLI & Distribution
 
-- [x] CLI (`init`, `index`, `query`, `clear`, `status`, `list`, `show`, `dump` via commander)
+- [x] CLI (`init`, `index`, `query`, `clear`, `status`, `list`, `show`, `dump`, `ui` via commander)
 - [x] Full `init` command lifecycle: generates `.opencode/plugins/rag-plugin.js` + `rag-tui.js`, `.opencode/skills/opencode-rag/SKILL.md`, `.gitignore`, `package.json`; runs `npm install`; cleans stale global plugin registrations; `--skip-install` flag
 - [x] Install scripts (`install.ps1` / `install.sh`) — build, pack, install to `~/.opencode/`, register in `opencode.jsonc`, CLI wrapper, full uninstall mode
 - [x] Release automation script (`scripts/release-patch.js` with `--dry` support)
@@ -56,6 +56,15 @@
 - [x] Published npm package: `opencode-rag-plugin`
 - [x] CLI query results deduplication
 - [x] `clear` command uses `store.dropDatabase()` for clean slate
+
+### Web UI
+
+- [x] Browser-based dashboard (`opencode-rag ui`) with Dashboard, Chunks, Files, and Compare views
+- [x] Syntax-highlighted code viewer with description panel and copy button
+- [x] Collapsible file tree sidebar with filter and language color-coding
+- [x] Global keyword search with dropdown results
+- [x] REST API (stats, files, chunks, search, compare)
+- [x] Zero-dependency HTTP server (Node.js built-in `http` module)
 
 ### Config & Quality
 
@@ -91,7 +100,7 @@
 - [ ] Agent-based code navigation
 - [ ] Richer non-code / multimodal support (diagrams, API specs, JSON schemas, YAML configs)
 - [ ] Access control (per-folder permissions, sensitive file exclusion)
-- [ ] Web UI for browsing indexed chunks, search results, and index health
+- [x] Web UI for browsing indexed chunks, search results, and index health
 
 ---
 
@@ -200,10 +209,10 @@ complement the existing RAG retrieval with a "project memory" layer.
 
 ## 18. 🌐 Web UI for Index Inspection
 
-A lightweight web dashboard (like opencode-mem's `http://127.0.0.1:4747`) for
-browsing indexed chunks, inspecting search results, viewing index health/stats,
-and debugging retrieval quality. Useful for understanding what the system
-"knows" about a codebase.
+**✅ Implemented.** Lightweight browser dashboard (`opencode-rag ui`) for
+browsing indexed chunks, inspecting syntax-highlighted code, comparing results,
+and searching by keyword. Served from a zero-dependency Node.js HTTP server.
+See [doc/webui.md](doc/webui.md) for the full reference.
 
 ## 19. 🏢 Multi-Workspace Awareness
 
@@ -235,6 +244,7 @@ Key strengths:
 - API key auto-resolution from OpenCode provider config
 - Manifest schema versioning with auto-rebuild on format changes
 - Install scripts for one-command global setup and uninstall
+- Web UI dashboard for index inspection and chunk browsing
 
 Key next steps:
 
@@ -243,4 +253,3 @@ Key next steps:
 3. Context window optimization for better prompt packing
 4. Query rewriting and retrieval explainability
 5. Persistent session memory across coding sessions
-6. Web UI for index inspection and search result browsing

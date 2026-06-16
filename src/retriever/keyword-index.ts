@@ -8,6 +8,7 @@ interface SerializedKeywordIndex {
   chunkMap: Record<string, {
     id: string;
     content: string;
+    description?: string;
     filePath: string;
     startLine: number;
     endLine: number;
@@ -160,6 +161,7 @@ export class KeywordIndex {
           {
             id: chunk.id,
             content: chunk.content,
+            description: chunk.description ?? "",
             filePath: chunk.metadata.filePath,
             startLine: chunk.metadata.startLine,
             endLine: chunk.metadata.endLine,
@@ -200,6 +202,7 @@ export class KeywordIndex {
       index.chunkMap.set(id, {
         id: data.id,
         content: data.content,
+        description: data.description ?? "",
         metadata: {
           filePath: data.filePath,
           startLine: data.startLine,

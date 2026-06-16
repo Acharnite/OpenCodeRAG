@@ -216,7 +216,7 @@ export class LanceDBStore implements VectorStore {
       .sort((a, b) => a.metadata.startLine - b.metadata.startLine);
   }
 
-  async getChunks(offset: number, limit: number): Promise<{ filePath: string; language: string; startLine: number; endLine: number; content: string }[]> {
+  async getChunks(offset: number, limit: number): Promise<{ id: string; filePath: string; language: string; startLine: number; endLine: number; content: string; description: string }[]> {
     const table = await this.getTable();
     const rows = await table.query()
       .select(QUERY_COLUMNS)
@@ -225,11 +225,13 @@ export class LanceDBStore implements VectorStore {
       .toArray();
 
     return rows.map((row: Record<string, unknown>) => ({
+      id: row.id as string,
       filePath: row.filePath as string,
       language: row.language as string,
       startLine: row.startLine as number,
       endLine: row.endLine as number,
       content: row.content as string,
+      description: (row.description as string) ?? "",
     }));
   }
 

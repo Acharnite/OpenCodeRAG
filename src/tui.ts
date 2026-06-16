@@ -1,4 +1,4 @@
-import type { TuiPluginModule } from "@opencode-ai/plugin/tui";
+import type { TuiPluginModule, TuiPromptRef } from "@opencode-ai/plugin/tui";
 import type { JSX } from "@opentui/solid";
 import { createElement, insert, setProp } from "@opentui/solid";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 import type { Provider } from "@opencode-ai/sdk/v2";
 import { loadRuntimeOverrides, saveRuntimeOverride } from "./core/runtime-overrides.js";
 import { PROVIDER_DEFAULTS } from "./core/provider-defaults.js";
+import { retrieve } from "./retriever/retriever.js";
+import { createEmbedder } from "./embedder/factory.js";
+import { LanceDBStore } from "./vectorstore/lancedb.js";
+import { loadConfig } from "./core/config.js";
+import { KeywordIndex } from "./retriever/keyword-index.js";
 
 let _version: string | undefined;
 function getVersion(): string {
@@ -185,7 +190,172 @@ function renderSidebar(
       text({ fg: theme.textMuted }, [timeLine]),
       text({ fg: watcherRunning ? theme.accent : theme.textMuted }, [watcherLine]),
       text({ fg: theme.textMuted }, ["Ctrl+Shift+R Settings"]),
+      text({ fg: theme.textMuted }, ["Ctrl+Enter Add Context"]),
     ],
+  );
+}
+
+// ── Add RAG Context ──────────────────────────────────────────────
+
+let currentPromptRef: TuiPromptRef | undefined;
+
+function formatRagContextForPrompt(
+  results: Awaited<ReturnType<typeof retrieve>>,
+): string {
+  if (results.length === 0) return "";
+
+  const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
+  const lines: string[] = [];
+  lines.push(`\n---\n**RAG Context** (${results.length} chunks, avg ${avgScore.toFixed(2)})\n`);
+
+  for (const r of results) {
+    const m = r.chunk.metadata;
+    lines.push(`[${m.filePath}:${m.startLine}-${m.endLine}] (${m.language}, score: ${r.score.toFixed(2)})`);
+    if (r.chunk.description) {
+      lines.push(`> ${r.chunk.description}`);
+    }
+    lines.push("```" + m.language);
+    lines.push(r.chunk.content);
+    lines.push("```\n");
+  }
+
+  lines.push("---\n");
+  return lines.join("\n");
+}
+
+type RagContextApi = {
+  ui: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    DialogPrompt: (props: any) => JSX.Element;
+    dialog: { replace: (fn: () => JSX.Element, onClose?: () => void) => void; clear: () => void };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    toast: (input: any) => void;
+  };
+  state: { path: { worktree: string | undefined } };
+};
+
+async function addRagContextToPrompt(api: RagContextApi, query?: string): Promise<void> {
+  const worktree = api.state.path.worktree;
+  if (!worktree) {
+    api.ui.toast({ variant: "error", title: "RAG Context", message: "No workspace open" });
+    return;
+  }
+
+  let searchQuery = query ?? currentPromptRef?.current.input?.trim() ?? "";
+
+  if (!searchQuery) {
+    api.ui.dialog.replace(
+      () =>
+        api.ui.DialogPrompt({
+          title: "Add RAG Context",
+          placeholder: "Enter search query\u2026",
+          onConfirm: (value: string) => {
+            api.ui.dialog.clear();
+            addRagContextToPrompt(api, value);
+          },
+          onCancel: () => {
+            api.ui.dialog.clear();
+          },
+        }),
+    );
+    return;
+  }
+
+  try {
+    const configPath = getConfigPath(worktree);
+    if (!configPath) {
+      api.ui.toast({ variant: "error", title: "RAG Context", message: "No config file found" });
+      return;
+    }
+
+    const cfg = loadConfig(configPath);
+    const embedder = createEmbedder(cfg);
+    const storePath = resolve(worktree, cfg.vectorStore.path);
+    const store = new LanceDBStore(storePath);
+
+    const count = await store.count();
+    if (count === 0) {
+      api.ui.toast({
+        variant: "warning",
+        title: "RAG Context",
+        message: "No indexed chunks available. Run `opencode-rag index` first.",
+      });
+      return;
+    }
+
+    let keywordIndex: KeywordIndex | undefined;
+    try {
+      keywordIndex = await KeywordIndex.load(storePath);
+    } catch {
+      // keyword index unavailable, continue with vector-only search
+    }
+
+    const results = await retrieve(searchQuery, embedder, store, {
+      topK: cfg.retrieval.topK,
+      minScore: cfg.retrieval.minScore,
+      keywordIndex,
+      keywordWeight: cfg.retrieval.hybridSearch?.keywordWeight,
+      queryPrefix: cfg.embedding.queryPrefix,
+    });
+
+    if (results.length === 0) {
+      api.ui.toast({
+        variant: "info",
+        title: "RAG Context",
+        message: `No matching chunks found for "${searchQuery}"`,
+      });
+      return;
+    }
+
+    const formatted = formatRagContextForPrompt(results);
+
+    if (currentPromptRef) {
+      const current = currentPromptRef.current.input;
+      currentPromptRef.set({
+        input: current + formatted,
+        mode: currentPromptRef.current.mode ?? "normal",
+        parts: currentPromptRef.current.parts ?? [],
+      });
+      currentPromptRef.focus();
+    } else {
+      api.ui.dialog.replace(
+        () =>
+          api.ui.DialogPrompt({
+            title: `RAG Context (${results.length} chunks)`,
+            placeholder: "Copy context from here\u2026",
+            value: formatted,
+            onConfirm: () => api.ui.dialog.clear(),
+            onCancel: () => api.ui.dialog.clear(),
+          }),
+      );
+    }
+
+    api.ui.toast({
+      variant: "success",
+      title: "RAG Context",
+      message: `Appended ${results.length} chunks for "${searchQuery}"`,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    api.ui.toast({
+      variant: "error",
+      title: "RAG Context",
+      message: `Retrieval failed: ${message}`,
+    });
+  }
+}
+
+function renderAddContextButton(api: RagContextApi & {
+  theme: { current: { textMuted: unknown } };
+}): JSX.Element {
+  return box(
+    {
+      onClick: () => addRagContextToPrompt(api),
+      paddingLeft: 1,
+      paddingRight: 1,
+      cursor: "pointer",
+    },
+    [text({ fg: api.theme.current.textMuted }, ["+RAG"])],
   );
 }
 
@@ -704,6 +874,29 @@ const plugin: TuiPluginModule & { id: string } = {
       },
     });
 
+    // Register prompt slots for "Add RAG Context" feature
+    api.slots.register({
+      order: 901,
+      slots: {
+        session_prompt(_ctx, props) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const refCallback = (props as any).ref;
+          if (typeof refCallback === "function") {
+            refCallback((r: TuiPromptRef | undefined) => {
+              currentPromptRef = r;
+            });
+          }
+          return null;
+        },
+        session_prompt_right(_ctx, _props) {
+          return renderAddContextButton(api);
+        },
+        home_prompt_right(_ctx, _props) {
+          return renderAddContextButton(api);
+        },
+      },
+    });
+
     // Register keybinding for settings dialog
     try {
       api.keymap.registerLayer({
@@ -716,6 +909,24 @@ const plugin: TuiPluginModule & { id: string } = {
                 ui: api.ui,
                 state: api.state,
               });
+              return undefined;
+            },
+          },
+        ],
+      });
+    } catch (err) {
+      // Keymap registration may fail in older OpenCode versions; silently skip
+    }
+
+    // Register keybinding for "Add RAG Context"
+    try {
+      api.keymap.registerLayer({
+        bindings: [{ key: "ctrl+enter", cmd: "opencode-rag:add-context" }],
+        commands: [
+          {
+            name: "opencode-rag:add-context",
+            run: () => {
+              addRagContextToPrompt(api);
               return undefined;
             },
           },

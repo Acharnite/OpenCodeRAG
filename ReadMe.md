@@ -41,9 +41,17 @@ opencode-rag query "authentication middleware"
 | **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings |
 | **Incremental indexing** | File-hash manifest, background watcher, auto-rebuild on corruption |
 | **Privacy-first** | All processing stays local with Ollama |
-| **CLI** | `index`, `query`, `status`, `list`, `show`, `dump`, `clear`, `init` |
+| **CLI** | `index`, `query`, `status`, `list`, `show`, `dump`, `clear`, `init`, `ui` |
 | **Proxy-aware** | Corporate proxy support with raw-socket localhost bypass |
 | **OpenAI / Cohere** | Alternate embedding providers with API key auto-resolution |
+
+## Web UI
+
+A browser-based dashboard for exploring the indexed vector database — browse chunks, inspect syntax-highlighted code, compare results, and search by keyword.
+
+![OpenCodeRAG Web UI](doc/assets/webui.png)
+
+Launch with `opencode-rag ui`. See [Web UI documentation](doc/webui.md) for details.
 
 ## Documentation
 
@@ -57,6 +65,7 @@ opencode-rag query "authentication middleware"
 | [Retrieval](doc/retrieval.md) | Pipeline, hybrid search, score fusion, caching |
 | [Plugin](doc/plugin.md) | OpenCode integration, tools, hooks, TUI, troubleshooting |
 | [CLI Reference](doc/cli.md) | All commands, options, examples |
+| [Web UI](doc/webui.md) | Dashboard, chunk browser, file explorer, compare view |
 | [Development](doc/development.md) | Setup, testing, conventions, adding providers |
 | [Troubleshooting](doc/troubleshooting.md) | Common issues, logging, debugging |
 | [Roadmap](doc/roadmap.md) | Completed items, short/mid/long-term plans |

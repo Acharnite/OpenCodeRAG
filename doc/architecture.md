@@ -65,6 +65,7 @@ interface SearchResult {
 | `src/plugin-entry.ts` | Plugin entry for OpenCode runtime |
 | `src/cli.ts` | Commander-based CLI (`opencode-rag`) |
 | `src/tui.ts` | OpenCode TUI settings panel (Solid.js) |
+| `src/web/server.ts` | Web UI HTTP server (dashboard, chunk browser) |
 
 ### Core (`src/core/`)
 
@@ -137,6 +138,17 @@ See [doc/chunking.md](chunking.md) for the full language matrix.
 | `src/plugin.ts` | Main plugin: context tool, `chat.message` hook, auto-injection, read override |
 | `src/indexer.ts` | `runIndexPass()`, `scanWorkspace()`, `createWatchPassScheduler()`, `createWatchIgnore()` |
 | `src/watcher.ts` | `createBackgroundIndexer()` — chokidar watcher + debounced scheduler + periodic timer |
+
+### Web UI (`src/web/`)
+
+| File | Role |
+|---|---|
+| `server.ts` | HTTP server entry point (localhost only) |
+| `api.ts` | REST API handler (stats, files, chunks, search, compare) |
+| `static.ts` | Serves the single-page HTML app |
+| `ui/index.html` | Self-contained SPA (Tailwind + highlight.js, inline JS) |
+
+See [Web UI](webui.md) for the full dashboard reference.
 
 ## Pipeline Stages
 

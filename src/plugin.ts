@@ -638,12 +638,18 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       });
 
       const guidance = [
-        "OpenCodeRAG tools are available:",
-        "- `opencode-rag-context`: general-purpose code retrieval",
-        "- `search_semantic`: search code by concept/meaning",
-        "- `get_file_skeleton`: quick structural outline of a file",
-        "- `find_usages`: find where a symbol is referenced (essential before editing)",
-        "Use these tools before planning, editing, or answering when you need code provenance.",
+        "OpenCodeRAG tools are available for code retrieval:",
+        "- `opencode-rag-context(query)`: retrieve relevant code chunks by query. Use BEFORE planning, editing, or answering code questions. Accepts `pathHints` and `languageHints` to narrow results.",
+        "- `search_semantic(query)`: conceptual search — \"how does X work?\", \"where is Y?\"",
+        "- `get_file_skeleton(filePath)`: structural overview of a file before reading it",
+        "- `find_usages(symbolName)`: find all references to a symbol — ALWAYS use before editing functions, classes, or variables",
+        "",
+        "When to call proactively:",
+        "- User asks about code behavior, architecture, or implementation details",
+        "- User asks to edit, refactor, or fix code — call `find_usages` first",
+        "- User references files or functions you haven't read yet",
+        "- User says \"find\", \"search\", \"look up\", \"where is\", \"how does\"",
+        "- Before answering any code-related question, retrieve context first",
       ];
 
       output.system.unshift(guidance.join("\n"));
