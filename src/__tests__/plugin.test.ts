@@ -664,7 +664,7 @@ describe("ragPlugin", () => {
     assert.doesNotMatch(resultText, /Showing top.*relevant files/);
   });
 
-  it("falls back to file list when scores are below autoInject threshold", async () => {
+  it("does NOT inject when scores are below autoInject threshold", async () => {
     const results = [
       makeResult(
         "chunk-1",
@@ -730,7 +730,8 @@ describe("ragPlugin", () => {
 
     const resultText = (output.parts[0] as Record<string, unknown>).text as string;
     assert.doesNotMatch(resultText, /Auto-retrieved code context/);
-    assert.match(resultText, /Relevant files:/);
+    assert.doesNotMatch(resultText, /Relevant files:/);
+    assert.equal(resultText, "auth stuff");
   });
 
   it("respects maxChunks limit for auto-injection", async () => {
@@ -798,7 +799,7 @@ describe("ragPlugin", () => {
     assert.doesNotMatch(resultText, /fn b\(\)/);
   });
 
-  it("disabled autoInject falls back to file list", async () => {
+  it("disabled autoInject produces no injection", async () => {
     const results = [
       makeResult(
         "chunk-1",
@@ -864,7 +865,8 @@ describe("ragPlugin", () => {
 
     const resultText = (output.parts[0] as Record<string, unknown>).text as string;
     assert.doesNotMatch(resultText, /Auto-retrieved code context/);
-    assert.match(resultText, /src\/main\.ts/);
+    assert.doesNotMatch(resultText, /Relevant files:/);
+    assert.equal(resultText, "test the chunks");
   });
 
   it("uses relative paths in auto-injected context", async () => {

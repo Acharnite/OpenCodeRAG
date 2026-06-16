@@ -225,10 +225,10 @@ Query vs document differentiation:
 ### Plugin architecture — agent discovery and auto-injection
 - The plugin registers `opencode-rag-context`, `search_semantic`, `get_file_skeleton`, and `find_usages` tools.
 - **Skill-based discovery:** `opencode-rag init` creates `.opencode/skills/opencode-rag/SKILL.md` which teaches agents the recommended workflow (skeleton → find_usages → search → read → edit). Agents load it on demand via the `skill` tool.
-- **System prompt guidance (conditional):** `experimental.chat.system.transform` prepends a tool list to the system prompt only when chunks are indexed (`store.count() > 0`), saving ~150 tokens/msg for unindexed projects.
-- **Auto-injection:** On each user message, the `chat.message` hook runs retrieval. High-confidence results (score ≥ `autoInject.minScore`, default 0.75) are auto-injected as code chunks. Low-confidence results fall back to a file suggestion list via `formatFileList()`.
+- **System prompt guidance (always):** `experimental.chat.system.transform` prepends a tool list to the system prompt on every message, ensuring agents always know the tools are available.
+- **Auto-injection:** On each user message, the `chat.message` hook runs retrieval. High-confidence results (score ≥ `autoInject.minScore`, default 0.75) are auto-injected as code chunks. No fallback is injected for low-confidence results — agents must use tools explicitly.
 - `formatAutoInjectContext()` respects `maxChunks` (default 3) and `maxTokens` (default 2000) budgets.
-- `formatFileList()` groups results by file path, sorts by best score, and formats as `path (lang, lines N-M)` — max 10 files.
+- **TUI keyboard shortcuts:** Ctrl+Enter shows a file list of relevant files; Alt+Enter appends matching code chunks directly to the prompt.
 - When `openCode.readOverride` is `true`, the plugin registers a `read` tool backed by `createRagReadTool()` that shadows OpenCode's built-in read.
 
 ### Plugins and module structure

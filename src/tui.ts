@@ -190,7 +190,8 @@ function renderSidebar(
       text({ fg: theme.textMuted }, [timeLine]),
       text({ fg: watcherRunning ? theme.accent : theme.textMuted }, [watcherLine]),
       text({ fg: theme.textMuted }, ["Ctrl+Shift+R Settings"]),
-      text({ fg: theme.textMuted }, ["Ctrl+Enter Add Context"]),
+      text({ fg: theme.textMuted }, ["Ctrl+Enter -> Add Files"]),
+      text({ fg: theme.textMuted }, ["Alt+Enter -> Add Chunks"]),
     ],
   );
 }
@@ -234,7 +235,7 @@ type RagContextApi = {
   state: { path: { worktree: string | undefined } };
 };
 
-async function addRagContextToPrompt(api: RagContextApi, query?: string): Promise<void> {
+async function addChunksToPrompt(api: RagContextApi, query?: string): Promise<void> {
   const worktree = api.state.path.worktree;
   if (!worktree) {
     api.ui.toast({ variant: "error", title: "RAG Context", message: "No workspace open" });
@@ -244,20 +245,11 @@ async function addRagContextToPrompt(api: RagContextApi, query?: string): Promis
   let searchQuery = query ?? currentPromptRef?.current.input?.trim() ?? "";
 
   if (!searchQuery) {
-    api.ui.dialog.replace(
-      () =>
-        api.ui.DialogPrompt({
-          title: "Add RAG Context",
-          placeholder: "Enter search query\u2026",
-          onConfirm: (value: string) => {
-            api.ui.dialog.clear();
-            addRagContextToPrompt(api, value);
-          },
-          onCancel: () => {
-            api.ui.dialog.clear();
-          },
-        }),
-    );
+    api.ui.toast({
+      variant: "info",
+      title: "RAG Context",
+      message: "Type a prompt first, then press Alt+Enter",
+    });
     return;
   }
 
@@ -317,17 +309,6 @@ async function addRagContextToPrompt(api: RagContextApi, query?: string): Promis
         parts: currentPromptRef.current.parts ?? [],
       });
       currentPromptRef.focus();
-    } else {
-      api.ui.dialog.replace(
-        () =>
-          api.ui.DialogPrompt({
-            title: `RAG Context (${results.length} chunks)`,
-            placeholder: "Copy context from here\u2026",
-            value: formatted,
-            onConfirm: () => api.ui.dialog.clear(),
-            onCancel: () => api.ui.dialog.clear(),
-          }),
-      );
     }
 
     api.ui.toast({
@@ -345,12 +326,156 @@ async function addRagContextToPrompt(api: RagContextApi, query?: string): Promis
   }
 }
 
+function formatFileListForDialog(
+  results: Awaited<ReturnType<typeof retrieve>>,
+  worktree: string,
+): string {
+  if (results.length === 0) return "";
+
+  const fileMap = new Map<string, { lines: number[]; scores: number[]; language: string }>();
+
+  for (const r of results) {
+    const m = r.chunk.metadata;
+    const existing = fileMap.get(m.filePath);
+    if (existing) {
+      existing.lines.push(m.startLine, m.endLine);
+      existing.scores.push(r.score);
+    } else {
+      fileMap.set(m.filePath, {
+        lines: [m.startLine, m.endLine],
+        scores: [r.score],
+        language: m.language,
+      });
+    }
+  }
+
+  const sorted = [...fileMap.entries()]
+    .sort((a, b) => Math.max(...b[1].scores) - Math.max(...a[1].scores))
+    .slice(0, 10);
+
+  const lines: string[] = [];
+  lines.push(`Relevant files (${sorted.length}):\n`);
+  for (const [filePath, info] of sorted) {
+    const relPath = filePath.startsWith(worktree)
+      ? filePath.slice(worktree.length + 1).replace(/\\/g, "/")
+      : filePath.replace(/\\/g, "/");
+    const minLine = Math.min(...info.lines);
+    const maxLine = Math.max(...info.lines);
+    const relevance = Math.max(...info.scores).toFixed(2);
+    lines.push(`  ${relPath} (${info.language}, lines ${minLine}-${maxLine}, relevance ${relevance})`);
+  }
+  lines.push("\nUse `opencode-rag-context` to retrieve full chunks, or `find_usages` before editing.");
+  return lines.join("\n");
+}
+
+async function addFileListToPrompt(api: RagContextApi, query?: string): Promise<void> {
+  const worktree = api.state.path.worktree;
+  if (!worktree) {
+    api.ui.toast({ variant: "error", title: "RAG File List", message: "No workspace open" });
+    return;
+  }
+
+  let searchQuery = query ?? currentPromptRef?.current.input?.trim() ?? "";
+
+  if (!searchQuery) {
+    api.ui.toast({
+      variant: "info",
+      title: "RAG File List",
+      message: "Type a prompt first, then press Ctrl+Enter",
+    });
+    return;
+  }
+
+  try {
+    const configPath = getConfigPath(worktree);
+    if (!configPath) {
+      api.ui.toast({ variant: "error", title: "RAG File List", message: "No config file found" });
+      return;
+    }
+
+    const cfg = loadConfig(configPath);
+    const embedder = createEmbedder(cfg);
+    const storePath = resolve(worktree, cfg.vectorStore.path);
+    const store = new LanceDBStore(storePath);
+
+    const count = await store.count();
+    if (count === 0) {
+      api.ui.toast({
+        variant: "warning",
+        title: "RAG File List",
+        message: "No indexed chunks available. Run `opencode-rag index` first.",
+      });
+      return;
+    }
+
+    let keywordIndex: KeywordIndex | undefined;
+    try {
+      keywordIndex = await KeywordIndex.load(storePath);
+    } catch {
+      // keyword index unavailable, continue with vector-only search
+    }
+
+    const results = await retrieve(searchQuery, embedder, store, {
+      topK: cfg.retrieval.topK,
+      minScore: cfg.retrieval.minScore,
+      keywordIndex,
+      keywordWeight: cfg.retrieval.hybridSearch?.keywordWeight,
+      queryPrefix: cfg.embedding.queryPrefix,
+    });
+
+    if (results.length === 0) {
+      api.ui.toast({
+        variant: "info",
+        title: "RAG File List",
+        message: `No matching chunks found for "${searchQuery}"`,
+      });
+      return;
+    }
+
+    const formatted = formatFileListForDialog(results, worktree);
+
+    if (currentPromptRef) {
+      const current = currentPromptRef.current.input;
+      currentPromptRef.set({
+        input: current + formatted,
+        mode: currentPromptRef.current.mode ?? "normal",
+        parts: currentPromptRef.current.parts ?? [],
+      });
+      currentPromptRef.focus();
+    } else {
+      api.ui.dialog.replace(
+        () =>
+          api.ui.DialogPrompt({
+            title: `RAG File List (${results.length} files)`,
+            placeholder: "Copy context from here\u2026",
+            value: formatted,
+            onConfirm: () => api.ui.dialog.clear(),
+            onCancel: () => api.ui.dialog.clear(),
+          }),
+      );
+    }
+
+    api.ui.toast({
+      variant: "success",
+      title: "RAG File List",
+      message: `Appended ${results.length} files for "${searchQuery}"`,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    api.ui.toast({
+      variant: "error",
+      title: "RAG File List",
+      message: `Retrieval failed: ${message}`,
+    });
+  }
+}
+
 function renderAddContextButton(api: RagContextApi & {
   theme: { current: { textMuted: unknown } };
 }): JSX.Element {
   return box(
     {
-      onClick: () => addRagContextToPrompt(api),
+      onClick: () => addFileListToPrompt(api),
       paddingLeft: 1,
       paddingRight: 1,
       cursor: "pointer",
@@ -918,15 +1043,33 @@ const plugin: TuiPluginModule & { id: string } = {
       // Keymap registration may fail in older OpenCode versions; silently skip
     }
 
-    // Register keybinding for "Add RAG Context"
+    // Register keybinding for "Show Relevant Files" (Ctrl+Enter)
     try {
       api.keymap.registerLayer({
-        bindings: [{ key: "ctrl+enter", cmd: "opencode-rag:add-context" }],
+        bindings: [{ key: "ctrl+enter", cmd: "opencode-rag:show-file-list" }],
         commands: [
           {
-            name: "opencode-rag:add-context",
+            name: "opencode-rag:show-file-list",
             run: () => {
-              addRagContextToPrompt(api);
+              addFileListToPrompt(api);
+              return undefined;
+            },
+          },
+        ],
+      });
+    } catch (err) {
+      // Keymap registration may fail in older OpenCode versions; silently skip
+    }
+
+    // Register keybinding for "Add RAG Chunks" (Alt+Enter)
+    try {
+      api.keymap.registerLayer({
+        bindings: [{ key: "alt+enter", cmd: "opencode-rag:add-chunks" }],
+        commands: [
+          {
+            name: "opencode-rag:add-chunks",
+            run: () => {
+              addChunksToPrompt(api);
               return undefined;
             },
           },

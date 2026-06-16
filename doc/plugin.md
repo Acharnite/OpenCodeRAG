@@ -84,7 +84,7 @@ Usages of "createRagHooks" — 5 references across 2 files
 After each user message, the plugin runs automatic retrieval:
 
 - **High-confidence results** (score ≥ `openCode.autoInject.minScore`, default 0.75): Actual code chunks are injected directly into the message under an **Auto-retrieved code context** header. This saves a tool-call round-trip.
-- **Lower-confidence results**: A compact file suggestion list is appended as `path (lang, lines N-M)` — up to 10 files, no scores or snippets.
+- **No fallback is injected for low-confidence results** — agents must use tools explicitly or Ctrl+Enter (file list) / Alt+Enter (chunks) from the TUI.
 
 The auto-injection respects:
 - `maxChunks` (default 3) — maximum chunks to inject
@@ -102,9 +102,9 @@ The auto-injection respects:
 
 The skill teaches the workflow: skeleton → find_usages → search → read → edit.
 
-### 4. System Prompt Guidance (Conditional)
+### 4. System Prompt Guidance (Always)
 
-The `experimental.chat.system.transform` hook prepends a brief tool list to the system prompt, but **only when chunks are indexed** (`store.count() > 0`). This saves ~150 tokens per message for unindexed projects or fresh sessions.
+The `experimental.chat.system.transform` hook prepends a tool list to the system prompt on every message, ensuring agents always know the tools are available — even before the index is built.
 
 ### 5. Read Tool Override
 

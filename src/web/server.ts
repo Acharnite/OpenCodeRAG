@@ -23,7 +23,7 @@ export async function startWebUi(
   const keywordIndex = await KeywordIndex.load(storePath);
 
   const html = getStaticHtml();
-  const apiHandler = createApiHandler(store, keywordIndex);
+  const apiHandler = createApiHandler(store, keywordIndex, storePath);
 
   const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? "/";

@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { LanceDBStore } from "../vectorstore/lancedb.js";
 import { KeywordIndex } from "../retriever/keyword-index.js";
+import { listSessions, getSession, deleteSession, compareSessions } from "../eval/storage.js";
 
 interface ApiResponse {
   status: number;
@@ -15,14 +16,37 @@ function parseQuery(url: string): { path: string; params: URLSearchParams } {
   };
 }
 
-export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex) {
+function sendJson(res: ServerResponse, response: ApiResponse): void {
+  res.writeHead(response.status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  });
+  res.end(JSON.stringify(response.body));
+}
+
+export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex, storePath: string) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = req.url ?? "/";
+    const method = req.method ?? "GET";
     const { path, params } = parseQuery(url);
+
+    // CORS preflight
+    if (method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      });
+      res.end();
+      return true;
+    }
 
     let response: ApiResponse;
 
     try {
+      // Existing endpoints
       if (path === "/api/stats") {
         response = await handleStats(store);
       } else if (path === "/api/files") {
@@ -36,20 +60,27 @@ export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex
         response = await handleSearch(keywordIndex, params);
       } else if (path === "/api/compare") {
         response = await handleCompare(store, params);
+      }
+      // Eval endpoints
+      else if (path === "/api/eval/sessions" && method === "GET") {
+        response = await handleEvalSessions(storePath);
+      } else if (path.startsWith("/api/eval/sessions/") && method === "GET") {
+        const id = path.slice("/api/eval/sessions/".length);
+        response = await handleEvalSession(storePath, id);
+      } else if (path.startsWith("/api/eval/sessions/") && method === "DELETE") {
+        const id = path.slice("/api/eval/sessions/".length);
+        response = await handleEvalDeleteSession(storePath, id);
+      } else if (path === "/api/eval/compare" && method === "GET") {
+        response = await handleEvalCompare(storePath, params);
       } else {
         return false;
       }
 
-      res.writeHead(response.status, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      });
-      res.end(JSON.stringify(response.body));
+      sendJson(res, response);
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: message }));
+      sendJson(res, { status: 500, body: { error: message } });
       return true;
     }
   };
@@ -176,4 +207,40 @@ async function handleCompare(
   );
 
   return { status: 200, body: { chunks } };
+}
+
+// ── Eval API ──────────────────────────────────────────────────────────
+
+async function handleEvalSessions(storePath: string): Promise<ApiResponse> {
+  const sessions = listSessions(storePath);
+  return { status: 200, body: { sessions } };
+}
+
+async function handleEvalSession(storePath: string, id: string): Promise<ApiResponse> {
+  const session = getSession(storePath, id);
+  if (!session) {
+    return { status: 404, body: { error: "Session not found" } };
+  }
+  return { status: 200, body: session };
+}
+
+async function handleEvalDeleteSession(storePath: string, id: string): Promise<ApiResponse> {
+  deleteSession(storePath, id);
+  return { status: 200, body: { deleted: true } };
+}
+
+async function handleEvalCompare(storePath: string, params: URLSearchParams): Promise<ApiResponse> {
+  const idA = params.get("a") ?? "";
+  const idB = params.get("b") ?? "";
+
+  if (!idA || !idB) {
+    return { status: 400, body: { error: "Both 'a' and 'b' session IDs are required" } };
+  }
+
+  const result = compareSessions(storePath, idA, idB);
+  if (!result) {
+    return { status: 404, body: { error: "One or both sessions not found" } };
+  }
+
+  return { status: 200, body: result };
 }

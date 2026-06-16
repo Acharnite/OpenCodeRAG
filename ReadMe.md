@@ -38,7 +38,7 @@ opencode-rag query "authentication middleware"
 | **AST chunking** | 17 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, JSON, HTML, CSS, XML) |
 | **Document support** | Markdown, LaTeX, PDF, DOCX, DOC, Excel |
 | **Hybrid search** | Vector similarity + TF×IDF keyword fusion |
-| **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings |
+| **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings, Ctrl+Enter to add RAG context |
 | **Incremental indexing** | File-hash manifest, background watcher, auto-rebuild on corruption |
 | **Privacy-first** | All processing stays local with Ollama |
 | **CLI** | `index`, `query`, `status`, `list`, `show`, `dump`, `clear`, `init`, `ui` |
@@ -104,6 +104,9 @@ After every message you send, the plugin searches your vector-indexed codebase:
 
 ### 3. System Prompt Guidance (Conditional)
 When chunks are indexed, a brief tool list is prepended to the system prompt so agents know the tools exist. This is skipped when no chunks are indexed to save tokens.
+
+### 4. On-Demand RAG Context (Ctrl+Enter)
+Press **Ctrl+Enter** in the terminal prompt (or click the **+RAG** button) to retrieve and append relevant code context to your current prompt. The query is taken from your typed text — if the prompt is empty, a dialog asks for one. Results are appended as formatted code blocks with file paths, line ranges, and relevance scores.
 
 ---
 

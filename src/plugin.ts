@@ -17,6 +17,7 @@ import {
   createFindUsagesTool,
 } from "./opencode/tools.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
+import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -426,6 +427,9 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   const sessionLastMessage = new Map<string, string>();
   const sessionRetrievalCache = new Map<string, { messageText: string; rawResults: SearchResult[] }>();
 
+  // Evaluation session logger — captures OpenCode events for analysis
+  const sessionLogger: SessionLogger = createSessionLogger(options.storePath);
+
   appendDebugLog(options.logFilePath, {
     scope: "plugin",
     message: "OpenCode plugin initialized",
@@ -625,13 +629,10 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
   return {
     async event({ event }) {
-      //appendVerboseLog(options.logFilePath, "event", "opencode event received", event);
+      sessionLogger.onEvent(event as Parameters<typeof sessionLogger.onEvent>[0]);
     },
     tool: tools,
     async "experimental.chat.system.transform"(_input, output) {
-      const count = await store.count();
-      if (count === 0) return;
-
       appendDebugLog(options.logFilePath, {
         scope: "experimental.chat.system.transform",
         message: "system guidance injected",
@@ -677,6 +678,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
         const effectiveCfg = getEffectiveCfg();
         const hybridCfg = effectiveCfg.retrieval.hybridSearch;
+        const retrievalStart = Date.now();
         const results = await dependencies.retrieve(text, embedder, store, {
           topK: effectiveCfg.retrieval.topK,
           minScore: effectiveCfg.retrieval.minScore,
@@ -684,11 +686,22 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           keywordWeight: hybridCfg?.keywordWeight,
           queryPrefix: effectiveCfg.embedding.queryPrefix,
         });
+        const retrievalTimeMs = Date.now() - retrievalStart;
 
-        if (results.length === 0) return;
+        if (results.length === 0) {
+          sessionLogger.onRagContext(input.sessionID, input.messageID, {
+            chunkCount: 0,
+            uniqueFiles: 0,
+            contextTokens: 0,
+            topScore: 0,
+            retrievalTimeMs,
+          });
+          return;
+        }
 
         const autoInjectCfg = effectiveCfg.openCode.autoInject;
         let suggestionList: string | undefined;
+        let injectedChunks: SearchResult[] = [];
 
         if (autoInjectCfg?.enabled !== false) {
           const minScore = autoInjectCfg?.minScore ?? 0.75;
@@ -697,6 +710,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           const highConfidence = results.filter((r) => r.score >= minScore);
 
           if (highConfidence.length > 0) {
+            injectedChunks = highConfidence.slice(0, maxChunks);
             suggestionList = formatAutoInjectContext(
               highConfidence,
               options.worktree,
@@ -706,9 +720,15 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           }
         }
 
-        if (!suggestionList) {
-          suggestionList = formatFileList(results, options.worktree);
-        }
+        const estimateTokens = (text: string) => Math.ceil(text.length / 4);
+
+        sessionLogger.onRagContext(input.sessionID, input.messageID, {
+          chunkCount: injectedChunks.length,
+          uniqueFiles: new Set(injectedChunks.map((r) => r.chunk.metadata.filePath)).size,
+          contextTokens: suggestionList ? estimateTokens(suggestionList) : 0,
+          topScore: injectedChunks[0]?.score ?? 0,
+          retrievalTimeMs,
+        });
 
         if (!suggestionList) return;
 

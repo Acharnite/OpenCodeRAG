@@ -43,6 +43,7 @@
       <button id="nav-chunks" class="nav-btn px-3 py-1 rounded text-sm font-medium hover:bg-slate-700 transition">Chunks</button>
       <button id="nav-files" class="nav-btn px-3 py-1 rounded text-sm font-medium hover:bg-slate-700 transition">Files</button>
       <button id="nav-compare" class="nav-btn px-3 py-1 rounded text-sm font-medium hover:bg-slate-700 transition">Compare</button>
+      <button id="nav-evaluate" class="nav-btn px-3 py-1 rounded text-sm font-medium hover:bg-slate-700 transition">Evaluate</button>
     </nav>
     <div class="flex-1"></div>
     <div class="relative">
@@ -75,6 +76,7 @@
       </div>
       <div id="view-files" class="h-full overflow-y-auto scrollbar-thin"></div>
       <div id="view-compare" class="h-full overflow-y-auto scrollbar-thin"></div>
+      <div id="view-evaluate" class="hidden h-full overflow-y-auto scrollbar-thin"></div>
     </main>
   </div>
 
@@ -96,7 +98,11 @@
       async compare(ids) {
         const p = new URLSearchParams({ids: ids.join(',')});
         const r = await fetch('/api/compare?' + p); return r.json();
-      }
+      },
+      async evalSessions() { const r = await fetch('/api/eval/sessions'); return r.json(); },
+      async evalSession(id) { const r = await fetch('/api/eval/sessions/' + encodeURIComponent(id)); return r.json(); },
+      async evalDeleteSession(id) { const r = await fetch('/api/eval/sessions/' + encodeURIComponent(id), { method: 'DELETE' }); return r.json(); },
+      async evalCompare(a, b) { const p = new URLSearchParams({a, b}); const r = await fetch('/api/eval/compare?' + p); return r.json(); },
     };
 
     const state = {
@@ -110,7 +116,9 @@
       collapsedDirs: new Set(),
       stats: null,
       files: [],
-      currentChunks: []
+      currentChunks: [],
+      evalSelectedSessions: new Set(),
+      evalSessionDetail: null,
     };
 
     function $(sel) { return document.querySelector(sel); }
@@ -634,6 +642,434 @@
       renderFiles();
     });
     $('#nav-compare')?.addEventListener('click', () => { showView('compare'); renderCompare(); });
+    $('#nav-evaluate')?.addEventListener('click', () => { showView('evaluate'); renderEvaluate(); });
+
+    // ── Evaluate View ──────────────────────────────────────────────────
+
+    function formatTokens(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+      return String(n);
+    }
+
+    function formatCost(n) {
+      if (n === 0) return '$0.00';
+      if (n < 0.01) return '$' + n.toFixed(4);
+      return '$' + n.toFixed(2);
+    }
+
+    function formatMs(ms) {
+      if (ms >= 60000) return (ms / 60000).toFixed(1) + 'm';
+      if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+      return ms + 'ms';
+    }
+
+    function formatTimestamp(ts) {
+      if (!ts) return '-';
+      const d = new Date(ts);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function deltaStr(val, suffix) {
+      if (val === 0) return '<span class="text-slate-500">-</span>';
+      const sign = val > 0 ? '+' : '';
+      const color = val > 0 ? 'text-red-400' : 'text-green-400';
+      return `<span class="${color}">${sign}${typeof val === 'number' ? (suffix === '$' ? formatCost(val) : suffix === '%' ? val.toFixed(1) + '%' : formatTokens(val)) : val}</span>`;
+    }
+
+    async function renderEvaluate() {
+      const el = $('#view-evaluate');
+      el.innerHTML = '<div class="text-center py-10 text-slate-500">Loading sessions...</div>';
+
+      const data = await API.evalSessions();
+      const sessions = data.sessions || [];
+
+      if (sessions.length === 0) {
+        el.innerHTML = `
+          <div class="text-center py-20">
+            <div class="text-4xl mb-3">&#128202;</div>
+            <h2 class="text-lg font-semibold text-slate-400 mb-2">No sessions recorded yet</h2>
+            <p class="text-sm text-slate-500 max-w-md mx-auto">
+              Sessions are logged automatically when the OpenCodeRAG plugin is active.
+              Use OpenCode normally — every conversation is captured here with token usage, timing, and RAG context data.
+            </p>
+          </div>`;
+        return;
+      }
+
+      const selected = state.evalSelectedSessions;
+
+      el.innerHTML = `
+        <div class="flex items-center gap-4 mb-4">
+          <h2 class="text-lg font-semibold text-white">Evaluate</h2>
+          <span class="text-sm text-slate-400">${sessions.length} session${sessions.length === 1 ? '' : 's'}</span>
+          <div class="flex-1"></div>
+          <button id="eval-compare-btn" class="px-3 py-1 bg-brand-600 rounded text-sm font-medium hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed" ${selected.size === 2 ? '' : 'disabled'}>Compare Selected (2)</button>
+          <button id="eval-select-all" class="px-2 py-1 bg-slate-700 rounded text-xs hover:bg-slate-600">Select All</button>
+          <button id="eval-clear-sel" class="px-2 py-1 bg-slate-700 rounded text-xs hover:bg-slate-600">Clear</button>
+        </div>
+
+        <div class="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden mb-6">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-slate-800 text-slate-400 text-xs">
+                <th class="px-3 py-2 text-left w-8"></th>
+                <th class="px-3 py-2 text-left">Session</th>
+                <th class="px-3 py-2 text-left w-36">Last Activity</th>
+                <th class="px-3 py-2 text-right w-24">Messages</th>
+                <th class="px-3 py-2 text-right w-28">Input Tokens</th>
+                <th class="px-3 py-2 text-right w-28">Output Tokens</th>
+                <th class="px-3 py-2 text-right w-20">Cost</th>
+                <th class="px-3 py-2 text-right w-24">RAG Calls</th>
+                <th class="px-3 py-2 text-right w-28">RAG Tokens</th>
+                <th class="px-3 py-2 text-left w-28">Model</th>
+                <th class="px-3 py-2 text-left w-16"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sessions.map(s => {
+                const checked = selected.has(s.sessionID) ? 'checked' : '';
+                const title = s.title || s.sessionID.slice(0, 8);
+                const totalIn = s.totalTokens.input + s.totalTokens.cacheRead;
+                return `
+                <tr class="border-t border-slate-800 hover:bg-slate-800 cursor-pointer eval-row" data-id="${s.sessionID}">
+                  <td class="px-3 py-2"><input type="checkbox" class="eval-check rounded" data-id="${s.sessionID}" ${checked}></td>
+                  <td class="px-3 py-2 text-yellow-400 font-mono text-xs">${escapeHtml(truncate(title, 40))}</td>
+                  <td class="px-3 py-2 text-slate-400 text-xs">${formatTimestamp(s.lastEventAt)}</td>
+                  <td class="px-3 py-2 text-right text-slate-300">${s.messageCount}</td>
+                  <td class="px-3 py-2 text-right text-slate-300">${formatTokens(totalIn)}</td>
+                  <td class="px-3 py-2 text-right text-slate-300">${formatTokens(s.totalTokens.output)}</td>
+                  <td class="px-3 py-2 text-right text-slate-300">${formatCost(s.totalCost)}</td>
+                  <td class="px-3 py-2 text-right text-cyan-400">${s.ragContextCount}</td>
+                  <td class="px-3 py-2 text-right text-cyan-400">${s.ragContextTokens > 0 ? formatTokens(s.ragContextTokens) : '-'}</td>
+                  <td class="px-3 py-2 text-slate-400 text-xs">${s.models.length > 0 ? escapeHtml(s.models[0]) : '-'}</td>
+                  <td class="px-3 py-2"><button class="eval-delete text-slate-600 hover:text-red-400 text-xs" data-id="${s.sessionID}" title="Delete">&#128465;</button></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div id="eval-detail-area"></div>
+        <div id="eval-compare-area"></div>
+      `;
+
+      // Row click -> show detail
+      $$('.eval-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          if (e.target.type === 'checkbox' || e.target.closest('.eval-delete')) return;
+          const id = row.dataset.id;
+          renderEvalDetail(id);
+        });
+      });
+
+      // Checkboxes
+      $$('.eval-check').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const id = e.target.dataset.id;
+          if (e.target.checked) selected.add(id);
+          else selected.delete(id);
+          updateEvalCompareBtn();
+        });
+      });
+
+      // Delete buttons
+      $$('.eval-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          await API.evalDeleteSession(id);
+          selected.delete(id);
+          renderEvaluate();
+        });
+      });
+
+      // Compare button
+      $('#eval-compare-btn')?.addEventListener('click', () => {
+        const ids = [...selected];
+        if (ids.length === 2) renderEvalComparison(ids[0], ids[1]);
+      });
+
+      // Select all / clear
+      $('#eval-select-all')?.addEventListener('click', () => {
+        sessions.forEach(s => selected.add(s.sessionID));
+        $$('.eval-check').forEach(cb => cb.checked = true);
+        updateEvalCompareBtn();
+      });
+      $('#eval-clear-sel')?.addEventListener('click', () => {
+        selected.clear();
+        $$('.eval-check').forEach(cb => cb.checked = false);
+        updateEvalCompareBtn();
+      });
+
+      function updateEvalCompareBtn() {
+        const btn = $('#eval-compare-btn');
+        if (btn) {
+          btn.disabled = selected.size !== 2;
+          btn.textContent = `Compare Selected (${selected.size})`;
+        }
+      }
+    }
+
+    async function renderEvalDetail(sessionId) {
+      const area = $('#eval-detail-area');
+      if (!area) return;
+
+      area.innerHTML = '<div class="text-center py-4 text-slate-500">Loading...</div>';
+
+      const data = await API.evalSession(sessionId);
+      if (!data || data.error) {
+        area.innerHTML = '<div class="text-center py-4 text-red-400">Session not found</div>';
+        return;
+      }
+
+      const { events, summary: s } = data;
+      const totalIn = s.totalTokens.input + s.totalTokens.cacheRead;
+      const totalAll = totalIn + s.totalTokens.output + s.totalTokens.reasoning;
+
+      const toolEntries = Object.entries(s.toolCallCounts).sort((a, b) => b[1] - a[1]);
+
+      area.innerHTML = `
+        <div class="mb-4">
+          <div class="flex items-center gap-3 mb-3">
+            <h3 class="text-base font-semibold text-white">Session Detail</h3>
+            <span class="text-xs font-mono text-slate-500">${s.sessionID}</span>
+          </div>
+
+          <div class="grid grid-cols-5 gap-3 mb-4">
+            <div class="kpi-card p-3">
+              <div class="text-slate-400 text-xs mb-1">Total Tokens</div>
+              <div class="text-xl font-bold text-white">${formatTokens(totalAll)}</div>
+            </div>
+            <div class="kpi-card p-3">
+              <div class="text-slate-400 text-xs mb-1">Input Tokens</div>
+              <div class="text-xl font-bold text-white">${formatTokens(totalIn)}</div>
+            </div>
+            <div class="kpi-card p-3">
+              <div class="text-slate-400 text-xs mb-1">Output Tokens</div>
+              <div class="text-xl font-bold text-white">${formatTokens(s.totalTokens.output)}</div>
+            </div>
+            <div class="kpi-card p-3">
+              <div class="text-slate-400 text-xs mb-1">Cost</div>
+              <div class="text-xl font-bold text-white">${formatCost(s.totalCost)}</div>
+            </div>
+            <div class="kpi-card p-3">
+              <div class="text-slate-400 text-xs mb-1">RAG Context Tokens</div>
+              <div class="text-xl font-bold text-cyan-400">${s.ragContextTokens > 0 ? formatTokens(s.ragContextTokens) : '0'}</div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-4 gap-3 mb-4">
+            <div class="kpi-card p-3">
+              <div class="text-slate-400 text-xs mb-1">Messages</div>
+              <div class="text-lg font-bold text-white">${s.messageCount}</div>
+            </div>
+            <div class="kpi-card p-3">
+              <div class="text-slate-400 text-xs mb-1">Steps</div>
+              <div class="text-lg font-bold text-white">${s.totalSteps}</div>
+            </div>
+            <div class="kpi-card p-3">
+              <div class="text-slate-400 text-xs mb-1">RAG Injections</div>
+              <div class="text-lg font-bold text-cyan-400">${s.ragContextCount}</div>
+            </div>
+            <div class="kpi-card p-3">
+              <div class="text-slate-400 text-xs mb-1">Avg Response</div>
+              <div class="text-lg font-bold text-white">${s.avgResponseTimeMs ? formatMs(s.avgResponseTimeMs) : '-'}</div>
+            </div>
+          </div>
+
+          ${toolEntries.length > 0 ? `
+          <div class="kpi-card p-3 mb-4">
+            <h4 class="text-xs font-semibold text-slate-400 mb-2">Tool Calls</h4>
+            <div class="flex flex-wrap gap-2">
+              ${toolEntries.map(([name, count]) => {
+                const isRag = ['opencode-rag-context','search_semantic','get_file_skeleton','find_usages','read'].includes(name);
+                const cls = isRag ? 'bg-cyan-900/50 text-cyan-300 border-cyan-700' : 'bg-slate-800 text-slate-400 border-slate-700';
+                return `<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs border ${cls}">${escapeHtml(name)} <strong>${count}</strong></span>`;
+              }).join('')}
+            </div>
+          </div>` : ''}
+
+          ${s.models.length > 0 ? `
+          <div class="kpi-card p-3 mb-4">
+            <h4 class="text-xs font-semibold text-slate-400 mb-2">Models Used</h4>
+            <div class="flex flex-wrap gap-2">
+              ${s.models.map(m => `<span class="inline-block px-2 py-1 rounded text-xs bg-slate-800 text-slate-300 border border-slate-700">${escapeHtml(m)}</span>`).join('')}
+            </div>
+          </div>` : ''}
+        </div>
+
+        <div class="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden">
+          <div class="px-3 py-2 bg-slate-800 border-b border-slate-700">
+            <span class="text-xs font-semibold text-slate-400">Event Timeline</span>
+            <span class="text-xs text-slate-600 ml-2">${events.length} events</span>
+          </div>
+          <div class="max-h-[500px] overflow-y-auto scrollbar-thin">
+            ${events.map(ev => renderTimelineEvent(ev)).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTimelineEvent(ev) {
+      const time = formatTimestamp(ev.ts);
+
+      if (ev.event === 'message' && ev.role === 'assistant') {
+        const tokens = ev.tokens;
+        const tokenStr = tokens ? `in=${formatTokens(tokens.input)} out=${formatTokens(tokens.output)}` : '';
+        const costStr = ev.cost != null && ev.cost > 0 ? formatCost(ev.cost) : '';
+        const errorStr = ev.errorName ? `<span class="text-red-400">[${escapeHtml(ev.errorName)}]</span> ` : '';
+        const timing = ev.timeCreated && ev.timeCompleted ? formatMs(ev.timeCompleted - ev.timeCreated) : '';
+        return `<div class="px-3 py-1.5 border-b border-slate-800 flex items-center gap-2 text-xs">
+          <span class="text-slate-600 w-16 shrink-0">${time.split(' ')[1] || time}</span>
+          <span class="text-purple-400 w-20 shrink-0">assistant</span>
+          <span class="text-slate-400">${errorStr}${tokenStr}${costStr ? ' <span class="text-green-400">' + costStr + '</span>' : ''}${timing ? ' <span class="text-slate-500">' + timing + '</span>' : ''}</span>
+        </div>`;
+      }
+
+      if (ev.event === 'rag.context') {
+        const injected = ev.ragInjected ? 'injected' : 'no match';
+        const color = ev.ragInjected ? 'text-cyan-400' : 'text-slate-500';
+        const details = ev.ragInjected ? `${ev.ragChunkCount} chunks, ${formatTokens(ev.ragContextTokens || 0)} tokens, ${formatMs(ev.ragRetrievalTimeMs || 0)}` : '';
+        return `<div class="px-3 py-1.5 border-b border-slate-800 flex items-center gap-2 text-xs">
+          <span class="text-slate-600 w-16 shrink-0">${time.split(' ')[1] || time}</span>
+          <span class="${color} w-20 shrink-0">rag</span>
+          <span class="text-slate-400">${injected} ${details}</span>
+        </div>`;
+      }
+
+      if (ev.event === 'tool') {
+        const status = ev.toolStatus || '';
+        const color = status === 'completed' ? 'text-green-400' : status === 'error' ? 'text-red-400' : 'text-yellow-400';
+        const isRag = ['opencode-rag-context','search_semantic','get_file_skeleton','find_usages','read'].includes(ev.tool);
+        const dur = ev.toolDurationMs != null ? formatMs(ev.toolDurationMs) : '';
+        return `<div class="px-3 py-1.5 border-b border-slate-800 flex items-center gap-2 text-xs">
+          <span class="text-slate-600 w-16 shrink-0">${time.split(' ')[1] || time}</span>
+          <span class="${color} w-20 shrink-0">${status}</span>
+          <span class="${isRag ? 'text-cyan-300' : 'text-slate-400'}">${escapeHtml(ev.tool || '')}</span>
+          ${dur ? `<span class="text-slate-500 ml-auto">${dur}</span>` : ''}
+        </div>`;
+      }
+
+      if (ev.event === 'step') {
+        const tokens = ev.stepTokens;
+        const tokenStr = tokens ? `in=${formatTokens(tokens.input)} out=${formatTokens(tokens.output)}` : '';
+        return `<div class="px-3 py-1.5 border-b border-slate-800 flex items-center gap-2 text-xs">
+          <span class="text-slate-600 w-16 shrink-0">${time.split(' ')[1] || time}</span>
+          <span class="text-blue-400 w-20 shrink-0">step</span>
+          <span class="text-slate-400">${ev.stepReason || ''} ${tokenStr}</span>
+        </div>`;
+      }
+
+      if (ev.event === 'session.created') {
+        return `<div class="px-3 py-1.5 border-b border-slate-800 flex items-center gap-2 text-xs">
+          <span class="text-slate-600 w-16 shrink-0">${time.split(' ')[1] || time}</span>
+          <span class="text-green-400 w-20 shrink-0">created</span>
+          <span class="text-slate-400">${escapeHtml(ev.sessionTitle || ev.sessionID)}</span>
+        </div>`;
+      }
+
+      if (ev.event === 'session.status') {
+        return `<div class="px-3 py-1.5 border-b border-slate-800 flex items-center gap-2 text-xs">
+          <span class="text-slate-600 w-16 shrink-0">${time.split(' ')[1] || time}</span>
+          <span class="text-slate-500 w-20 shrink-0">status</span>
+          <span class="text-slate-500">${escapeHtml(ev.sessionStatus || '')}</span>
+        </div>`;
+      }
+
+      return '';
+    }
+
+    async function renderEvalComparison(idA, idB) {
+      const area = $('#eval-compare-area');
+      if (!area) return;
+
+      area.innerHTML = '<div class="text-center py-4 text-slate-500">Loading comparison...</div>';
+
+      const data = await API.evalCompare(idA, idB);
+      if (!data || data.error) {
+        area.innerHTML = `<div class="text-center py-4 text-red-400">${escapeHtml(data?.error || 'Comparison failed')}</div>`;
+        return;
+      }
+
+      const { sessionA: a, sessionB: b, delta } = data;
+      const aTotalIn = a.totalTokens.input + a.totalTokens.cacheRead;
+      const bTotalIn = b.totalTokens.input + b.totalTokens.cacheRead;
+      const aTotal = aTotalIn + a.totalTokens.output + a.totalTokens.reasoning;
+      const bTotal = bTotalIn + b.totalTokens.output + b.totalTokens.reasoning;
+
+      function pctDelta(aVal, bVal) {
+        if (aVal === 0) return bVal === 0 ? 0 : 100;
+        return ((bVal - aVal) / aVal) * 100;
+      }
+
+      const rows = [
+        { label: 'Total Tokens', a: aTotal, b: bTotal, fmt: formatTokens, pct: true },
+        { label: 'Input Tokens', a: aTotalIn, b: bTotalIn, fmt: formatTokens, pct: true },
+        { label: 'Output Tokens', a: a.totalTokens.output, b: b.totalTokens.output, fmt: formatTokens, pct: true },
+        { label: 'Reasoning Tokens', a: a.totalTokens.reasoning, b: b.totalTokens.reasoning, fmt: formatTokens, pct: true },
+        { label: 'Cache Read', a: a.totalTokens.cacheRead, b: b.totalTokens.cacheRead, fmt: formatTokens, pct: false },
+        { label: 'Cost', a: a.totalCost, b: b.totalCost, fmt: formatCost, pct: true },
+        { label: 'Messages', a: a.messageCount, b: b.messageCount, fmt: String, pct: false },
+        { label: 'Steps', a: a.totalSteps, b: b.totalSteps, fmt: String, pct: false },
+        { label: 'RAG Injections', a: a.ragContextCount, b: b.ragContextCount, fmt: String, pct: false },
+        { label: 'RAG Context Tokens', a: a.ragContextTokens, b: b.ragContextTokens, fmt: formatTokens, pct: false },
+        { label: 'RAG Tool Calls', a: a.ragToolCalls, b: b.ragToolCalls, fmt: String, pct: false },
+        { label: 'Avg Response Time', a: a.avgResponseTimeMs || 0, b: b.avgResponseTimeMs || 0, fmt: formatMs, pct: true },
+      ];
+
+      area.innerHTML = `
+        <div class="mt-6 mb-4">
+          <div class="flex items-center gap-3 mb-3">
+            <h3 class="text-base font-semibold text-white">Comparison</h3>
+            <button id="eval-close-compare" class="text-xs text-slate-500 hover:text-white ml-auto">Close</button>
+          </div>
+
+          <div class="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-slate-800 text-slate-400 text-xs">
+                  <th class="px-4 py-2 text-left">Metric</th>
+                  <th class="px-4 py-2 text-right w-32">${escapeHtml(truncate(a.title || a.sessionID.slice(0, 8), 20))}</th>
+                  <th class="px-4 py-2 text-right w-32">${escapeHtml(truncate(b.title || b.sessionID.slice(0, 8), 20))}</th>
+                  <th class="px-4 py-2 text-right w-28">Delta</th>
+                  <th class="px-4 py-2 text-right w-20">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(r => {
+                  const d = r.b - r.a;
+                  const pct = r.pct ? pctDelta(r.a, r.b) : null;
+                  const dColor = d > 0 ? 'text-red-400' : d < 0 ? 'text-green-400' : 'text-slate-500';
+                  const dSign = d > 0 ? '+' : '';
+                  return `
+                  <tr class="border-t border-slate-800">
+                    <td class="px-4 py-2 text-slate-300">${r.label}</td>
+                    <td class="px-4 py-2 text-right text-slate-400">${r.fmt(r.a)}</td>
+                    <td class="px-4 py-2 text-right text-slate-400">${r.fmt(r.b)}</td>
+                    <td class="px-4 py-2 text-right ${dColor}">${d === 0 ? '-' : dSign + r.fmt(Math.abs(d))}</td>
+                    <td class="px-4 py-2 text-right ${dColor}">${pct === null ? '-' : (pct > 0 ? '+' : '') + pct.toFixed(1) + '%'}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          ${delta.ragContextTokens !== 0 ? `
+          <div class="mt-3 p-3 rounded-lg ${delta.ragContextTokens > 0 ? 'bg-cyan-900/20 border border-cyan-800' : 'bg-green-900/20 border border-green-800'}">
+            <div class="text-xs ${delta.ragContextTokens > 0 ? 'text-cyan-300' : 'text-green-300'}">
+              ${delta.ragContextTokens > 0
+                ? `RAG added ${formatTokens(delta.ragContextTokens)} context tokens (${delta.ragContextCount} injections). The LLM processed ${formatTokens(delta.inputTokens)} more input tokens with RAG enabled.`
+                : `RAG reduced context by ${formatTokens(Math.abs(delta.ragContextTokens))} tokens. The LLM processed ${formatTokens(Math.abs(delta.inputTokens))} fewer input tokens.`}
+            </div>
+          </div>` : ''}
+        </div>
+      `;
+
+      $('#eval-close-compare')?.addEventListener('click', () => {
+        area.innerHTML = '';
+      });
+    }
 
     // Init
     renderDashboard();
