@@ -1,4 +1,13 @@
-{
+﻿{
   "$schema": "https://opencode.ai/config.json",
-  "lsp": true
+  "lsp": {
+    "typescript": {
+      "command": ["npx", "-y", "typescript-language-server", "--stdio"],
+      "initialization": {
+        "tsserver": {
+          "path": "../node_modules/typescript/lib/tsserver.js"
+        }
+      }
+    }
+  }
 }

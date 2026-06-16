@@ -191,7 +191,7 @@ function renderSidebar(
       text({ fg: watcherRunning ? theme.accent : theme.textMuted }, [watcherLine]),
       text({ fg: theme.textMuted }, ["Ctrl+Shift+R → Settings"]),
       text({ fg: theme.textMuted }, ["Ctrl+Enter → Add Files"]),
-      text({ fg: theme.textMuted }, ["Alt+Enter → Add Chunks"]),
+      text({ fg: theme.textMuted }, ["Ctrl+Alt+Enter → Add Chunks"]),
     ],
   );
 }
@@ -502,6 +502,7 @@ type SettingEntry = {
 type SettingCategory = {
   id: string;
   label: string;
+  description: string;
   entries: SettingEntry[];
 };
 
@@ -635,6 +636,7 @@ function buildSettingCategories(
     {
       id: "retrieval",
       label: "Retrieval",
+      description: "Configure the retrieval options",
       entries: [
         {
           path: ["retrieval", "topK"],
@@ -665,6 +667,7 @@ function buildSettingCategories(
     {
       id: "autoindex",
       label: "Auto-Indexing",
+      description: "Configure automatic indexing of your workspace",
       entries: [
         {
           path: ["openCode", "autoIndex", "enabled"],
@@ -683,6 +686,7 @@ function buildSettingCategories(
     {
       id: "autoinject",
       label: "Auto-Inject",
+      description: "Configure automatic context injection",
       entries: [
         {
           path: ["openCode", "autoInject", "enabled"],
@@ -707,6 +711,7 @@ function buildSettingCategories(
     {
       id: "embedding",
       label: "Embedding",
+      description: "Configure the embedding model and provider",
       entries: [
         {
           path: ["embedding", "model"],
@@ -720,6 +725,7 @@ function buildSettingCategories(
     {
       id: "description",
       label: "LLM Descriptions",
+      description: "Configure LLM-based chunk descriptions",
       entries: [
         {
           path: ["description", "enabled"],
@@ -783,7 +789,7 @@ async function openSettingsDialog(api: {
       ...cats.map((c) => ({
         title: c.label,
         value: c.id,
-        description: `${c.entries.length} setting${c.entries.length === 1 ? "" : "s"}`,
+        description: c.description,
       })),
       { title: "Done", value: "__done__", description: "Close settings" },
     ];
@@ -1071,10 +1077,10 @@ const plugin: TuiPluginModule & { id: string } = {
       // Keymap registration may fail in older OpenCode versions; silently skip
     }
 
-    // Register keybinding for "Add RAG Chunks" (Alt+Enter)
+    // Register keybinding for "Add RAG Chunks" (Ctrl+Alt+Enter)
     try {
       api.keymap.registerLayer({
-        bindings: [{ key: "alt+enter", cmd: "opencode-rag:add-chunks" }],
+        bindings: [{ key: "ctrl+alt+enter", cmd: "opencode-rag:add-chunks" }],
         commands: [
           {
             name: "opencode-rag:add-chunks",

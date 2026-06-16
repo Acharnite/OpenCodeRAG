@@ -105,8 +105,8 @@ After every message you send, the plugin searches your vector-indexed codebase:
 ### 3. System Prompt Guidance (Conditional)
 When chunks are indexed, a brief tool list is prepended to the system prompt so agents know the tools exist. This is skipped when no chunks are indexed to save tokens.
 
-### 4. On-Demand RAG Context (Ctrl+Enter / Alt+Enter)
-Press **Ctrl+Enter** in the terminal prompt to retrieve and append a relevant file list to your current prompt. Press **Alt+Enter** to append full code chunks instead. The query is taken from your typed text — if the prompt is empty, a toast reminds you to type first. Results are appended directly to the prompt as formatted code blocks with file paths, line ranges, and relevance scores. No dialogs are opened.
+### 4. On-Demand RAG Context (Ctrl+Enter / Ctrl+Alt+Enter)
+Press **Ctrl+Enter** in the terminal prompt to retrieve and append a relevant file list to your current prompt. Press **Ctrl+Alt+Enter** to append full code chunks instead. The query is taken from your typed text — if the prompt is empty, a toast reminds you to type first. Results are appended directly to the prompt as formatted code blocks with file paths, line ranges, and relevance scores. No dialogs are opened.
 
 ---
 
