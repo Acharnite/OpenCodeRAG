@@ -4,7 +4,7 @@ OpenCodeRAG uses **tree-sitter** (AST-based) parsing for programming languages, 
 
 ## Supported Languages & Formats
 
-### AST-Based (tree-sitter) — 17 Languages
+### AST-Based (tree-sitter) — 25 Languages
 
 | Language | Chunker | Extensions |
 |---|---|---|
@@ -20,18 +20,26 @@ OpenCodeRAG uses **tree-sitter** (AST-based) parsing for programming languages, 
 | Ruby | `ruby.ts` | `.rb` |
 | Kotlin | `kotlin.ts` | `.kt`, `.kts` |
 | Swift | `swift.ts` | `.swift` |
+| Bash | `bash.ts` | `.sh`, `.bash`, `.zsh` |
+| PHP | `php.ts` | `.php` |
+| PowerShell | `powershell.ts` | `.ps1`, `.psm1`, `.psd1` |
+| SQL | `sql.ts` | `.sql` |
 | JSON | `json.ts` | `.json` |
 | HTML | `html.ts` | `.html`, `.htm` |
 | CSS | `css.ts` | `.css` |
 | XML | `xml.ts` | `.xml` |
-| Razor | `razor.ts` | `.razor`, `.cshtml` |
+| YAML | `yaml.ts` | `.yaml`, `.yml` |
+| TOML | `toml.ts` | `.toml` |
+| INI | `ini.ts` | `.ini`, `.cfg` |
+| Dockerfile | `dockerfile.ts` | `Dockerfile`, `Containerfile` |
+| Markdown | `markdown.ts` | `.md`, `.mdx` |
 
 ### Regex / Structure-Based
 
 | Format | Chunker | Extensions | Strategy |
 |---|---|---|---|
-| Markdown | `markdown.ts` | `.md`, `.mdx` | Heading-splitter, code-block aware |
 | LaTeX | `tex.ts` | `.tex` | Section-splitter (chapter/section/subsection), comment-aware |
+| Razor | `razor.ts` | `.razor`, `.cshtml` | Tag/block based |
 | Solution | `sln.ts` | `.sln` | Project-section based |
 
 ### Document Text Extraction
@@ -85,8 +93,8 @@ Simply splits text into 100-line blocks. Used for any extension not handled by a
 1. Create `src/chunker/<lang>.ts` extending `TreeSitterChunker`
 2. Set `language`, `fileExtensions`, `grammarName`, `nodeTypes`
 3. Add the new chunker instance to the `chunkers` array in `factory.ts`
-4. Verify the grammar exists in `tree-sitter-wasm` (`node_modules/tree-sitter-wasm/README.md`)
-5. Add the extension to `DEFAULT_CONFIG.indexing.includeExtensions`
+4. Add the extension to `DEFAULT_CONFIG.indexing.includeExtensions`
+5. If the language is available in `@vscode/tree-sitter-wasm` (`node_modules/@vscode/tree-sitter-wasm/wasm/`), it's automatically resolved. Otherwise, build the WASM from an official grammar package and place it in `wasm/`.
 
 ## Adding a Non-Code Chunker (e.g., PDF)
 
@@ -128,6 +136,14 @@ By default, AST-based chunkers use **function-level chunking** — they split co
 | Kotlin | functions, objects, properties | classes, interfaces (use class_declaration in grammar) |
 | Swift | functions, enums, protocols | classes, structs, extensions (use class_declaration in grammar) |
 | Ruby | methods, singleton_methods | classes, modules |
+| Bash | function definitions | — |
+| PHP | functions, methods | classes, interfaces |
+| PowerShell | function statements | — |
+| SQL | statements | — |
+| YAML | block mapping pairs, block sequence items | — |
+| TOML | tables, table array elements, pairs | — |
+| INI | sections | — |
+| Dockerfile | instructions (FROM, RUN, CMD, COPY, etc.) | — |
 
 ### Why function-level?
 

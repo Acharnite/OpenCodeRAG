@@ -35,7 +35,7 @@ opencode-rag query "authentication middleware"
 
 | Feature | Description |
 |---|---|
-| **AST chunking** | 17 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, JSON, HTML, CSS, XML) |
+| **AST chunking** | 25 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, Bash, PHP, PowerShell, SQL, JSON, HTML, CSS, XML, YAML, TOML, INI, Dockerfile, Markdown) |
 | **Document support** | Markdown, LaTeX, PDF, DOCX, DOC, Excel |
 | **Hybrid search** | Vector similarity + TF×IDF keyword fusion |
 | **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings, Ctrl+Enter to add RAG context |
