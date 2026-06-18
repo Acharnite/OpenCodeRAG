@@ -1,12 +1,30 @@
 # 🛣️ Roadmap
 
+## Completed ✓
+
+- [x] AST-aware chunking for JavaScript/TypeScript
+- [x] Document chunking for PDF, DOCX, DOC, Excel
+- [x] Hybrid keyword + vector search with configurable fusion weights
+- [x] LanceDB vector storage with incremental indexing
+- [x] Background indexing with file watching
+- [x] Configurable embeddings with proxy support
+- [x] API key auto-resolution from OpenCode provider config
+- [x] Manifest schema versioning with auto-rebuild
+- [x] Runtime overrides system (no JSON editing required)
+- [x] OpenCode plugin integration with `search_semantic`, `opencode-rag-context`, `get_file_skeleton`, `find_usages` tools
+- [x] TUI settings menu with model picker for embedding and description providers
+- [x] RAG-backed read tool with related code enrichment
+- [x] Install/uninstall scripts for global setup
+- [x] Workspace-native bootstrap (`opencode-rag init`)
+
 ## Short Term
 
 - [ ] LLM-based re-ranking layer (cross-encoder or lightweight model after vector search)
 - [ ] Query rewriting / multi-variant expansion
 - [ ] Context window optimization (dedup, merge adjacent chunks)
 - [ ] Better ranking/diversity for `chat.message` file suggestions
-- [ ] Clearer retrieval/debug surfaces for why files or chunks were returned
+- [ ] Retrieval debug surfaces (explain why files/chunks were returned)
+- [ ] Persistent query cache (disk-based, not just in-memory)
 
 ## Mid Term
 
@@ -137,8 +155,33 @@ Score chunks during indexing for size, coherence, and boundary quality. Flag poo
 
 # 🎯 Summary
 
-Local-first semantic code search with AST/document chunking, incremental/background indexing, pluggable embeddings + vector storage, hybrid search, CLI, OpenCode plugin (context tools, TUI, read-override), and Web UI.
+OpenCodeRAG delivers a local-first semantic code search pipeline with AST and
+document-aware chunking, incremental/background indexing, configurable
+embeddings with proxy support, LanceDB vector storage, a full-lifecycle CLI,
+OpenCode plugin integration with read-override and TUI modules, and
+install/release automation.
 
-**Key strengths:** privacy-first, modular architecture, workspace-native bootstrap, broad coverage, hybrid search, runtime overrides, auto API key resolution, manifest versioning, install/uninstall scripts.
+**Key strengths:**
+- Local + privacy-first
+- Modular architecture (interfaces + factory/adapter patterns)
+- Workspace-native bootstrap via `opencode-rag init`
+- Broad source and document coverage (JS/TS, PDF, DOCX, DOC, Excel)
+- RAG-backed read tool that enriches file reads with related code chunks
+- Hybrid keyword + vector search with configurable fusion weights
+- TUI settings menu with model picker for embedding and description providers
+- Runtime overrides system for live config changes without editing JSON files
+- API key auto-resolution from OpenCode provider config
+- Manifest schema versioning with auto-rebuild on format changes
+- Install scripts for one-command global setup and uninstall
 
-**Next steps:** re-ranking, query rewriting, context optimization, code graph awareness, session memory, multi-workspace, MCP server, programmatic API, index export/import.
+**Next steps (prioritized):**
+1. LLM-based re-ranking for retrieval precision
+2. Query rewriting and multi-variant expansion
+3. Context window optimization (dedup, merge, diversity ranking)
+4. Retrieval debug/explainability tools
+5. Persistent query cache across restarts
+6. Cross-file code graph integration (imports, call graph)
+7. MCP server for VS Code / Cursor / Claude Desktop
+8. Programmatic TypeScript API
+9. Index export/import for CI/CD and team sharing
+10. Git-aware incremental indexing
