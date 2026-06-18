@@ -74,7 +74,7 @@ describe("computeSummary", () => {
       { ts: 100, event: "session.created", sessionID: "s1", sessionTitle: "Test Session" },
       { ts: 200, event: "message", sessionID: "s1", messageID: "m1", role: "assistant", modelID: "gpt-4o", tokens: { input: 1000, output: 200, reasoning: 0, cache: { read: 50, write: 0 } }, cost: 0.005, timeCreated: 100, timeCompleted: 200 },
       { ts: 300, event: "step", sessionID: "s1", messageID: "m1", stepTokens: { input: 500, output: 100, reasoning: 0, cache: { read: 0, write: 0 } }, stepCost: 0.002, stepReason: "stop" },
-      { ts: 400, event: "tool", sessionID: "s1", messageID: "m1", tool: "opencode-rag-context", toolStatus: "completed", toolTimeStart: 350, toolTimeEnd: 400, toolDurationMs: 50 },
+      { ts: 400, event: "tool", sessionID: "s1", messageID: "m1", tool: "search_semantic", toolStatus: "completed", toolTimeStart: 350, toolTimeEnd: 400, toolDurationMs: 50 },
       { ts: 500, event: "rag.context", sessionID: "s1", messageID: "m1", ragInjected: true, ragChunkCount: 3, ragUniqueFiles: 2, ragContextTokens: 150, ragTopScore: 0.85, ragRetrievalTimeMs: 42 },
       { ts: 600, event: "message", sessionID: "s1", messageID: "m2", role: "assistant", modelID: "gpt-4o", tokens: { input: 800, output: 150, reasoning: 10, cache: { read: 20, write: 5 } }, cost: 0.003, timeCreated: 500, timeCompleted: 600 },
     ];
@@ -95,7 +95,7 @@ describe("computeSummary", () => {
     assert.strictEqual(s.ragContextTokens, 150);
     assert.strictEqual(s.ragToolCalls, 1);
     assert.deepStrictEqual(s.models, ["gpt-4o"]);
-    assert.strictEqual(s.toolCallCounts["opencode-rag-context"], 1);
+    assert.strictEqual(s.toolCallCounts["search_semantic"], 1);
     assert.ok(s.avgResponseTimeMs != null);
   });
 
@@ -233,7 +233,7 @@ describe("createSessionLogger", () => {
           sessionID: "sess-1",
           messageID: "msg-1",
           type: "tool",
-          tool: "opencode-rag-context",
+          tool: "search_semantic",
           state: {
             status: "completed",
             input: { query: "test" },
@@ -246,7 +246,7 @@ describe("createSessionLogger", () => {
     const events = readSessionEvents(tmpDir, "sess-1");
     assert.strictEqual(events.length, 1);
     assert.strictEqual(events[0]!.event, "tool");
-    assert.strictEqual(events[0]!.tool, "opencode-rag-context");
+    assert.strictEqual(events[0]!.tool, "search_semantic");
     assert.strictEqual(events[0]!.toolStatus, "completed");
     assert.strictEqual(events[0]!.toolDurationMs, 50);
   });

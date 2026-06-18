@@ -17,7 +17,7 @@ export interface FormatReadOutputOptions {
 }
 
 /**
- * Format RAG retrieval results for the opencode-rag-context tool output.
+ * Format RAG retrieval results for the search_semantic tool output.
  *
  * Includes request metadata (file path, query, chunk count) and formats
  * each chunk with file path, line range, score, and code block.

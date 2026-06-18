@@ -55,6 +55,10 @@ export interface TuiConfig {
   chunksKeybinding: string;
 }
 
+export interface McpConfig {
+  enabled: boolean;
+}
+
 export interface RagConfig {
   embedding: {
     provider: string;
@@ -100,6 +104,7 @@ export interface RagConfig {
     nodeTypes?: Record<string, string[]>;
   };
   description?: DescriptionConfig;
+  mcp?: McpConfig;
   ui?: UiConfig;
   tui: TuiConfig;
   logging: LoggingConfig;
@@ -229,6 +234,9 @@ export const DEFAULT_CONFIG: RagConfig = {
     retryMax: 3,
     retryBaseDelayMs: 1000,
   },
+  mcp: {
+    enabled: true,
+  },
   ui: {
     port: 3210,
     openBrowser: true,
@@ -268,7 +276,7 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
   const KNOWN_TOP_KEYS = new Set([
     "embedding", "indexing", "vectorStore", "retrieval",
     "openCode", "chunkers", "chunking", "description",
-    "ui", "tui", "logging",
+    "mcp", "ui", "tui", "logging",
   ]);
   const topKeys = new Set(Object.keys(config as unknown as Record<string, unknown>));
   for (const key of topKeys) {
@@ -388,10 +396,14 @@ export function loadConfig(filePath: string, validate: boolean = true): RagConfi
       ...((parsed.chunking as Record<string, unknown>)?.nodeTypes as Record<string, string[]> | undefined ?? {}),
     },
   },
-  description: {
+    description: {
       ...DEFAULT_CONFIG.description,
       ...((parsed as { description?: Partial<DescriptionConfig> }).description ?? {}),
     } as DescriptionConfig,
+    mcp: {
+      ...DEFAULT_CONFIG.mcp,
+      ...((parsed as { mcp?: Partial<McpConfig> }).mcp ?? {}),
+    } as McpConfig,
     ui: {
       ...DEFAULT_CONFIG.ui,
       ...((parsed as { ui?: Partial<UiConfig> }).ui ?? {}),

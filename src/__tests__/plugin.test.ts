@@ -138,7 +138,7 @@ describe("ragPlugin", () => {
 
       const enabledHooks = await ragPlugin({ directory: enabledDir } as PluginInput, {});
       assert.equal(typeof enabledHooks["chat.message"], "function");
-      assert.ok(enabledHooks.tool?.["opencode-rag-context"]);
+      assert.ok(enabledHooks.tool?.["search_semantic"]);
       assert.ok(enabledHooks.tool?.["search_semantic"], "expected search_semantic tool");
       assert.ok(enabledHooks.tool?.["get_file_skeleton"], "expected get_file_skeleton tool");
       assert.ok(enabledHooks.tool?.["find_usages"], "expected find_usages tool");
@@ -183,7 +183,7 @@ describe("ragPlugin", () => {
       worktree: testWorktree,
     });
 
-    const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
+    const retrievalTool = hooks.tool?.["search_semantic"] as ToolDefinition;
     assert.ok(retrievalTool, "expected chunk retrieval tool to be registered");
 
     const result = await retrievalTool.execute(
@@ -203,8 +203,8 @@ describe("ragPlugin", () => {
       metadata?: Record<string, unknown>;
     };
 
-    assert.equal(structured.title, "OpenCodeRAG context (2 chunks)");
-    assert.match(structured.output, /opencode-rag retrieved context/);
+    assert.equal(structured.title, "Semantic search (2 chunks)");
+    assert.match(structured.output, /search_semantic retrieved context/);
     assert.match(structured.output, /src\/plugin\.ts:12-20/);
     assert.match(structured.output, /src\/retriever\/retriever\.ts:1-30/);
     assert.match(structured.output, /chunkEntryPoint/);
@@ -249,7 +249,7 @@ describe("ragPlugin", () => {
       worktree: testWorktree,
     });
 
-    const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
+    const retrievalTool = hooks.tool?.["search_semantic"] as ToolDefinition;
     assert.ok(retrievalTool, "expected chunk retrieval tool to be registered");
 
     await retrievalTool.execute(
@@ -306,7 +306,7 @@ describe("ragPlugin", () => {
       worktree: testWorktree,
     });
 
-    const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
+    const retrievalTool = hooks.tool?.["search_semantic"] as ToolDefinition;
     const result = await retrievalTool.execute(
       { query: "chunk entry point" },
       makeToolContext() as never
@@ -334,7 +334,7 @@ describe("ragPlugin", () => {
       worktree: testWorktree,
     });
 
-    const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
+    const retrievalTool = hooks.tool?.["search_semantic"] as ToolDefinition;
     assert.ok(retrievalTool);
 
     const result = await retrievalTool!.execute(
@@ -349,7 +349,7 @@ describe("ragPlugin", () => {
       metadata?: Record<string, unknown>;
     };
 
-    assert.equal(structured.title, "OpenCodeRAG context");
+    assert.equal(structured.title, "Semantic search");
     assert.match(structured.output, /No indexed chunks are available yet/);
     assert.equal(structured.metadata?.indexed, false);
     assert.equal(structured.metadata?.chunks, 0);
@@ -415,7 +415,7 @@ describe("ragPlugin", () => {
     );
 
     const structured = result as { output: string; metadata?: Record<string, unknown> };
-    assert.match(structured.output, /empty/);
+    assert.match(structured.output, /index is empty|No indexed chunks/);
     assert.equal(structured.metadata?.indexed, false);
   });
 
@@ -511,7 +511,6 @@ describe("ragPlugin", () => {
 
     assert.ok(output.system.length > 0);
     const guidance = output.system[0]!;
-    assert.match(guidance, /opencode-rag-context/);
     assert.match(guidance, /search_semantic/);
     assert.match(guidance, /get_file_skeleton/);
     assert.match(guidance, /find_usages/);

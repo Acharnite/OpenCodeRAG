@@ -230,6 +230,18 @@ function buildOpencodeConfig(existing: Record<string, unknown> | undefined): Rec
   // init versions would trigger npm install (which fails due to native
   // dependencies like canvas) and produce "Plugin export is not a function".
   delete next.plugin;
+
+  // Register MCP server for semantic code retrieval
+  next.mcp = {
+    ...(next.mcp as Record<string, unknown> | undefined ?? {}),
+    "opencode-rag": {
+      type: "local",
+      command: ["npx", "-y", "opencode-rag-plugin", "mcp"],
+      cwd: ".",
+      enabled: true,
+    },
+  };
+
   return next;
 }
 
@@ -303,8 +315,7 @@ function generateSkillFile(): string {
     "",
     "| Tool | Use when | Example |",
     "|------|----------|---------|",
-    "| `opencode-rag-context` | Any code search — you need to find relevant code before acting | `\"authentication middleware\"` |",
-    "| `search_semantic` | Conceptual question — \"how does X work?\" or \"where is Y?\" | `\"How does the chunking pipeline work?\"` |",
+    "| `search_semantic` | Any code search — find relevant code by meaning or keyword | `\"authentication middleware\"` |",
     "| `get_file_skeleton` | You have a file path but need to orient before reading | `\"src/plugin.ts\"` |",
     "| `find_usages` | Before editing any function, class, or variable — check all call sites | `\"createRagHooks\"` |",
     "",
@@ -312,13 +323,12 @@ function generateSkillFile(): string {
     "",
     "1. **Skeleton first** — call `get_file_skeleton(filePath)` to see structure",
     "2. **Find usages** — call `find_usages(symbolName)` before modifying any symbol",
-    "3. **Search** — call `opencode-rag-context(query)` or `search_semantic(query)` to find relevant code",
+    "3. **Search** — call `search_semantic(query)` to find relevant code",
     "4. **Read** — use the `read` tool on specific line ranges identified above",
     "5. **Edit** — now you have full context to make safe changes",
     "",
     "### Parameters",
     "",
-    "- `opencode-rag-context`: `query` (req), `pathHints?`, `languageHints?`, `topK?`",
     "- `search_semantic`: `query` (req), `pathHints?`, `languageHints?`, `topK?`",
     "- `get_file_skeleton`: `filePath` (req)",
     "- `find_usages`: `symbolName` (req), `pathHint?`, `topK?`",
@@ -862,6 +872,25 @@ program
     }
   });
 
+program
+  .command("mcp")
+  .description("Start MCP server for semantic code retrieval (stdio transport)")
+  .option("-c, --config <path>", "path to config file")
+  .action(async (options: CliOptions) => {
+    try {
+      const { runMcpServer } = await import("./mcp/cli.js");
+      await runMcpServer({
+        configPath: options.config,
+        cwd: process.cwd(),
+      });
+    } catch (err) {
+      const message = (err as Error).message || String(err);
+      const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
+      logCliError(logFilePath, "mcp", `\nMCP server failed: ${message}`, err);
+      process.exit(1);
+    }
+  });
+
 function generateDefaultConfigJson(): string {
   return JSON.stringify(
     {
@@ -905,6 +934,9 @@ function generateDefaultConfigJson(): string {
           maxChunks: DEFAULT_CONFIG.openCode.autoInject!.maxChunks,
           maxTokens: DEFAULT_CONFIG.openCode.autoInject!.maxTokens,
         },
+      },
+      mcp: {
+        enabled: DEFAULT_CONFIG.mcp!.enabled,
       },
       logging: {
         level: DEFAULT_CONFIG.logging.level,
@@ -1111,7 +1143,7 @@ if (shouldAutoRunCli(import.meta.url, process.argv[1])) {
 } else {
   // Fallback: if the module appears to be running as a CLI (has argv with commands like 'init', 'index', etc.)
   // and not being imported as a library, parse the arguments anyway
-  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump', 'ui'];
+  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump', 'ui', 'mcp'];
   const cmd = process.argv[2];
   if (process.argv.length > 2 && cmd && commands.includes(cmd.toLowerCase())) {
     void program.parseAsync(process.argv);

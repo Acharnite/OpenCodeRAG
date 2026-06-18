@@ -107,7 +107,6 @@ export interface ComparisonResult {
 }
 
 export const RAG_TOOL_NAMES = new Set([
-  "opencode-rag-context",
   "search_semantic",
   "get_file_skeleton",
   "find_usages",

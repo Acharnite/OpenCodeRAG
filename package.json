@@ -29,6 +29,10 @@
     "./ui": {
       "import": "./dist/web/server.js",
       "types": "./dist/web/server.d.ts"
+    },
+    "./mcp": {
+      "import": "./dist/mcp/server.js",
+      "types": "./dist/mcp/server.d.ts"
     }
   },
   "files": [
@@ -75,6 +79,7 @@
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
     "@lancedb/lancedb": "^0.29.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@thednp/dommatrix": "^3.0.4",
     "@tree-sitter-grammars/tree-sitter-markdown": "^0.3.2",
     "@tree-sitter-grammars/tree-sitter-xml": "^0.7.0",

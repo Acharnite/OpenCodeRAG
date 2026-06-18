@@ -12,7 +12,6 @@ import { loadRuntimeOverrides, applyRuntimeOverrides } from "./core/runtime-over
 import { createBackgroundIndexer } from "./watcher.js";
 import { createRagReadTool } from "./opencode/create-read-tool.js";
 import {
-  createSearchSemanticTool,
   createFileSkeletonTool,
   createFindUsagesTool,
 } from "./opencode/tools.js";
@@ -25,8 +24,8 @@ import path from "node:path";
 const configCache = new Map<string, RagConfig>();
 const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
 
-const CONTEXT_TOOL_NAME = "opencode-rag-context";
-const CONTEXT_MARKER = "opencode-rag retrieved context";
+const CONTEXT_TOOL_NAME = "search_semantic";
+const CONTEXT_MARKER = "search_semantic retrieved context";
 
 type RetrievalQueryHints = {
   query: string;
@@ -365,7 +364,7 @@ function formatFileList(results: SearchResult[], worktree: string): string {
     const lang = results.find((r) => r.chunk.metadata.filePath === filePath)?.chunk.metadata.language ?? "";
     lines.push(`${relPath} (${lang}, lines ${minLine}-${maxLine}, relevance ${relevance})`);
   }
-  lines.push("\nFor more context, use: `opencode-rag-context` for code search, `find_usages` before editing, `get_file_skeleton` to orient in files.");
+  lines.push("\nFor more context, use: `search_semantic` for code search, `find_usages` before editing, `get_file_skeleton` to orient in files.");
   let linesReturn = lines.join("\n");
   return linesReturn;
 }
@@ -440,9 +439,9 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
   const retrievalTool = tool({
     description:
-      "Retrieve the most relevant indexed code chunks before planning, answering, or editing. " +
-      "Call before any code-related task when you haven't read the relevant code yet. " +
-      "Use it to get file-level evidence, line ranges, and surrounding implementation details.",
+      "Search the indexed codebase by meaning, not just keywords. " +
+      "Call when the user asks 'how does X work?', 'where is Y?', or you need to understand code behavior. " +
+      "Returns the most relevant code snippets with file paths, line numbers, and relevance scores.",
     args: {
       query: tool.schema.string().min(1, "A retrieval query is required."),
       pathHints: tool.schema.array(tool.schema.string().min(1)).max(10).optional(),
@@ -461,9 +460,9 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           });
 
           return {
-            title: "OpenCodeRAG context",
+            title: "Semantic search",
             output:
-              "No indexed chunks are available yet. Run indexing first, then ask again for code context.",
+              "No indexed chunks are available yet. Run indexing first, then try your search again.",
             metadata: {
               query: args.query,
               chunks: 0,
@@ -490,8 +489,8 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           });
 
           return {
-            title: "OpenCodeRAG context",
-            output: `${CONTEXT_MARKER}\n\nNo indexed chunks matched the query.`,
+            title: "Semantic search",
+            output: `No indexed code matched your query. Try different terms or broaden the search.`,
             metadata: {
               query: args.query,
               chunks: 0,
@@ -518,7 +517,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         });
 
         return {
-          title: `OpenCodeRAG context (${results.length} chunk${results.length === 1 ? "" : "s"})`,
+          title: `Semantic search (${results.length} chunk${results.length === 1 ? "" : "s"})`,
           output,
           metadata: {
             query: args.query,
@@ -537,9 +536,9 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         });
 
         return {
-          title: "OpenCodeRAG context",
+          title: "Semantic search",
           output:
-            "OpenCodeRAG could not retrieve context right now. Try again after indexing or reduce the query scope.",
+            "Search failed. The index may need to be rebuilt.",
           metadata: {
             query: args.query,
             chunks: 0,
@@ -555,24 +554,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     [CONTEXT_TOOL_NAME]: retrievalTool,
   };
 
-  // Specialized agent tools
   const effectiveCfg = getEffectiveCfg();
-  try {
-    const searchSemanticTool = createSearchSemanticTool({
-      store,
-      embedder,
-      cfg: effectiveCfg,
-      keywordIndex,
-      retrieveFn: dependencies.retrieve,
-    });
-    tools["search_semantic"] = searchSemanticTool;
-  } catch (err) {
-    appendDebugLog(options.logFilePath, {
-      scope: "plugin",
-      message: "Failed to register search_semantic tool",
-      error: err,
-    });
-  }
 
   try {
     const fileSkeletonTool = createFileSkeletonTool({
@@ -641,8 +623,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
       const guidance = [
         "OpenCodeRAG tools are available for code retrieval:",
-        "- `opencode-rag-context(query)`: retrieve relevant code chunks by query. Use BEFORE planning, editing, or answering code questions. Accepts `pathHints` and `languageHints` to narrow results.",
-        "- `search_semantic(query)`: conceptual search — \"how does X work?\", \"where is Y?\"",
+        "- `search_semantic(query)`: retrieve relevant code chunks by query. Use BEFORE planning, editing, or answering code questions. Accepts `pathHints` and `languageHints` to narrow results.",
         "- `get_file_skeleton(filePath)`: structural overview of a file before reading it",
         "- `find_usages(symbolName)`: find all references to a symbol — ALWAYS use before editing functions, classes, or variables",
         "",

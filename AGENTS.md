@@ -75,7 +75,7 @@ npm run cli           # tsx src/cli.ts
 5. `all-minilm:l6-v2` (384d) — fast/lightweight
 
 ### Plugin
-- Registers: `opencode-rag-context`, `search_semantic`, `get_file_skeleton`, `find_usages`
+- Registers: `search_semantic`, `get_file_skeleton`, `find_usages`
 - Auto-injection: minScore ≥ 0.75, maxChunks 3, maxTokens 2000
 - TUI hotkeys: Ctrl+Enter (file list), Ctrl+Alt+Enter (chunks); use `tui.prompt.append` event, never dialogs
 - Prompt ref: render `api.ui.Prompt()` in slot, wrap ref callback — Solid.js slot props are read-only proxies
