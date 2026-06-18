@@ -73,10 +73,6 @@ export class OpenAIProvider implements EmbeddingProvider {
       throw new Error(`OpenAI: unexpected response: ${JSON.stringify(json)}`);
     }
 
-    return json.data
-      .sort((a, b) => {
-        return 0;
-      })
-      .map((item) => item.embedding);
+    return json.data.map((item) => item.embedding);
   }
 }

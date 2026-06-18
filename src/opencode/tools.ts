@@ -178,7 +178,6 @@ function formatSkeleton(
   if (items.length === 0) return "_(no structural elements found)_";
 
   const lines: string[] = [];
-  let prevDepth = 0;
 
   for (const item of items) {
     const depth = item.type === "file" ? 0 : 1;
@@ -188,12 +187,7 @@ function formatSkeleton(
       : `L${item.startLine}-${item.endLine}`;
     const icon = typeIcon(item.type);
 
-    if (depth <= prevDepth) {
-      // Close previous block if needed
-    }
-
     lines.push(`${indent}${icon} \`${item.name}\` ${lineRange}`);
-    prevDepth = depth;
   }
 
   return lines.join("\n");

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { LanceDBStore } from "../vectorstore/lancedb.js";
 import { KeywordIndex } from "../retriever/keyword-index.js";
-import { listSessions, getSession, deleteSession, compareSessions } from "../eval/storage.js";
+import { listSessions, getSession, deleteSession, compareSessions, validateSessionID } from "../eval/storage.js";
 
 interface ApiResponse {
   status: number;
@@ -217,6 +217,9 @@ async function handleEvalSessions(storePath: string): Promise<ApiResponse> {
 }
 
 async function handleEvalSession(storePath: string, id: string): Promise<ApiResponse> {
+  if (!validateSessionID(id)) {
+    return { status: 400, body: { error: "Invalid session ID" } };
+  }
   const session = getSession(storePath, id);
   if (!session) {
     return { status: 404, body: { error: "Session not found" } };
@@ -225,6 +228,9 @@ async function handleEvalSession(storePath: string, id: string): Promise<ApiResp
 }
 
 async function handleEvalDeleteSession(storePath: string, id: string): Promise<ApiResponse> {
+  if (!validateSessionID(id)) {
+    return { status: 400, body: { error: "Invalid session ID" } };
+  }
   deleteSession(storePath, id);
   return { status: 200, body: { deleted: true } };
 }
@@ -235,6 +241,10 @@ async function handleEvalCompare(storePath: string, params: URLSearchParams): Pr
 
   if (!idA || !idB) {
     return { status: 400, body: { error: "Both 'a' and 'b' session IDs are required" } };
+  }
+
+  if (!validateSessionID(idA) || !validateSessionID(idB)) {
+    return { status: 400, body: { error: "Invalid session ID" } };
   }
 
   const result = compareSessions(storePath, idA, idB);

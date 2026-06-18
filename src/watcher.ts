@@ -161,6 +161,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
     async close(): Promise<void> {
       clearInterval(periodicTimer);
       scheduler.close();
+      await scheduler.waitForIdle();
       await watcher.close();
       const statusPath = path.join(storePath, "watcher-status.json");
       if (existsSync(statusPath)) {

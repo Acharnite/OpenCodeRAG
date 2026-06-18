@@ -12,6 +12,7 @@ export abstract class TreeSitterChunker implements Chunker {
   readonly wasmFilePath?: string;
 
   private parser: Parser | null = null;
+  private parserPromise: Promise<Parser> | undefined;
 
   withNodeTypes(types: Set<string>): Chunker {
     const original = this;
@@ -38,15 +39,21 @@ export abstract class TreeSitterChunker implements Chunker {
     };
   }
 
-  private async getParser(): Promise<Parser> {
-    if (!this.parser) {
-      const lang = this.wasmFilePath
-        ? await loadLanguageFromPath(this.grammarName, this.wasmFilePath)
-        : await loadLanguage(this.grammarName);
-      this.parser = new Parser();
-      this.parser.setLanguage(lang);
+  private getParser(): Promise<Parser> {
+    if (this.parser) return Promise.resolve(this.parser);
+    if (!this.parserPromise) {
+      this.parserPromise = (async () => {
+        const lang = this.wasmFilePath
+          ? await loadLanguageFromPath(this.grammarName, this.wasmFilePath)
+          : await loadLanguage(this.grammarName);
+        const parser = new Parser();
+        parser.setLanguage(lang);
+        this.parser = parser;
+        this.parserPromise = undefined;
+        return parser;
+      })();
     }
-    return this.parser;
+    return this.parserPromise;
   }
 
   async chunk(filePath: string, content: string): Promise<Chunk[]> {

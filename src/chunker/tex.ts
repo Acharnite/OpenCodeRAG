@@ -22,13 +22,13 @@ export class TexChunker implements Chunker {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] ?? "";
 
-      const commentMatch = line.match(/^\\begin\{comment\}/);
+      const commentMatch = line.match(/\\begin\{comment\}/);
       if (commentMatch) {
         inCommentBlock = true;
         continue;
       }
       if (inCommentBlock) {
-        if (line.match(/^\\end\{comment\}/)) {
+        if (line.match(/\\end\{comment\}/)) {
           inCommentBlock = false;
         }
         continue;

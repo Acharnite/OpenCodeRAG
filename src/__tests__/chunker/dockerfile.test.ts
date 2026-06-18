@@ -10,7 +10,9 @@ describe("DockerfileChunker", () => {
   it("fileExtensions includes dockerfile and containerfile", () => {
     assert.ok(dockerfileChunker.fileExtensions.includes("dockerfile"));
     assert.ok(dockerfileChunker.fileExtensions.includes("containerfile"));
-    assert.equal(dockerfileChunker.fileExtensions.length, 2);
+    assert.ok(dockerfileChunker.fileExtensions.includes(".dockerfile"));
+    assert.ok(dockerfileChunker.fileExtensions.includes(".containerfile"));
+    assert.equal(dockerfileChunker.fileExtensions.length, 4);
   });
 
   it("grammarName is 'dockerfile'", () => {

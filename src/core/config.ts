@@ -179,6 +179,8 @@ export const DEFAULT_CONFIG: RagConfig = {
     ".sql",
     "dockerfile",
     "containerfile",
+    ".dockerfile",
+    ".containerfile",
   ],
     excludeDirs: [
       "node_modules",
@@ -348,8 +350,24 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
 }
 
 export function loadConfig(filePath: string, validate: boolean = true): RagConfig {
-  const raw = readFileSync(filePath, "utf-8");
-  const parsed = JSON.parse(raw) as Partial<RagConfig>;
+  let raw: string;
+  let parsed: Partial<RagConfig>;
+  try {
+    raw = readFileSync(filePath, "utf-8");
+    parsed = JSON.parse(raw) as Partial<RagConfig>;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      throw new Error(`Config file not found: ${filePath}`);
+    }
+    if (err instanceof SyntaxError) {
+      throw new Error(`Invalid JSON in config file ${filePath}: ${err.message}`);
+    }
+    throw err;
+  }
+
+  const safeObj = <T>(value: unknown): Partial<T> | undefined =>
+    value && typeof value === "object" && !Array.isArray(value) ? (value as Partial<T>) : undefined;
 
   const cfg: RagConfig = {
     embedding: {
@@ -369,7 +387,9 @@ export function loadConfig(filePath: string, validate: boolean = true): RagConfi
       ...parsed.retrieval,
       hybridSearch: {
         ...DEFAULT_CONFIG.retrieval.hybridSearch,
-        ...((parsed.retrieval as Record<string, unknown> | undefined)?.hybridSearch as Partial<typeof DEFAULT_CONFIG.retrieval.hybridSearch> | undefined ?? {}),
+        ...(safeObj<typeof DEFAULT_CONFIG.retrieval.hybridSearch>(
+          (parsed.retrieval as Record<string, unknown> | undefined)?.hybridSearch
+        ) ?? {}),
       } as { enabled: boolean; keywordWeight: number },
     },
     openCode: (() => {
@@ -380,11 +400,11 @@ export function loadConfig(filePath: string, validate: boolean = true): RagConfi
         ...user,
         autoIndex: {
           ...base.autoIndex,
-          ...(user.autoIndex ?? {}),
+          ...(safeObj<AutoIndexConfig>(user.autoIndex) ?? {}),
         } as AutoIndexConfig,
         autoInject: {
           ...base.autoInject,
-          ...(user.autoInject ?? {}),
+          ...(safeObj<AutoInjectConfig>(user.autoInject) ?? {}),
         } as AutoInjectConfig,
       };
       return merged;
@@ -398,23 +418,23 @@ export function loadConfig(filePath: string, validate: boolean = true): RagConfi
   },
     description: {
       ...DEFAULT_CONFIG.description,
-      ...((parsed as { description?: Partial<DescriptionConfig> }).description ?? {}),
+      ...(safeObj<DescriptionConfig>((parsed as { description?: unknown }).description) ?? {}),
     } as DescriptionConfig,
     mcp: {
       ...DEFAULT_CONFIG.mcp,
-      ...((parsed as { mcp?: Partial<McpConfig> }).mcp ?? {}),
+      ...(safeObj<McpConfig>((parsed as { mcp?: unknown }).mcp) ?? {}),
     } as McpConfig,
     ui: {
       ...DEFAULT_CONFIG.ui,
-      ...((parsed as { ui?: Partial<UiConfig> }).ui ?? {}),
+      ...(safeObj<UiConfig>((parsed as { ui?: unknown }).ui) ?? {}),
     } as UiConfig,
     tui: {
       ...DEFAULT_CONFIG.tui,
-      ...((parsed as { tui?: Partial<TuiConfig> }).tui ?? {}),
+      ...(safeObj<TuiConfig>((parsed as { tui?: unknown }).tui) ?? {}),
     } as TuiConfig,
     logging: {
       ...DEFAULT_CONFIG.logging,
-      ...(parsed.logging ?? {}),
+      ...(safeObj<LoggingConfig>(parsed.logging) ?? {}),
     } as LoggingConfig,
   };
 

@@ -694,7 +694,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           if (Array.isArray(parts) && parts.length > 0) {
             const first = parts[0] as Record<string, unknown>;
             if (typeof first.text === "string") {
-              first.text = `${first.text}\n\n${chunkContext}`;
+              parts[0] = { ...first, text: `${first.text}\n\n${chunkContext}` } as typeof parts[0];
             }
           }
           return;
@@ -715,7 +715,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           if (Array.isArray(parts) && parts.length > 0) {
             const first = parts[0] as Record<string, unknown>;
             if (typeof first.text === "string") {
-              first.text = `${first.text}\n\n${fileList}`;
+              parts[0] = { ...first, text: `${first.text}\n\n${fileList}` } as typeof parts[0];
             }
           }
           return;
@@ -767,7 +767,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         if (Array.isArray(parts) && parts.length > 0) {
           const first = parts[0] as Record<string, unknown>;
           if (typeof first.text === "string") {
-            first.text = `${first.text}\n\n${suggestionList}`;
+            parts[0] = { ...first, text: `${first.text}\n\n${suggestionList}` } as typeof parts[0];
           }
         }
       } catch (err) {

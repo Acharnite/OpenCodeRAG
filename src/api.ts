@@ -2,6 +2,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { loadConfig, DEFAULT_CONFIG, type RagConfig, type ConfigValidationResult } from "./core/config.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
+import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { createEmbedder } from "./embedder/factory.js";
 import { createDescriptionProvider } from "./describer/factory.js";
 import { LanceDBStore } from "./vectorstore/lancedb.js";
@@ -32,11 +33,15 @@ export interface ContextResult {
   text: string;
 }
 
-function resolveConfig(cwd?: string, configPath?: string): RagConfig {
+async function resolveConfig(cwd?: string, configPath?: string): Promise<RagConfig> {
   const workDir = cwd ?? process.cwd();
 
   if (configPath) {
-    return loadConfig(path.resolve(configPath));
+    const resolved = path.resolve(configPath);
+    const cfg = loadConfig(resolved);
+    resolveApiKey(cfg, workDir);
+    await loadChunkersFromConfig(cfg, path.dirname(resolved));
+    return cfg;
   }
 
   const locations = [
@@ -48,6 +53,7 @@ function resolveConfig(cwd?: string, configPath?: string): RagConfig {
     if (existsSync(loc)) {
       const cfg = loadConfig(loc);
       resolveApiKey(cfg, workDir);
+      await loadChunkersFromConfig(cfg, path.dirname(loc));
       return cfg;
     }
   }
@@ -98,7 +104,7 @@ export async function search(
   query: string,
   options: SearchOptions = {}
 ): Promise<SearchResult[]> {
-  const cfg = resolveConfig(options.cwd, options.configPath);
+  const cfg = await resolveConfig(options.cwd, options.configPath);
   const storePath = path.resolve(options.cwd ?? process.cwd(), cfg.vectorStore.path);
 
   const embedder = createEmbedder(cfg);
@@ -121,7 +127,7 @@ export async function indexWorkspace(
   options: IndexOptions = {}
 ): Promise<IndexRunStats> {
   const workDir = cwd ?? process.cwd();
-  const cfg = resolveConfig(workDir, options.configPath);
+  const cfg = await resolveConfig(workDir, options.configPath);
   const storePath = path.resolve(workDir, cfg.vectorStore.path);
 
   const embedder = createEmbedder(cfg);

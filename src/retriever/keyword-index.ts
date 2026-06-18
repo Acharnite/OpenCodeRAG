@@ -185,7 +185,12 @@ export class KeywordIndex {
     }
 
     const raw = await readFile(targetPath, "utf-8");
-    const parsed = JSON.parse(raw) as SerializedKeywordIndex;
+    let parsed: SerializedKeywordIndex;
+    try {
+      parsed = JSON.parse(raw) as SerializedKeywordIndex;
+    } catch {
+      return new KeywordIndex(storePath);
+    }
 
     if (parsed.version !== INDEX_VERSION) {
       return new KeywordIndex(storePath);

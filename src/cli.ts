@@ -546,7 +546,11 @@ program
 
       const shutdown = async () => {
         scheduler.close();
-        await watcher.close();
+        await scheduler.waitForIdle();
+        await Promise.race([
+          watcher.close(),
+          new Promise((r) => setTimeout(r, 5000)),
+        ]);
         process.exit(0);
       };
 
@@ -847,11 +851,15 @@ program
 
       if (openBrowser) {
         const { spawn } = await import("node:child_process");
-        if (process.platform === "win32") {
-          spawn("cmd.exe", ["/c", "start", url], { detached: true, stdio: "ignore" }).unref();
-        } else {
-          const cmd = process.platform === "darwin" ? "open" : "xdg-open";
-          spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
+        try {
+          if (process.platform === "win32") {
+            spawn("cmd.exe", ["/c", "start", url], { detached: true, stdio: "ignore" }).unref();
+          } else {
+            const cmd = process.platform === "darwin" ? "open" : "xdg-open";
+            spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
+          }
+        } catch {
+          console.error(c.dim(`Could not open browser automatically. Open ${url} manually.`));
         }
       }
 

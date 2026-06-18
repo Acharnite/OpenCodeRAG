@@ -2,7 +2,7 @@ import { TreeSitterChunker } from "./base.js";
 
 export class DockerfileChunker extends TreeSitterChunker {
   readonly language = "dockerfile";
-  readonly fileExtensions = ["dockerfile", "containerfile"];
+  readonly fileExtensions = [".dockerfile", "dockerfile", ".containerfile", "containerfile"];
   readonly grammarName = "dockerfile";
   readonly nodeTypes = new Set([
     "from_instruction",

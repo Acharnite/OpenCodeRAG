@@ -1,8 +1,6 @@
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 
-const CODE_BLOCK_REGEX = /@(code|functions)\s*\{/g;
-
 function countNewlines(content: string, end: number): number {
   let count = 0;
   for (let i = 0; i < end; i++) {

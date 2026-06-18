@@ -126,16 +126,32 @@ export async function scanWorkspace(cwd: string, config: RagConfig): Promise<Wor
     let content: string;
     if (isPdf(filePath)) {
       const buffer = await fs.readFile(filePath);
-      content = await extractPdfText(buffer);
+      try {
+        content = await extractPdfText(buffer);
+      } catch (err) {
+        content = "";
+      }
     } else if (isDocx(filePath)) {
       const buffer = await fs.readFile(filePath);
-      content = await extractDocxText(buffer);
+      try {
+        content = await extractDocxText(buffer);
+      } catch (err) {
+        content = "";
+      }
     } else if (isDoc(filePath)) {
       const buffer = await fs.readFile(filePath);
-      content = await extractDocText(buffer);
+      try {
+        content = await extractDocText(buffer);
+      } catch (err) {
+        content = "";
+      }
     } else if (isExcel(filePath)) {
       const buffer = await fs.readFile(filePath);
-      content = await extractExcelText(buffer);
+      try {
+        content = await extractExcelText(buffer);
+      } catch (err) {
+        content = "";
+      }
     } else {
       content = await fs.readFile(filePath, "utf-8");
     }

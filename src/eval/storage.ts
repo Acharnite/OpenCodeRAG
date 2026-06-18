@@ -4,6 +4,7 @@ import type { SessionEvent, SessionSummary, ComparisonResult, TokenUsage } from 
 import { isRagTool } from "./types.js";
 
 const EVAL_DIR = "eval-sessions";
+const SAFE_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
 
 function getEvalDir(storePath: string): string {
   return path.join(storePath, EVAL_DIR);
@@ -11,6 +12,10 @@ function getEvalDir(storePath: string): string {
 
 function getSessionPath(storePath: string, sessionID: string): string {
   return path.join(getEvalDir(storePath), `${sessionID}.jsonl`);
+}
+
+export function validateSessionID(sessionID: string): boolean {
+  return SAFE_ID_REGEX.test(sessionID);
 }
 
 export function appendSessionEvent(storePath: string, event: SessionEvent): void {
