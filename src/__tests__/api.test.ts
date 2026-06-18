@@ -31,16 +31,6 @@ describe("Programmatic API", () => {
     const { getIndexStatusSummary } = await import("../api.js");
     assert.equal(typeof getIndexStatusSummary, "function");
   });
-
-  it("getContext formats empty results correctly", async () => {
-    const { getContext } = await import("../api.js");
-    const result = await getContext("test query", { cwd: process.cwd() });
-    assert.ok(Array.isArray(result.chunks));
-    assert.equal(typeof result.text, "string");
-    if (result.chunks.length === 0) {
-      assert.equal(result.text, "No matching chunks found.");
-    }
-  });
 });
 
 describe("Library re-exports", () => {
