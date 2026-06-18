@@ -1,5 +1,5 @@
 import { Parser } from "web-tree-sitter";
-import { loadLanguage, walkTree, type AstNode } from "./grammar.js";
+import { loadLanguage, loadLanguageFromPath, walkTree, type AstNode } from "./grammar.js";
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 
@@ -8,6 +8,8 @@ export abstract class TreeSitterChunker implements Chunker {
   abstract readonly fileExtensions: string[];
   abstract readonly grammarName: string;
   abstract readonly nodeTypes: Set<string>;
+
+  readonly wasmFilePath?: string;
 
   private parser: Parser | null = null;
 
@@ -38,7 +40,9 @@ export abstract class TreeSitterChunker implements Chunker {
 
   private async getParser(): Promise<Parser> {
     if (!this.parser) {
-      const lang = await loadLanguage(this.grammarName);
+      const lang = this.wasmFilePath
+        ? await loadLanguageFromPath(this.grammarName, this.wasmFilePath)
+        : await loadLanguage(this.grammarName);
       this.parser = new Parser();
       this.parser.setLanguage(lang);
     }

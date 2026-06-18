@@ -1,6 +1,46 @@
 import { Parser, Language, Node } from "web-tree-sitter";
-import { getWasmPath, type SupportedLanguage } from "tree-sitter-wasm";
 import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+const MS_WASM_DIR = resolve(
+  PROJECT_ROOT,
+  "node_modules",
+  "@vscode",
+  "tree-sitter-wasm",
+  "wasm"
+);
+
+const SELF_WASM_DIR = resolve(PROJECT_ROOT, "wasm");
+
+const MS_LANGUAGES = new Set([
+  "bash",
+  "c_sharp",
+  "cpp",
+  "css",
+  "go",
+  "ini",
+  "java",
+  "javascript",
+  "php",
+  "powershell",
+  "python",
+  "regex",
+  "ruby",
+  "rust",
+  "tsx",
+  "typescript",
+]);
+
+function resolveWasmPath(lang: string): string {
+  if (MS_LANGUAGES.has(lang)) {
+    const msName = lang.replace(/_/g, "-");
+    return resolve(MS_WASM_DIR, `tree-sitter-${msName}.wasm`);
+  }
+  return resolve(SELF_WASM_DIR, `tree-sitter-${lang}.wasm`);
+}
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -22,10 +62,25 @@ export async function loadLanguage(lang: string): Promise<Language> {
   if (cached) return cached;
 
   await initParser();
-  const wasmPath = getWasmPath(lang as SupportedLanguage);
+  const wasmPath = resolveWasmPath(lang);
   const buffer = readFileSync(wasmPath);
   const language = await Language.load(buffer);
   grammarCache.set(lang, language);
+  return language;
+}
+
+export async function loadLanguageFromPath(
+  cacheKey: string,
+  wasmPath: string
+): Promise<Language> {
+  const cached = grammarCache.get(cacheKey);
+  if (cached) return cached;
+
+  await initParser();
+  const resolvedPath = resolve(wasmPath);
+  const buffer = readFileSync(resolvedPath);
+  const language = await Language.load(buffer);
+  grammarCache.set(cacheKey, language);
   return language;
 }
 
