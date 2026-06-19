@@ -15,6 +15,18 @@ Project status: stable MVP. See `ReadMe.md`, `doc/`, `PLANNING.md`.
 | Test runner   | Node.js `node:test` + tsx                        |
 | Plugin types  | local `.d.ts` in `src/types/`                    |
 
+## MANDATORY: OpenCodeRAG Tool Usage
+
+Before ANY code task, you MUST call these tools — not optionally:
+
+| Tool | When | What happens if you skip |
+|------|------|--------------------------|
+| `search_semantic(query)` | Before answering any code question | You guess at code behavior |
+| `get_file_skeleton(filePath)` | Before reading any file >50 lines | You waste tokens reading irrelevant sections |
+| `find_usages(symbolName)` | Before editing any function/class/variable | You break unseen call sites |
+
+**Workflow:** skeleton → find_usages → search → read specific lines → edit
+
 ## Module Structure
 
 ```
@@ -76,7 +88,7 @@ npm run cli           # tsx src/cli.ts
 
 ### Plugin
 - Registers: `search_semantic`, `get_file_skeleton`, `find_usages`
-- Auto-injection: minScore ≥ 0.75, maxChunks 3, maxTokens 2000
+- Auto-injection: minScore ≥ 0.85, maxChunks 5, maxTokens 3000, contentType "file_paths"
 - TUI hotkeys: Ctrl+Enter (file list), Ctrl+Alt+Enter (chunks); use `tui.prompt.append` event, never dialogs
 - Prompt ref: render `api.ui.Prompt()` in slot, wrap ref callback — Solid.js slot props are read-only proxies
 - Read-override: `openCode.readOverride` shadows built-in read tool

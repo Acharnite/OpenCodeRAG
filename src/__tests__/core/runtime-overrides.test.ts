@@ -207,6 +207,13 @@ describe("applyRuntimeOverrides", () => {
     assert.equal(result.openCode.autoInject?.maxChunks, 5);
   });
 
+  it("applies autoInject.contentType override", () => {
+    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
+      openCode: { autoInject: { contentType: "chunks" } },
+    });
+    assert.equal(result.openCode.autoInject?.contentType, "chunks");
+  });
+
   it("applies description.enabled override", () => {
     const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
       description: { enabled: false },
@@ -222,7 +229,7 @@ describe("applyRuntimeOverrides", () => {
     assert.equal(result.retrieval.topK, 15);
     assert.equal(result.retrieval.minScore, 0.6);
     assert.equal(result.openCode.autoInject?.enabled, false);
-    assert.equal(result.openCode.autoInject?.maxChunks, 3);
+    assert.equal(result.openCode.autoInject?.maxChunks, 5);
   });
 
   it("does not mutate the original config", () => {

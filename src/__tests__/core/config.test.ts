@@ -94,7 +94,8 @@ describe("loadConfig", () => {
     assert.equal(config.openCode.autoInject?.enabled, true);
     assert.equal(config.openCode.autoInject?.minScore, 0.5);
     assert.equal(config.openCode.autoInject?.maxChunks, 5);
-    assert.equal(config.openCode.autoInject?.maxTokens, 2000);
+    assert.equal(config.openCode.autoInject?.maxTokens, 3000);
+    assert.equal(config.openCode.autoInject?.contentType, "file_paths");
   });
 
   it("allows disabling autoInject", () => {
@@ -177,9 +178,10 @@ describe("DEFAULT_CONFIG", () => {
 
   it("has autoInject enabled by default with sensible defaults", () => {
     assert.equal(DEFAULT_CONFIG.openCode.autoInject?.enabled, true);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.minScore, 0.75);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxChunks, 3);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxTokens, 2000);
+    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.minScore, 0.85);
+    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxChunks, 5);
+    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxTokens, 3000);
+    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.contentType, "file_paths");
   });
 });
 

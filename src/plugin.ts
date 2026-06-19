@@ -632,17 +632,18 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       });
 
       const guidance = [
-        "OpenCodeRAG tools are available for code retrieval:",
-        "- `search_semantic(query)`: retrieve relevant code chunks by query. Use BEFORE planning, editing, or answering code questions. Accepts `pathHints` and `languageHints` to narrow results.",
-        "- `get_file_skeleton(filePath)`: structural overview of a file before reading it",
-        "- `find_usages(symbolName)`: find all references to a symbol — ALWAYS use before editing functions, classes, or variables",
+        "MANDATORY: OpenCodeRAG tools MUST be used before any code task:",
+        "- `search_semantic(query)`: retrieve relevant code chunks. Call BEFORE planning, editing, or answering. Accepts `pathHints` and `languageHints`.",
+        "- `get_file_skeleton(filePath)`: structural overview of a file. Call BEFORE reading any file.",
+        "- `find_usages(symbolName)`: find all references. Call BEFORE editing any function, class, or variable.",
         "",
-        "When to call proactively:",
+        "Proactive triggers — you MUST call these tools when:",
         "- User asks about code behavior, architecture, or implementation details",
         "- User asks to edit, refactor, or fix code — call `find_usages` first",
         "- User references files or functions you haven't read yet",
         "- User says \"find\", \"search\", \"look up\", \"where is\", \"how does\"",
-        "- Before answering any code-related question, retrieve context first",
+        "- Before answering ANY code-related question, retrieve context first",
+        "- Before reading ANY file, call `get_file_skeleton` to orient first",
       ];
 
       output.system.unshift(guidance.join("\n"));
@@ -683,12 +684,12 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         }
 
         if (pendingInjection === "chunks") {
-          const maxChunks = effectiveCfg.openCode.autoInject?.maxChunks ?? 3;
+          const maxChunks = effectiveCfg.openCode.autoInject?.maxChunks ?? 5;
           const topChunks = results.slice(0, maxChunks);
           const chunkContext = formatAutoInjectContext(
             topChunks,
             options.worktree,
-            effectiveCfg.openCode.autoInject?.maxTokens ?? 2000,
+            effectiveCfg.openCode.autoInject?.maxTokens ?? 3000,
             maxChunks
           );
           const estimateTokens = (t: string) => Math.ceil(t.length / 4);
@@ -745,19 +746,17 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         let injectedChunks: SearchResult[] = [];
 
         if (autoInjectCfg?.enabled !== false) {
-          const minScore = autoInjectCfg?.minScore ?? 0.75;
-          const maxChunks = autoInjectCfg?.maxChunks ?? 3;
-          const maxTokens = autoInjectCfg?.maxTokens ?? 2000;
+          const minScore = autoInjectCfg?.minScore ?? 0.85;
+          const maxChunks = autoInjectCfg?.maxChunks ?? 5;
+          const maxTokens = autoInjectCfg?.maxTokens ?? 3000;
+          const contentType = autoInjectCfg?.contentType ?? "file_paths";
           const highConfidence = results.filter((r) => r.score >= minScore);
 
           if (highConfidence.length > 0) {
             injectedChunks = highConfidence.slice(0, maxChunks);
-            suggestionList = formatAutoInjectContext(
-              highConfidence,
-              options.worktree,
-              maxTokens,
-              maxChunks
-            );
+            suggestionList = contentType === "chunks"
+              ? formatAutoInjectContext(highConfidence, options.worktree, maxTokens, maxChunks)
+              : formatFileList(highConfidence, options.worktree);
           }
         }
 

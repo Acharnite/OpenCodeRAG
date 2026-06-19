@@ -23,11 +23,14 @@ export interface AutoIndexConfig {
 
 export type ReadNoResultsBehavior = "hint" | "empty" | "error";
 
+export type AutoInjectContentType = "chunks" | "file_paths";
+
 export interface AutoInjectConfig {
   enabled: boolean;
   minScore: number;
   maxChunks: number;
   maxTokens: number;
+  contentType: AutoInjectContentType;
 }
 
 export interface DescriptionConfig {
@@ -220,9 +223,10 @@ export const DEFAULT_CONFIG: RagConfig = {
     },
     autoInject: {
       enabled: true,
-      minScore: 0.75,
-      maxChunks: 3,
-      maxTokens: 2000,
+      minScore: 0.85,
+      maxChunks: 5,
+      maxTokens: 3000,
+      contentType: "file_paths",
     },
   },
   description: {

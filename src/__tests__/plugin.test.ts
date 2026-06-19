@@ -618,7 +618,7 @@ describe("ragPlugin", () => {
         openCode: {
           enabled: true,
           maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 2000 },
+          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 2000, contentType: "chunks" },
         },
       }),
       storePath: "memory://",
@@ -690,7 +690,7 @@ describe("ragPlugin", () => {
         openCode: {
           enabled: true,
           maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 2000 },
+          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 2000, contentType: "chunks" },
         },
       }),
       storePath: "memory://",
@@ -754,7 +754,7 @@ describe("ragPlugin", () => {
         openCode: {
           enabled: true,
           maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.5, maxChunks: 1, maxTokens: 99999 },
+          autoInject: { enabled: true, minScore: 0.5, maxChunks: 1, maxTokens: 99999, contentType: "chunks" },
         },
       }),
       storePath: "memory://",
@@ -825,7 +825,7 @@ describe("ragPlugin", () => {
         openCode: {
           enabled: true,
           maxContextChunks: 5,
-          autoInject: { enabled: false, minScore: 0.75, maxChunks: 3, maxTokens: 2000 },
+          autoInject: { enabled: false, minScore: 0.75, maxChunks: 3, maxTokens: 2000, contentType: "chunks" },
         },
       }),
       storePath: "memory://",
@@ -895,7 +895,7 @@ describe("ragPlugin", () => {
         openCode: {
           enabled: true,
           maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.5, maxChunks: 3, maxTokens: 2000 },
+          autoInject: { enabled: true, minScore: 0.5, maxChunks: 3, maxTokens: 2000, contentType: "chunks" },
         },
       }),
       storePath: "memory://",
@@ -964,7 +964,7 @@ describe("ragPlugin", () => {
         openCode: {
           enabled: true,
           maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 2000 },
+          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 2000, contentType: "chunks" },
         },
       }),
       storePath: "memory://",

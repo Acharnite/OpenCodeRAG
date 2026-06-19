@@ -946,6 +946,7 @@ function generateDefaultConfigJson(): string {
           minScore: DEFAULT_CONFIG.openCode.autoInject!.minScore,
           maxChunks: DEFAULT_CONFIG.openCode.autoInject!.maxChunks,
           maxTokens: DEFAULT_CONFIG.openCode.autoInject!.maxTokens,
+          contentType: DEFAULT_CONFIG.openCode.autoInject!.contentType,
         },
       },
       mcp: {
