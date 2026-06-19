@@ -87,7 +87,8 @@
       "enabled": true,
       "minScore": 0.85,
       "maxChunks": 10,
-      "maxTokens": 2000
+      "maxTokens": 2000,
+      "contentType": "file_paths"
     }
   },
   "description": {

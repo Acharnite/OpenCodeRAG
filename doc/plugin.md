@@ -81,14 +81,16 @@ Usages of "createRagHooks" — 5 references across 2 files
 
 ### 2. `chat.message` Hook — Auto-Injection
 
-After each user message, the plugin runs automatic retrieval:
+After each user message, the plugin runs automatic retrieval. The `contentType` setting controls what gets injected:
 
-- **High-confidence results** (score ≥ `openCode.autoInject.minScore`, default 0.75): Actual code chunks are injected directly into the message under an **Auto-retrieved code context** header. This saves a tool-call round-trip.
-- **No fallback is injected for low-confidence results** — agents must use tools explicitly or Ctrl+Enter (file list) / Alt+Enter (chunks) from the TUI.
+- **`"file_paths"` (default)**: A lightweight file suggestion list is appended — `path (lang, lines N-M, relevance X.XX)`. Agents must call `search_semantic`, `get_file_skeleton`, or `find_usages` to retrieve actual code. This nudges proactive tool usage.
+- **`"chunks"`**: Full code chunks are injected under an **Auto-retrieved code context** header. Saves a tool-call round-trip but uses more tokens.
+
+Both modes only inject when score ≥ `openCode.autoInject.minScore` (default 0.85).
 
 The auto-injection respects:
-- `maxChunks` (default 3) — maximum chunks to inject
-- `maxTokens` (default 2000) — token budget (~4 chars/token estimate)
+- `maxChunks` (default 5) — maximum chunks/files to inject
+- `maxTokens` (default 3000) — token budget (~4 chars/token estimate)
 - Low-scoring chunks are evicted first to fit the budget
 - Paths are made relative via `path.relative(worktree, ...)`
 

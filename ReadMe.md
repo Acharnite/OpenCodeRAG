@@ -118,8 +118,8 @@ When using OpenCode, the plugin enhances your agent with three discovery mechani
 
 ### 2. Auto-Injection (Background Context)
 After every message you send, the plugin searches your vector-indexed codebase:
-- **High-confidence results (score ≥ 0.75):** Actual code chunks are injected directly into your prompt, giving the agent instant context without a tool-call round-trip.
-- **Lower-confidence results:** A compact list of suggested files is appended instead (e.g., `src/plugin.ts (lines 10-42)`).
+- **`contentType: "file_paths"` (default):** A lightweight list of relevant files is appended (e.g., `src/plugin.ts (typescript, lines 10-42, relevance 0.92)`). Agents must call `search_semantic` or `find_usages` to retrieve actual code — nudging proactive tool usage.
+- **`contentType: "chunks"`:** High-confidence code chunks (score ≥ 0.85) are injected directly into your prompt, giving the agent instant context without a tool-call round-trip.
 
 ### 3. System Prompt Guidance (Conditional)
 When chunks are indexed, a brief tool list is prepended to the system prompt so agents know the tools exist. This is skipped when no chunks are indexed to save tokens.

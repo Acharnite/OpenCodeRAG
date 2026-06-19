@@ -148,7 +148,7 @@ By default, AST-based chunkers use **function-level chunking** — they split co
 ### Why function-level?
 
 - **Precision**: Each chunk contains exactly one function/method, so retrieval results are focused
-- **Token efficiency**: With `maxChunks=3` and `maxTokens=2000`, smaller chunks let the agent see more relevant code
+- **Token efficiency**: With `maxChunks=5` and `maxTokens=3000`, smaller chunks let the agent see more relevant code
 - **Keyword quality**: TF-IDF scoring is more precise when computed per-function rather than per-class
 - **Agent alignment**: Agents typically search for specific functions, not entire classes
 
