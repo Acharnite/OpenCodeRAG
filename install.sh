@@ -156,6 +156,9 @@ PACKED=$(npm pack --pack-destination "$GLOBAL_CONFIG" 2>/dev/null | tail -1)
 info "Packed: $GLOBAL_CONFIG/$PACKED"
 
 # Install into opencode runtime node_modules (primary global location)
+step "Cleaning stale OpenCode cache..."
+rm -rf "$HOME/.cache/opencode/packages/$PLUGIN_NAME-"* 2>/dev/null || true
+
 step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
 mkdir -p "$RUNTIME_DIR"
 npm install --prefix "$RUNTIME_DIR" --silent "$GLOBAL_CONFIG/$PACKED" 2>&1 \

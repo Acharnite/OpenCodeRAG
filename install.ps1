@@ -249,6 +249,9 @@ function install_plugin {
 }
 
 # Install into opencode runtime node_modules
+step "Cleaning stale OpenCode cache..."
+Remove-Item -Path "$env:USERPROFILE\.cache\opencode\packages\$PLUGIN_NAME-*" -Recurse -Force -ErrorAction SilentlyContinue
+
 step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
 New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
 if (-not (install_plugin $RUNTIME_DIR "$GLOBAL_CONFIG\$PACKED")) {
