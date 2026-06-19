@@ -96,7 +96,7 @@ OpenCodeRAG registers tools that agents can invoke directly. Agents discover the
 
 1. **Skeleton first** - `get_file_skeleton(filePath)` to orient in a file
 2. **Find usages** - `find_usages(symbolName)` before editing any symbol
-3. **Search** - `opencode-rag-context(query)` or `search_semantic(query)` to find relevant code
+3. **Search** - `search_semantic(query)` to find relevant code
 4. **Read** - use `read` on specific line ranges
 5. **Edit** - make changes with full context
 
@@ -104,8 +104,7 @@ OpenCodeRAG registers tools that agents can invoke directly. Agents discover the
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `opencode-rag-context` | General-purpose code retrieval | Before any code task when you haven't read the relevant code |
-| `search_semantic` | Conceptual code search | "How does X work?", "Where is Y?" |
+| `search_semantic` | General-purpose code retrieval | Before any code task when you haven't read the relevant code |
 | `get_file_skeleton` | Quick file overview via AST | Before reading a large file to decide which sections matter |
 | `find_usages` | Symbol reference search | **Before editing** any function, variable, or class |
 | `read` (optional) | RAG-enhanced file read | Full file contents with supplementary context chunks |

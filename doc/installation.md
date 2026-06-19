@@ -99,12 +99,11 @@ This shows the index statistics, store path, provider, model, manifest status, a
 
 ## Agent Tools
 
-Once installed, OpenCodeRAG provides four tools for AI agents to retrieve and explore code:
+Once installed, OpenCodeRAG provides three tools for AI agents to retrieve and explore code:
 
 | Tool | Purpose |
 |------|---------|
-| `opencode-rag-context` | Retrieve relevant code chunks by query |
-| `search_semantic` | Search indexed code by meaning (natural language) |
+| `search_semantic` | Retrieve relevant code chunks by query or meaning |
 | `get_file_skeleton` | Get structural overview of a file (functions, classes, interfaces) |
 | `find_usages` | Find all references to a symbol across the codebase |
 

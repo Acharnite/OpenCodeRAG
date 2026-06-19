@@ -6,7 +6,7 @@
  * - get_file_skeleton → quick structural overview of a file
  * - find_usages       → find where a symbol is used/referenced
  *
- * These complement the general-purpose opencode-rag-context tool.
+ * These complement the general-purpose search_semantic tool.
  */
 
 import { tool } from "@opencode-ai/plugin/tool";
@@ -223,7 +223,7 @@ export interface SearchSemanticToolOptions {
  * Purpose: Answers conceptual questions about the codebase.
  * "How does authentication work?" → returns relevant chunks.
  *
- * Internally uses the same RAG pipeline as opencode-rag-context but
+ * Internally uses the same RAG pipeline as the inline retrieval tool but
  * exposes a clean, focused interface for agents.
  */
 export function createSearchSemanticTool(

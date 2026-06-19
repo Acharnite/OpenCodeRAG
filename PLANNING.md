@@ -11,7 +11,7 @@
 - [x] API key auto-resolution from OpenCode provider config
 - [x] Manifest schema versioning with auto-rebuild
 - [x] Runtime overrides system (no JSON editing required)
-- [x] OpenCode plugin integration with `search_semantic`, `opencode-rag-context`, `get_file_skeleton`, `find_usages` tools
+- [x] OpenCode plugin integration with `search_semantic`, `get_file_skeleton`, `find_usages` tools
 - [x] TUI settings menu with model picker for embedding and description providers
 - [x] RAG-backed read tool with related code enrichment
 - [x] Install/uninstall scripts for global setup
@@ -113,7 +113,7 @@ Support indexing and searching across multiple repositories. Enable cross-projec
 
 ## MCP Server
 
-Expose OpenCodeRAG tools (`search_semantic`, `opencode-rag-context`, `get_file_skeleton`, `find_usages`) via the Model Context Protocol. Enables any MCP-compatible client (VS Code, Cursor, Claude Desktop, etc.) to use semantic code retrieval without the OpenCode plugin.
+Expose OpenCodeRAG tools (`search_semantic`, `get_file_skeleton`, `find_usages`) via the Model Context Protocol. Enables any MCP-compatible client (VS Code, Cursor, Claude Desktop, etc.) to use semantic code retrieval without the OpenCode plugin.
 
 ## Git-Aware Incremental Indexing
 

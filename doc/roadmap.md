@@ -34,7 +34,7 @@ See [PLANNING.md](../PLANNING.md) for the full detailed roadmap and brainstormin
 
 ### OpenCode Plugin
 
-- `opencode-rag-context` tool
+- `search_semantic` tool
 - `chat.message` hook with file suggestions and auto-injection
 - RAG-backed read override tool
 - TUI settings panel with model picker dropdowns

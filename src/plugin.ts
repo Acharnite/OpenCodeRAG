@@ -20,9 +20,12 @@ import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
 
 const configCache = new Map<string, RagConfig>();
 const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
+const mcpServers = new Map<string, { close: () => Promise<void> }>();
 
 const CONTEXT_TOOL_NAME = "search_semantic";
 const CONTEXT_MARKER = "search_semantic retrieved context";
