@@ -233,7 +233,11 @@ info "Packed: $GLOBAL_CONFIG\$PACKED"
 function install_plugin {
     param([string]$targetDir, [string]$packPath)
     $output = & cmd /c "npm install --prefix `"$targetDir`" --silent `"$packPath`" 2>nul"
-    if ($LASTEXITCODE -eq 0) { return $true }
+    if ($LASTEXITCODE -eq 0) { 
+        # Output error
+        Write-Host $output -ForegroundColor Red
+        return $true 
+    }
     # Retry with --ignore-scripts for native modules (e.g. canvas has a pure-JS fallback)
     Write-Host "  Retrying without native module compilation..." -ForegroundColor Yellow
     $output = & cmd /c "npm install --prefix `"$targetDir`" --silent --ignore-scripts --no-optional `"$packPath`" 2>nul"

@@ -1,17 +1,25 @@
 import { Parser, Language, Node } from "web-tree-sitter";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-const MS_WASM_DIR = resolve(
-  PROJECT_ROOT,
-  "node_modules",
-  "@vscode",
-  "tree-sitter-wasm",
-  "wasm"
-);
+function resolveMsWasmDir(): string {
+  const localDir = resolve(PROJECT_ROOT, "node_modules", "@vscode", "tree-sitter-wasm", "wasm");
+  if (existsSync(localDir)) return localDir;
+
+  try {
+    const require = createRequire(import.meta.url);
+    const pkgJson = require.resolve("@vscode/tree-sitter-wasm/package.json");
+    return resolve(dirname(pkgJson), "wasm");
+  } catch {
+    return localDir;
+  }
+}
+
+const MS_WASM_DIR = resolveMsWasmDir();
 
 const SELF_WASM_DIR = resolve(PROJECT_ROOT, "wasm");
 
