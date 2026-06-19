@@ -36,14 +36,14 @@ opencode-rag query "authentication middleware"
 | Feature | Description |
 |---|---|
 | **MCP server** | `opencode-rag mcp` — stdio-based MCP server exposing `search_semantic`, `get_file_skeleton`, `find_usages` tools for any MCP-compatible client |
-| **AST chunking** | 25 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, Bash, PHP, PowerShell, SQL, JSON, HTML, CSS, XML, YAML, TOML, INI, Dockerfile, Markdown) |
+| **AST chunking** | 26 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, Bash, PHP, PowerShell, SQL, JSON, HTML, CSS, XML, YAML, TOML, INI, Dockerfile, Markdown, LaTeX, Razor) |
 | **Document support** | Markdown, LaTeX, PDF, DOCX, DOC, Excel |
 | **Hybrid search** | Vector similarity + TF×IDF keyword fusion |
 | **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings, Ctrl+Enter to add RAG context, MCP registration on `init` |
 | **Incremental indexing** | File-hash manifest, background watcher, auto-rebuild on corruption |
 | **Privacy-first** | All processing stays local with Ollama |
 | **CLI** | `index`, `query`, `status`, `list`, `show`, `dump`, `clear`, `init`, `ui`, `mcp` |
-| **Programmatic API** | TypeScript `search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()` |
+| **Programmatic API** | TypeScript `search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()`, `createBackgroundIndexer()`, `getIndexStatusSummary()` |
 | **Proxy-aware** | Corporate proxy support with raw-socket localhost bypass |
 | **OpenAI / Cohere** | Alternate embedding providers with API key auto-resolution |
 

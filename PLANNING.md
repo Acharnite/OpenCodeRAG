@@ -16,6 +16,9 @@
 - [x] RAG-backed read tool with related code enrichment
 - [x] Install/uninstall scripts for global setup
 - [x] Workspace-native bootstrap (`opencode-rag init`)
+- [x] Web UI with chunk browser, file explorer, and evaluation dashboard
+- [x] MCP server (`opencode-rag mcp`) — expose `search_semantic`, `get_file_skeleton`, `find_usages` via stdio MCP for any MCP-compatible client
+- [x] Programmatic TypeScript API (`search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()`, `createBackgroundIndexer()`, `getIndexStatusSummary()`)
 
 ## Short Term
 
@@ -44,10 +47,8 @@
 - [ ] Agent-based code navigation
 - [ ] Richer non-code / multimodal support (diagrams, API specs, JSON schemas, YAML configs)
 - [ ] Access control (per-folder permissions, sensitive file exclusion)
-- [ ] MCP server — expose RAG tools via Model Context Protocol for any MCP client (VS Code, Cursor, etc.) without the OpenCode plugin
 - [ ] Git-aware incremental indexing — index only files changed since last commit instead of full-file hash scan
 - [ ] Index export/import — serialize the index for CI/CD, team sharing, or backup/restore
-- [ ] Programmatic TypeScript API — export `search()`, `index()`, `getContext()` for embedding in scripts/tools
 - [ ] Performance benchmark suite — measure index time, query latency, memory usage across repo sizes
 - [ ] Config validation at startup — validate `opencode-rag.json` schema with clear error messages
 
@@ -111,10 +112,6 @@ Retain coding patterns, project conventions, and past decisions across sessions.
 
 Support indexing and searching across multiple repositories. Enable cross-project queries for monorepo setups or microservice architectures. Could use per-workspace vector shards with a unified query layer.
 
-## MCP Server
-
-Expose OpenCodeRAG tools (`search_semantic`, `get_file_skeleton`, `find_usages`) via the Model Context Protocol. Enables any MCP-compatible client (VS Code, Cursor, Claude Desktop, etc.) to use semantic code retrieval without the OpenCode plugin.
-
 ## Git-Aware Incremental Indexing
 
 Instead of hashing every file on each index pass, detect changed files via `git diff --name-only` since the last indexed commit. Skips unchanged tracked files entirely — dramatically faster for large repos.
@@ -122,10 +119,6 @@ Instead of hashing every file on each index pass, detect changed files via `git 
 ## Index Export / Import
 
 Serialize the full index (vectors + metadata + keyword index) to a portable format. Enables: CI/CD pipelines that pre-index and ship the index, team sharing of a common index, and backup/restore across machines.
-
-## Programmatic TypeScript API
-
-Expose first-class library exports: `search(query, options)`, `indexWorkspace(path)`, `getContext(query, filePath)`. Lets users embed RAG into custom scripts, build tools, or CI pipelines without the CLI or plugin.
 
 ## Performance Benchmark Suite
 
@@ -181,7 +174,5 @@ install/release automation.
 4. Retrieval debug/explainability tools
 5. Persistent query cache across restarts
 6. Cross-file code graph integration (imports, call graph)
-7. MCP server for VS Code / Cursor / Claude Desktop
-8. Programmatic TypeScript API
-9. Index export/import for CI/CD and team sharing
-10. Git-aware incremental indexing
+7. Index export/import for CI/CD and team sharing
+8. Git-aware incremental indexing
