@@ -12,13 +12,15 @@ export class OllamaProvider implements EmbeddingProvider {
   private apiKey?: string;
   private timeoutMs: number;
   private proxy?: ProxyConfig;
+  private logLevel?: string;
 
-  constructor(baseUrl: string, model: string, apiKey?: string, timeoutMs: number = 30000, proxy?: ProxyConfig) {
+  constructor(baseUrl: string, model: string, apiKey?: string, timeoutMs: number = 30000, proxy?: ProxyConfig, logLevel?: string) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.model = model;
     this.apiKey = apiKey;
     this.timeoutMs = timeoutMs;
     this.proxy = proxy;
+    this.logLevel = logLevel;
   }
 
   private getLogFilePath(): string {
@@ -30,7 +32,7 @@ export class OllamaProvider implements EmbeddingProvider {
       scope: "embedder.ollama",
       message,
       error,
-    });
+    }, this.logLevel);
   }
 
   async embed(texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {

@@ -71,15 +71,30 @@ async function loadKeywordIndex(storePath: string): Promise<KeywordIndex> {
   }
 }
 
+interface LazyDeps {
+  embedder: EmbeddingProvider;
+  store: VectorStore;
+  keywordIndex: KeywordIndex;
+}
+
 export async function createMcpServer(options?: McpServerOptions): Promise<RagMcpInstance> {
   const cwd = options?.cwd ?? process.cwd();
   const cfg = resolveConfig(cwd, options?.configPath);
   const storePath = path.resolve(cwd, cfg.vectorStore.path);
 
-  const embedder = createEmbedder(cfg);
-  const dimension = await probeDimension(embedder);
-  const store: VectorStore = new LanceDBStore(storePath, dimension);
-  const keywordIndex = await loadKeywordIndex(storePath);
+  let depsPromise: Promise<LazyDeps> | undefined;
+  function getDeps(): Promise<LazyDeps> {
+    if (!depsPromise) {
+      depsPromise = (async () => {
+        const embedder = createEmbedder(cfg);
+        const dimension = await probeDimension(embedder);
+        const store: VectorStore = new LanceDBStore(storePath, dimension);
+        const keywordIndex = await loadKeywordIndex(storePath);
+        return { embedder, store, keywordIndex };
+      })();
+    }
+    return depsPromise;
+  }
 
   const server = new McpServer({
     name: "opencode-rag-mcp",
@@ -97,6 +112,7 @@ export async function createMcpServer(options?: McpServerOptions): Promise<RagMc
     },
     async (args: SearchSemanticParams) => {
       try {
+        const { embedder, store, keywordIndex } = await getDeps();
         const result = await handleSearchSemantic(args, embedder, store, cfg, keywordIndex, retrieve);
         return {
           content: [{ type: "text" as const, text: result.formatted }],
@@ -142,6 +158,7 @@ export async function createMcpServer(options?: McpServerOptions): Promise<RagMc
     },
     async (args: FindUsagesParams) => {
       try {
+        const { embedder, store, keywordIndex } = await getDeps();
         const result = await handleFindUsages(args, embedder, store, cfg, keywordIndex, retrieve);
         return {
           content: [{ type: "text" as const, text: result.formatted }],

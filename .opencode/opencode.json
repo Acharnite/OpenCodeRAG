@@ -4,9 +4,8 @@
     "opencode-rag": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
-        "opencode-rag-plugin",
+        "node",
+        ".opencode/node_modules/opencode-rag-plugin/dist/cli.js",
         "mcp"
       ],
       "cwd": ".",

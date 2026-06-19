@@ -883,7 +883,7 @@
             <h4 class="text-xs font-semibold text-slate-400 mb-2">Tool Calls</h4>
             <div class="flex flex-wrap gap-2">
               ${toolEntries.map(([name, count]) => {
-                const isRag = ['opencode-rag-context','search_semantic','get_file_skeleton','find_usages','read'].includes(name);
+                const isRag = ['search_semantic','get_file_skeleton','find_usages','read'].includes(name);
                 const cls = isRag ? 'bg-cyan-900/50 text-cyan-300 border-cyan-700' : 'bg-slate-800 text-slate-400 border-slate-700';
                 return `<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs border ${cls}">${escapeHtml(name)} <strong>${count}</strong></span>`;
               }).join('')}
@@ -941,7 +941,7 @@
       if (ev.event === 'tool') {
         const status = ev.toolStatus || '';
         const color = status === 'completed' ? 'text-green-400' : status === 'error' ? 'text-red-400' : 'text-yellow-400';
-        const isRag = ['opencode-rag-context','search_semantic','get_file_skeleton','find_usages','read'].includes(ev.tool);
+        const isRag = ['search_semantic','get_file_skeleton','find_usages','read'].includes(ev.tool);
         const dur = ev.toolDurationMs != null ? formatMs(ev.toolDurationMs) : '';
         return `<div class="px-3 py-1.5 border-b border-slate-800 flex items-center gap-2 text-xs">
           <span class="text-slate-600 w-16 shrink-0">${time.split(' ')[1] || time}</span>

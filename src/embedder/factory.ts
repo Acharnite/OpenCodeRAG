@@ -10,7 +10,7 @@ export function createEmbedder(config: RagConfig): EmbeddingProvider {
   const effectiveTimeoutMs = timeoutMs ?? 30000;
 
   if (provider === "ollama") {
-    return new OllamaProvider(baseUrl, model, apiKey, effectiveTimeoutMs, proxy);
+    return new OllamaProvider(baseUrl, model, apiKey, effectiveTimeoutMs, proxy, config.logging.level);
   }
 
   if (provider === "cohere") {

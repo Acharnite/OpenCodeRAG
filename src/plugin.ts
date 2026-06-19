@@ -20,9 +20,13 @@ import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawn, execSync } from "node:child_process";
+import { tmpdir } from "node:os";
 
 const configCache = new Map<string, RagConfig>();
 const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
+const mcpServers = new Map<string, { close: () => Promise<void> }>();
 
 const CONTEXT_TOOL_NAME = "search_semantic";
 const CONTEXT_MARKER = "search_semantic retrieved context";
@@ -38,14 +42,15 @@ function appendVerboseLog(
   logFilePath: string,
   scope: string,
   message: string,
-  payload?: unknown
+  payload?: unknown,
+  logLevel?: string,
 ): void {
   appendDebugLog(logFilePath, {
     scope,
     message: payload
       ? `${message}\n${formatLogPayload(payload)}`
       : message,
-  });
+  }, logLevel);
 }
 
 function formatLogPayload(value: unknown, indent = 0): string {
@@ -323,6 +328,7 @@ type CreateRagHooksOptions = {
   cfg: RagConfig;
   storePath: string;
   logFilePath: string;
+  logLevel?: string;
   worktree: string;
   dependencies?: Partial<RagPluginDependencies>;
   store?: VectorStore;
@@ -781,26 +787,149 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   };
 }
 
-async function loadKeywordIndex(storePath: string, logFilePath: string): Promise<KeywordIndex> {
+async function loadKeywordIndex(storePath: string, logFilePath: string, logLevel?: string): Promise<KeywordIndex> {
   const { KeywordIndex } = await import("./retriever/keyword-index.js");
   try {
     const index = await KeywordIndex.load(storePath);
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Keyword index loaded (${index.count()} chunks)`,
-    });
+    }, logLevel);
     return index;
   } catch (err) {
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: "Failed to load keyword index, creating empty",
       error: err,
-    });
+    }, logLevel);
     return new KeywordIndex(storePath);
   }
 }
 
 
+
+let _cachedNodeExecutable: string | null | undefined;
+
+function resolveNodeExecutable(): string | null {
+  if (_cachedNodeExecutable !== undefined) return _cachedNodeExecutable;
+
+  const execPath = process.execPath;
+  const basename = path.basename(execPath).toLowerCase();
+
+  if (basename === "node" || basename === "node.exe") {
+    _cachedNodeExecutable = execPath;
+    return _cachedNodeExecutable;
+  }
+
+  const tryCmd = (cmd: string): string | null => {
+    try {
+      const result = execSync(cmd, { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      return result.split("\n")[0]?.trim() || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const found = process.platform === "win32"
+    ? tryCmd("where node")
+    : tryCmd("which node");
+
+  _cachedNodeExecutable = found;
+  return _cachedNodeExecutable;
+}
+
+function resolveMcpCliEntry(): string | null {
+  const selfDir = path.dirname(fileURLToPath(import.meta.url));
+  const packageRoot = path.resolve(selfDir, "..");
+
+  const distCli = path.join(packageRoot, "dist", "cli.js");
+  if (existsSync(distCli)) return distCli;
+
+  const srcCli = path.join(packageRoot, "src", "cli.ts");
+  if (existsSync(srcCli)) return srcCli;
+
+  return null;
+}
+
+function startMcpServerProcess(
+  cwd: string,
+  logFilePath: string,
+  logLevel?: string
+): { close: () => Promise<void> } {
+  const cliEntry = resolveMcpCliEntry();
+  if (!cliEntry) {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: "Could not resolve MCP CLI entry point; skipping autostart",
+    }, logLevel);
+    return { close: async () => {} };
+  }
+
+  const nodeExec = resolveNodeExecutable();
+  if (!nodeExec) {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: "Could not resolve Node.js executable; skipping MCP autostart",
+    }, logLevel);
+    return { close: async () => {} };
+  }
+
+  const args = cliEntry.endsWith(".ts")
+    ? ["--import", "tsx", cliEntry, "mcp"]
+    : [cliEntry, "mcp"];
+
+  appendDebugLog(logFilePath, {
+    scope: "mcp",
+    message: `Starting MCP server: ${nodeExec} ${args.join(" ")}`,
+  }, logLevel);
+
+  const child = spawn(nodeExec, args, {
+    cwd,
+    stdio: "pipe",
+    detached: false,
+  });
+
+  child.stdout?.on("data", (chunk: Buffer) => {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: `stdout: ${chunk.toString().trim()}`,
+    }, logLevel);
+  });
+
+  child.stderr?.on("data", (chunk: Buffer) => {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: `stderr: ${chunk.toString().trim()}`,
+    }, logLevel);
+  });
+
+  child.on("error", (err) => {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: "MCP server process error",
+      error: err,
+    }, logLevel);
+  });
+
+  child.on("exit", (code, signal) => {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: `MCP server exited (code=${code}, signal=${signal})`,
+    });
+    mcpServers.delete(cwd);
+  });
+
+  return {
+    close: async () => {
+      if (child.exitCode !== null || child.killed) return;
+      appendDebugLog(logFilePath, {
+        scope: "mcp",
+        message: "Shutting down MCP server",
+      });
+      child.kill("SIGTERM");
+    },
+  };
+}
 
 export const ragPlugin: Plugin = async (
   input: PluginInput,
@@ -808,6 +937,7 @@ export const ragPlugin: Plugin = async (
 ): Promise<Hooks> => {
   const cfg = await getConfig(input.directory);
   const logFilePath = path.resolve(input.directory, resolveLogConfig(cfg).logFilePath);
+  const logLevel = resolveLogConfig(cfg).level;
 
   if (!cfg.openCode.enabled) {
     return {};
@@ -827,13 +957,13 @@ export const ragPlugin: Plugin = async (
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Resolved OpenAI API key for embedding from ${process.env.OPENAI_API_KEY ? "OPENAI_API_KEY env var" : "OpenCode provider config"}`,
-    });
+    }, logLevel);
   }
   if (!hadDescriptionKey && effectiveCfg.description?.apiKey) {
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Resolved OpenAI API key for description from ${process.env.OPENAI_API_KEY ? "OPENAI_API_KEY env var" : "OpenCode provider config"}`,
-    });
+    }, logLevel);
   }
 
   // Close existing indexer for this directory if one exists (e.g. on plugin reload)
@@ -846,15 +976,30 @@ export const ragPlugin: Plugin = async (
         scope: "plugin",
         message: "Failed to close existing background indexer",
         error: err,
-      });
+      }, logLevel);
     }
     backgroundIndexers.delete(input.directory);
+  }
+
+  // Close existing MCP server for this directory if one exists (e.g. on plugin reload)
+  const existingMcp = mcpServers.get(input.directory);
+  if (existingMcp) {
+    try {
+      await existingMcp.close();
+    } catch (err) {
+      appendDebugLog(logFilePath, {
+        scope: "plugin",
+        message: "Failed to close existing MCP server",
+        error: err,
+      }, logLevel);
+    }
+    mcpServers.delete(input.directory);
   }
 
   appendDebugLog(logFilePath, {
     scope: "plugin",
     message: `OpenCode plugin enabled for ${input.directory}`,
-  });
+  }, logLevel);
 
   // Probe vector dimension and create store with correct dimension
   const embedder = createEmbedder(effectiveCfg);
@@ -867,19 +1012,19 @@ export const ragPlugin: Plugin = async (
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Vector dimension: ${vectorDimension}`,
-    });
+    }, logLevel);
   } catch (err) {
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Dimension probe failed, falling back to ${vectorDimension}`,
       error: err,
-    });
+    }, logLevel);
   }
 
   const store = new LanceDBStore(storePath, vectorDimension);
 
   // Load or create keyword index for hybrid search
-  const keywordIndex = await loadKeywordIndex(storePath, logFilePath);
+  const keywordIndex = await loadKeywordIndex(storePath, logFilePath, logLevel);
 
   // Create description provider (enabled by default)
   const descriptionConfig = effectiveCfg.description ?? { enabled: true, provider: "ollama" as const, baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
@@ -891,6 +1036,7 @@ export const ragPlugin: Plugin = async (
     cfg: effectiveCfg,
     storePath,
     logFilePath,
+    logLevel,
     worktree: input.directory,
     embedder,
     store,
@@ -908,11 +1054,20 @@ export const ragPlugin: Plugin = async (
       store,
       embedder,
       logFilePath,
+      logLevel,
       keywordIndex,
       descriptionProvider,
     });
 
     backgroundIndexers.set(input.directory, indexer);
+  }
+
+  // Auto-start MCP server if enabled (skip in temp dirs / test environments)
+  const mcpCfg = effectiveCfg.mcp ?? { enabled: true };
+  const isTempDir = path.resolve(input.directory).startsWith(tmpdir());
+  if (mcpCfg.enabled && !isTempDir) {
+    const mcpInstance = startMcpServerProcess(input.directory, logFilePath, logLevel);
+    mcpServers.set(input.directory, mcpInstance);
   }
 
   return hooks;

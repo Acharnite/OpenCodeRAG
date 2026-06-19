@@ -6,7 +6,7 @@ OpenCodeRAG integrates with OpenCode as a plugin, providing semantic code search
 
 The plugin (`src/plugin.ts`) registers several integration points with OpenCode:
 
-### 1. General-Purpose Retrieval: `opencode-rag-context`
+### 1. General-Purpose Retrieval: `search_semantic`
 
 The primary retrieval tool that any OpenCode agent can invoke to search the indexed codebase:
 
@@ -27,12 +27,12 @@ For autonomous agent workflows, the plugin also registers smaller, focused tools
 
 | Tool | Purpose | Args |
 |------|---------|------|
-| `search_semantic` | Search code by concept/meaning | `query` (req), `pathHints?`, `languageHints?`, `topK?` |
+| `get_file_skeleton` | Structural file overview via tree-sitter AST | `filePath` (req) |
 | `get_file_skeleton` | Structural file overview via tree-sitter AST | `filePath` (req) |
 | `find_usages` | Find all references to a symbol | `symbolName` (req), `pathHint?`, `topK?` |
 
 #### `search_semantic`
-Conceptual code search — answers questions like *"How does authentication work?"* or *"Where is the chunking logic?"*. Internally uses the same RAG pipeline as `opencode-rag-context` (vector + hybrid keyword search) but exposes a cleaner, focused interface. Returns the most relevant code snippets with file paths, line numbers, and relevance scores.
+Conceptual code search — answers questions like *"How does authentication work?"* or *"Where is the chunking logic?"*. Uses vector + hybrid keyword search and returns the most relevant code snippets with file paths, line numbers, and relevance scores.
 
 #### `get_file_skeleton`
 Provides a quick structural overview of a source file without reading its full contents. Uses tree-sitter to parse the file's AST and extract top-level declarations:
