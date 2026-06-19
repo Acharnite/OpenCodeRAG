@@ -50,41 +50,61 @@ function ensure_user_path_contains {
     return $true
 }
 
-function register_in_opencode_config {
-    # Register PLUGIN_NAME directly in opencode.jsonc instead of using
-    # `opencode plugin <name>` which downloads from npm and can install
-    # a stale version with broken exports.
+function remove_stale_plugin_from_global_config {
+    # Remove "plugin" entries from global config — plugin is loaded via
+    # .opencode/plugins/ auto-discovery, NOT via npm package resolution.
+    # Stale "plugin" entries trigger npm install which fails on native
+    # dependencies and produces "Plugin export is not a function".
+    $removed = $false
     foreach ($cfgFile in @("opencode.jsonc", "opencode.json")) {
         $cfgPath = Join-Path $GLOBAL_CONFIG $cfgFile
         if (-not (Test-Path -LiteralPath $cfgPath -PathType Leaf)) { continue }
 
         try {
             $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
-            if (-not $cfg.plugin) {
-                $cfg | Add-Member -MemberType NoteProperty -Name "plugin" -Value @()
+            if ($cfg.plugin) {
+                $cfg.PSObject.Properties.Remove('plugin')
+                $cfg | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $cfgPath -NoNewline
+                Add-Content -LiteralPath $cfgPath -Value "`n"
+                info "Removed stale 'plugin' entry from $cfgPath"
+                $removed = $true
             }
-            $existing = @($cfg.plugin)
-            if ($existing -contains $PLUGIN_NAME) {
-                return $false
-            }
-            $cfg.plugin = @($existing) + @($PLUGIN_NAME)
-            $cfg | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $cfgPath -NoNewline
-            Add-Content -LiteralPath $cfgPath -Value "`n"
-            return $true
         }
         catch {
             continue
         }
     }
-
-    # No config file found — create one
-    $cfgPath = Join-Path $GLOBAL_CONFIG "opencode.jsonc"
-    @"
-{
-  "plugin": ["$PLUGIN_NAME"]
+    return $removed
 }
-"@ | Set-Content -LiteralPath $cfgPath -Encoding UTF8
-    return $true
+
+function cleanup_stale_workspace_mcp_configs {
+    # Remove stale MCP server configs that use "npx -y opencode-rag-plugin mcp"
+    # (downloads stale npm version). The plugin auto-starts MCP server itself.
+    param([string]$SearchRoot)
+    
+    $mcpConfigFiles = Get-ChildItem -Path $SearchRoot -Recurse -Filter "opencode.json" -ErrorAction SilentlyContinue |
+        Where-Object { $_.DirectoryName -match '\.opencode$' -and $_.DirectoryName -ne (Join-Path $SearchRoot ".opencode") }
+    
+    foreach ($file in $mcpConfigFiles) {
+        try {
+            $cfg = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+            if ($cfg.mcp -and $cfg.mcp.'opencode-rag') {
+                $mcpEntry = $cfg.mcp.'opencode-rag'
+                if ($mcpEntry.command -and ($mcpEntry.command -join ' ') -match 'npx.*opencode-rag-plugin') {
+                    $cfg.mcp.PSObject.Properties.Remove('opencode-rag')
+                    if ($cfg.mcp.PSObject.Properties.Count -eq 0) {
+                        $cfg.PSObject.Properties.Remove('mcp')
+                    }
+                    $cfg | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $file.FullName -NoNewline
+                    Add-Content -LiteralPath $file.FullName -Value "`n"
+                    info "Removed stale MCP config from $($file.FullName)"
+                }
+            }
+        }
+        catch {
+            continue
+        }
+    }
 }
 
 function test_node_resolution {
@@ -194,6 +214,10 @@ if ($args[0] -eq "uninstall") {
     info "Updating OpenCode configuration..."
     remove_from_config
     
+    # Remove stale plugin entries from global config
+    info "Removing stale plugin registrations..."
+    remove_stale_plugin_from_global_config | Out-Null
+    
     # Remove workspace-local legacy files
     info "Removing workspace-local files..."
     Remove-Item -Path "$REPO_ROOT\.opencode\plugins\rag-plugin.js" -Force -ErrorAction SilentlyContinue
@@ -285,14 +309,13 @@ else {
 # Clean up .tgz
 cleanup_tgz
 
-# Register the plugin directly in opencode.jsonc (avoids stale npm version)
-step "Registering plugin in OpenCode config..."
-$regResult = register_in_opencode_config
-if ($regResult) {
-    ok "Registered"
-} else {
-    info "Plugin name already present in config (no changes needed)"
-}
+# Clean up stale plugin registrations from global config (legacy installs)
+step "Cleaning stale plugin registrations..."
+remove_stale_plugin_from_global_config | Out-Null
+
+# Clean up stale workspace-local MCP configs that use npx
+step "Cleaning stale workspace MCP configs..."
+cleanup_stale_workspace_mcp_configs $REPO_ROOT
 
 # Create CLI wrapper
 step "Making CLI available on PATH..."

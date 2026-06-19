@@ -21,7 +21,7 @@ import { createSessionLogger, type SessionLogger } from "./eval/session-logger.j
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
 const configCache = new Map<string, RagConfig>();
@@ -808,6 +808,36 @@ async function loadKeywordIndex(storePath: string, logFilePath: string, logLevel
 
 
 
+let _cachedNodeExecutable: string | null | undefined;
+
+function resolveNodeExecutable(): string | null {
+  if (_cachedNodeExecutable !== undefined) return _cachedNodeExecutable;
+
+  const execPath = process.execPath;
+  const basename = path.basename(execPath).toLowerCase();
+
+  if (basename === "node" || basename === "node.exe") {
+    _cachedNodeExecutable = execPath;
+    return _cachedNodeExecutable;
+  }
+
+  const tryCmd = (cmd: string): string | null => {
+    try {
+      const result = execSync(cmd, { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      return result.split("\n")[0]?.trim() || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const found = process.platform === "win32"
+    ? tryCmd("where node")
+    : tryCmd("which node");
+
+  _cachedNodeExecutable = found;
+  return _cachedNodeExecutable;
+}
+
 function resolveMcpCliEntry(): string | null {
   const selfDir = path.dirname(fileURLToPath(import.meta.url));
   const packageRoot = path.resolve(selfDir, "..");
@@ -835,16 +865,25 @@ function startMcpServerProcess(
     return { close: async () => {} };
   }
 
+  const nodeExec = resolveNodeExecutable();
+  if (!nodeExec) {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: "Could not resolve Node.js executable; skipping MCP autostart",
+    }, logLevel);
+    return { close: async () => {} };
+  }
+
   const args = cliEntry.endsWith(".ts")
     ? ["--import", "tsx", cliEntry, "mcp"]
     : [cliEntry, "mcp"];
 
   appendDebugLog(logFilePath, {
     scope: "mcp",
-    message: `Starting MCP server: ${process.execPath} ${args.join(" ")}`,
+    message: `Starting MCP server: ${nodeExec} ${args.join(" ")}`,
   }, logLevel);
 
-  const child = spawn(process.execPath, args, {
+  const child = spawn(nodeExec, args, {
     cwd,
     stdio: "pipe",
     detached: false,

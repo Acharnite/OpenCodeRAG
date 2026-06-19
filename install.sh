@@ -22,34 +22,55 @@ step()  { printf '\n%s\n' "$*"; }
 ok()    { printf '  %s  OK\n' "$1"; }
 fail()  { printf '  %s  FAILED\n' "$1" >&2; }
 
-# Register PLUGIN_NAME directly in opencode.jsonc instead of using
-# `opencode plugin <name>` which downloads from npm and can install
-# a stale version with broken exports.
-register_in_config() {
-  local cfg
+# Remove stale "plugin" entries from global config — plugin is loaded via
+# .opencode/plugins/ auto-discovery, NOT via npm package resolution.
+# Stale "plugin" entries trigger npm install which fails on native
+# dependencies and produces "Plugin export is not a function".
+remove_stale_plugin_from_config() {
+  local removed=false
   for cfg in opencode.jsonc opencode.json; do
     local cfgpath="$GLOBAL_CONFIG/$cfg"
     [[ -f "$cfgpath" ]] || continue
 
     if node -e "
       const fs = require('fs');
-      const cfg = JSON.parse(fs.readFileSync('$cfgpath', 'utf8'));
-      const plugins = cfg.plugin || [];
-      if (plugins.includes('$PLUGIN_NAME')) {
-        process.exit(1);
+      const p = '$cfgpath';
+      const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (c.plugin) {
+        delete c.plugin;
+        fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
+        process.exit(0);
       }
-      cfg.plugin = plugins.concat(['$PLUGIN_NAME']);
-      fs.writeFileSync('$cfgpath', JSON.stringify(cfg, null, 2) + '\n');
+      process.exit(1);
     " 2>/dev/null; then
-      return 0
-    else
-      return 1
+      info "Removed stale 'plugin' entry from $cfgpath"
+      removed=true
     fi
   done
+  $removed
+}
 
-  # No config file found — create one
-  printf '{\n  "plugin": ["%s"]\n}\n' "$PLUGIN_NAME" > "$GLOBAL_CONFIG/opencode.jsonc"
-  return 0
+# Remove stale MCP server configs that use "npx -y opencode-rag-plugin mcp"
+# (downloads stale npm version). The plugin auto-starts MCP server itself.
+cleanup_stale_workspace_mcp_configs() {
+  local search_root="${1:-.}"
+  find "$search_root" -path "*/.opencode/opencode.json" -not -path "$search_root/.opencode/opencode.json" 2>/dev/null | while read -r cfgpath; do
+    node -e "
+      const fs = require('fs');
+      const p = '$cfgpath';
+      const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (c.mcp && c.mcp['opencode-rag']) {
+        const entry = c.mcp['opencode-rag'];
+        if (entry.command && entry.command.join(' ').includes('npx') && entry.command.join(' ').includes('opencode-rag-plugin')) {
+          delete c.mcp['opencode-rag'];
+          if (Object.keys(c.mcp).length === 0) delete c.mcp;
+          fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
+          process.exit(0);
+        }
+      }
+      process.exit(1);
+    " 2>/dev/null && info "Removed stale MCP config from $cfgpath" || true
+  done
 }
 
 cleanup_tgz() {
@@ -129,6 +150,10 @@ if [[ "${1:-}" = "uninstall" ]]; then
   info "Updating OpenCode configuration..."
   remove_from_config
   
+  # Remove stale plugin registrations from global config
+  info "Removing stale plugin registrations..."
+  remove_stale_plugin_from_config || true
+  
   # Remove workspace-local legacy files
   info "Removing workspace-local files..."
   rm -f "$REPO_ROOT/.opencode/plugins/rag-plugin.js" \
@@ -186,13 +211,13 @@ fi
 # Clean up .tgz
 cleanup_tgz
 
-# Register the plugin directly in opencode.jsonc (avoids stale npm version)
-step "Registering plugin in OpenCode config..."
-if register_in_config; then
-  ok "Registered"
-else
-  info "Plugin name already present in config (no changes needed)"
-fi
+# Clean up stale plugin registrations from global config (legacy installs)
+step "Cleaning stale plugin registrations..."
+remove_stale_plugin_from_config || true
+
+# Clean up stale workspace-local MCP configs that use npx
+step "Cleaning stale workspace MCP configs..."
+cleanup_stale_workspace_mcp_configs "$REPO_ROOT"
 
 # Create CLI wrapper (pointing to runtime's node_modules for stability)
 step "Making CLI available on PATH..."
