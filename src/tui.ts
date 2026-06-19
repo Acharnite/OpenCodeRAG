@@ -154,6 +154,7 @@ function renderSidebar(
   version: string,
   status: RagStatus,
   tuiConfig?: { fileListKeybinding: string; chunksKeybinding: string },
+  tokenStats?: { inputTokens: number; ragCtxTokens: number; reads: number; ragTools: number; queries: number },
 ): JSX.Element {
   const statusLine = status.indexed
     ? `${status.chunkCount} chunks \u00B7 ${status.provider}/${status.model}`
@@ -200,6 +201,14 @@ function renderSidebar(
       text({ fg: theme.textMuted }, ["Ctrl+Shift+R → Settings"]),
       text({ fg: theme.textMuted }, [`${formatKeybinding(fileListKey)} → Add Files`]),
       text({ fg: theme.textMuted }, [`${formatKeybinding(chunksKey)} → Add Chunks`]),
+      ...(tokenStats && tokenStats.queries > 0 ? [
+        text({ fg: theme.textMuted }, [""]),
+        text({ fg: theme.accent }, ["Token Usage"]),
+        text({ fg: theme.text }, [`  Queries: ${tokenStats.queries}`]),
+        text({ fg: theme.text }, [`  Input: ${tokenStats.inputTokens.toLocaleString()} tok`]),
+        text({ fg: theme.text }, [`  RAG ctx: ${tokenStats.ragCtxTokens.toLocaleString()} tok`]),
+        text({ fg: theme.text }, [`  Reads: ${tokenStats.reads}  RAG: ${tokenStats.ragTools}`]),
+      ] : []),
     ],
   );
 }
@@ -759,6 +768,33 @@ const plugin: TuiPluginModule & { id: string } = {
 
     refreshStatus();
 
+    // Load token stats from eval session logs
+    function loadTokenStats(): { inputTokens: number; ragCtxTokens: number; reads: number; ragTools: number; queries: number } | undefined {
+      try {
+        const wt = api.state.path.worktree;
+        if (!wt) return undefined;
+        const configPath = getConfigPath(wt);
+        if (!configPath) return undefined;
+        const cfg = loadConfig(configPath);
+        const vs = cfg.vectorStore as Record<string, unknown> | undefined;
+        const storeRelPath = (vs?.path as string) ?? ".opencode/rag_db";
+        const storePath = resolve(wt, storeRelPath);
+        const { listSessions } = require("./eval/storage.js") as typeof import("./eval/storage.js");
+        const sessions = listSessions(storePath);
+        if (sessions.length === 0) return undefined;
+        const latest = sessions[0]!;
+        return {
+          inputTokens: latest.totalTokens.input,
+          ragCtxTokens: latest.ragContextTokens,
+          reads: Object.entries(latest.toolCallCounts).filter(([k]) => k === "read").reduce((s, [, v]) => s + v, 0),
+          ragTools: latest.ragToolCalls,
+          queries: latest.messageCount,
+        };
+      } catch {
+        return undefined;
+      }
+    }
+
     // Register sidebar slot
     api.slots.register({
       order: 900,
@@ -767,7 +803,8 @@ const plugin: TuiPluginModule & { id: string } = {
           if (Date.now() - lastRefresh > REFRESH_INTERVAL_MS) {
             refreshStatus();
           }
-          return renderSidebar(api.theme.current, version, cachedStatus, tuiConfig);
+          const tokenStats = loadTokenStats();
+          return renderSidebar(api.theme.current, version, cachedStatus, tuiConfig, tokenStats);
         },
       },
     });

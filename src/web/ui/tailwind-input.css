@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { background: #0f172a; color: #e2e8f0; }
+}
+
+@layer components {
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: #1e293b; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+  .chunk-row { border-left: 2px solid transparent; }
+  .chunk-row:hover { background: #1e293b; }
+  .chunk-row.selected { background: #1e293b; border-left-color: #06b6d4; }
+  .file-item:hover { background: #1e293b; }
+  .file-item.active { background: #1e293b; border-left: 2px solid #06b6d4; }
+  .kpi-card { background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
+  .nav-btn.active { background: #06b6d4; color: #0f172a; }
+  pre code.hljs { background: transparent; padding: 0; }
+}

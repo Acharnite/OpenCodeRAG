@@ -12,3 +12,11 @@ export {
 } from "./storage.js";
 export { createSessionLogger } from "./session-logger.js";
 export type { SessionLogger } from "./session-logger.js";
+export {
+  analyzeTokenUsage,
+  compareTokenAnalyses,
+  formatTokenReport,
+  estimateContextTokens,
+  projectTokenSavings,
+} from "./token-analysis.js";
+export type { TokenAnalysis, PerQueryBreakdown } from "./token-analysis.js";
