@@ -42,14 +42,15 @@ function appendVerboseLog(
   logFilePath: string,
   scope: string,
   message: string,
-  payload?: unknown
+  payload?: unknown,
+  logLevel?: string,
 ): void {
   appendDebugLog(logFilePath, {
     scope,
     message: payload
       ? `${message}\n${formatLogPayload(payload)}`
       : message,
-  });
+  }, logLevel);
 }
 
 function formatLogPayload(value: unknown, indent = 0): string {
@@ -327,6 +328,7 @@ type CreateRagHooksOptions = {
   cfg: RagConfig;
   storePath: string;
   logFilePath: string;
+  logLevel?: string;
   worktree: string;
   dependencies?: Partial<RagPluginDependencies>;
   store?: VectorStore;
@@ -895,6 +897,7 @@ export const ragPlugin: Plugin = async (
 ): Promise<Hooks> => {
   const cfg = await getConfig(input.directory);
   const logFilePath = path.resolve(input.directory, resolveLogConfig(cfg).logFilePath);
+  const logLevel = resolveLogConfig(cfg).level;
 
   if (!cfg.openCode.enabled) {
     return {};

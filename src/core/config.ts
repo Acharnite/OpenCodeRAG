@@ -110,8 +110,10 @@ export interface RagConfig {
   logging: LoggingConfig;
 }
 
+export type LogLevel = "debug" | "info" | "error" | "none";
+
 export interface LoggingConfig {
-  level: "debug" | "info" | "error";
+  level: LogLevel;
   logFilePath: string;
 }
 
@@ -327,8 +329,8 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
     warnings.push("openCode.maxContextChunks must be > 0");
   }
 
-  if (!["debug", "info", "error"].includes(config.logging.level)) {
-    warnings.push(`logging.level "${config.logging.level}" — expected "debug", "info", or "error"`);
+  if (!["debug", "info", "error", "none"].includes(config.logging.level)) {
+    warnings.push(`logging.level "${config.logging.level}" — expected "debug", "info", "error", or "none"`);
   }
 
   if (config.ui) {

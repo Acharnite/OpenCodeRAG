@@ -23,7 +23,12 @@ function formatError(error: unknown): string {
   }
 }
 
-export function appendDebugLog(logFilePath: string, entry: DebugLogEntry): void {
+export function appendDebugLog(
+  logFilePath: string,
+  entry: DebugLogEntry,
+  configuredLevel?: string,
+): void {
+  if (configuredLevel === "none") return;
   try {
     mkdirSync(path.dirname(logFilePath), { recursive: true });
 
