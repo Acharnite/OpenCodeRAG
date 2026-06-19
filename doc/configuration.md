@@ -223,7 +223,7 @@ Controls the OpenCode plugin integration.
 
 | Option | Default | Description |
 |---|---|---|
-| `level` | `"info"` | `"debug"`, `"info"`, or `"error"` |
+| `level` | `"info"` | `"debug"`, `"info"`, `"error"`, or `"none"` |
 | `logFilePath` | `"./.opencode/opencode-rag.log"` | Path to log file |
 
 ### `chunking`

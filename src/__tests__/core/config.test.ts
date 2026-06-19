@@ -266,6 +266,12 @@ describe("validateConfig", () => {
     assert.ok(result.warnings.some(w => w.includes("logging.level")));
   });
 
+  it("accepts 'none' as valid logging level", () => {
+    const cfg = { ...DEFAULT_CONFIG, logging: { level: "none" as const, logFilePath: "./log" } };
+    const result = validateConfig(cfg);
+    assert.ok(!result.warnings.some(w => w.includes("logging.level")));
+  });
+
   it("warns about invalid ui.port", () => {
     const cfg = { ...DEFAULT_CONFIG, ui: { port: 99999, openBrowser: false } };
     const result = validateConfig(cfg);

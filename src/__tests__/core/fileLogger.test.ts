@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { appendDebugLog } from "../../core/fileLogger.js";
@@ -30,6 +30,23 @@ describe("appendDebugLog", () => {
       assert.match(content, /\[tool\.execute\.after\] second failure/);
       assert.match(content, /plain string error/);
       assert.ok(content.includes("\n\n"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips writing when configuredLevel is 'none'", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "opencode-rag-log-test-"));
+
+    try {
+      const logFilePath = path.join(dir, ".opencode", "opencode-rag.log");
+
+      appendDebugLog(logFilePath, {
+        scope: "chat.message",
+        message: "should not appear",
+      }, "none");
+
+      assert.ok(!existsSync(logFilePath), "log file should not be created when level is 'none'");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
