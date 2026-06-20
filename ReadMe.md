@@ -46,6 +46,7 @@ opencode-rag query "authentication middleware"
 | **Programmatic API** | TypeScript `search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()`, `createBackgroundIndexer()`, `getIndexStatusSummary()` |
 | **Proxy-aware** | Corporate proxy support with raw-socket localhost bypass |
 | **OpenAI / Cohere** | Alternate embedding providers with API key auto-resolution |
+| **Evaluation** | Session-level token tracking, RAG-on vs RAG-off comparison, tiktoken BPE counting |
 
 ## Web UI
 
@@ -68,6 +69,7 @@ Launch with `opencode-rag ui`. See [Web UI documentation](doc/webui.md) for deta
 | [Plugin](doc/plugin.md) | OpenCode integration, tools, hooks, TUI, troubleshooting |
 | [CLI Reference](doc/cli.md) | All commands, options, examples |
 | [Web UI](doc/webui.md) | Dashboard, chunk browser, file explorer, compare view |
+| [Evaluation](doc/evaluation.md) | Token analysis, session logging, benchmark runner, accuracy guide |
 | [Development](doc/development.md) | Setup, testing, conventions, adding providers |
 | [Troubleshooting](doc/troubleshooting.md) | Common issues, logging, debugging |
 | [Roadmap](doc/roadmap.md) | Completed items, short/mid/long-term plans |
@@ -126,6 +128,20 @@ When chunks are indexed, a brief tool list is prepended to the system prompt so 
 
 ### 4. On-Demand RAG Context (Ctrl+Enter / Ctrl+Alt+Enter)
 Press **Ctrl+Enter** in the terminal prompt to retrieve and append a relevant file list to your current prompt. Press **Ctrl+Alt+Enter** to append full code chunks instead. The query is taken from your typed text - if the prompt is empty, a toast reminds you to type first. Results are appended directly to the prompt as formatted code blocks with file paths, line ranges, and relevance scores. No dialogs are opened. Keybindings are configurable in the settings menu (Ctrl+Shift+R).
+
+---
+
+## Evaluation & Token Analysis
+
+OpenCodeRAG tracks token usage, RAG injection overhead, and costs across sessions. Compare RAG-on vs RAG-off to measure whether semantic retrieval saves tokens.
+
+```bash
+opencode-rag eval:sessions          # list sessions
+opencode-rag eval:analyze <id>      # detailed breakdown
+opencode-rag eval:compare <A> <B>   # side-by-side comparison
+```
+
+Token counting uses tiktoken BPE (cl100k_base) for accurate code tokenization. See [Evaluation documentation](doc/evaluation.md) for details.
 
 ---
 

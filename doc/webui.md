@@ -124,6 +124,8 @@ Session analytics dashboard for tracking token usage, costs, and RAG performance
 - **Models Used:** List of models active in the session
 - **Event Timeline:** Chronological log of session events with timestamps
 
+For CLI-based session analysis (`eval:sessions`, `eval:analyze`, `eval:compare`), see [Evaluation documentation](evaluation.md).
+
 ## File Tree Sidebar
 
 A collapsible directory tree in the left sidebar:

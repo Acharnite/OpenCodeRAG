@@ -223,8 +223,8 @@ export const DEFAULT_CONFIG: RagConfig = {
     },
     autoInject: {
       enabled: true,
-      minScore: 0.85,
-      maxChunks: 5,
+      minScore: 0.75,
+      maxChunks: 10,
       maxTokens: 3000,
       contentType: "file_paths",
     },

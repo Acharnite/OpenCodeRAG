@@ -118,6 +118,19 @@ When `openCode.readOverride` is `true`:
 - If retrieval fails, the file is still returned without RAG context
 - If no relevant chunks are found but the file has indexed chunks, related files are suggested
 
+### 6. Session Logging & Evaluation
+
+The plugin automatically captures session events for token usage analysis:
+
+- **Event hook** (`event`): Logs every OpenCode event — messages, tool calls, steps, session status
+- **RAG context hook** (`chat.message`): After each retrieval, logs chunk count, context tokens (tiktoken BPE), top score, and retrieval time
+
+Events are stored as JSONL at `${storePath}/eval-sessions/${sessionID}.jsonl`.
+
+**Token counting:** RAG context tokens are counted per-chunk using tiktoken (cl100k_base BPE encoding) at injection time. This provides accurate counts for code, which tokenizes differently than prose (~4 chars/token is a rough heuristic, but BPE is 20-40% more accurate).
+
+See [Evaluation documentation](evaluation.md) for CLI commands, analysis interpretation, and benchmarking.
+
 ## Plugin Architecture
 
 ```

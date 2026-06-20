@@ -15,9 +15,11 @@ import { KeywordIndex } from "../retriever/keyword-index.js";
 import { loadRuntimeOverrides, applyRuntimeOverrides } from "../core/runtime-overrides.js";
 import { resolveApiKey } from "../core/resolve-api-key.js";
 import type { SearchResult } from "../core/interfaces.js";
+import { countTokens, tokenizerMethod } from "./token-counter.js";
 
 const WORKTREE = process.cwd();
 const STORE_PATH = path.join(WORKTREE, ".opencode", "rag_db");
+const TOKENIZER = tokenizerMethod();
 
 const QUERIES = [
   "How does the retrieval pipeline work end-to-end?",
@@ -31,8 +33,6 @@ const QUERIES = [
   "What is the default minScore configuration?",
   "How does the session logger capture token usage?",
 ];
-
-const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
 function getConfig() {
   const configPath = path.join(WORKTREE, "opencode-rag.json");
@@ -68,7 +68,7 @@ function formatAutoInjectContext(results: SearchResult[], worktree: string, maxT
     return lines.join("\n");
   };
   let formatted = buildString(included);
-  while (estimateTokens(formatted) > maxTokens && included.length > 1) { included.pop(); formatted = buildString(included); }
+  while (countTokens(formatted) > maxTokens && included.length > 1) { included.pop(); formatted = buildString(included); }
   return formatted;
 }
 
@@ -127,7 +127,7 @@ async function main() {
       queryPrefix: cfg.embedding.queryPrefix,
     });
 
-    const inputTokens = estimateTokens(query);
+    const inputTokens = countTokens(query);
     const minScore = cfg.openCode.autoInject?.minScore ?? 0.85;
     const maxChunks = cfg.openCode.autoInject?.maxChunks ?? 5;
     const maxTokens = cfg.openCode.autoInject?.maxTokens ?? 3000;
@@ -141,7 +141,7 @@ async function main() {
       if (ragOnText.length === 0) { ragOnText = formatFileList(highConfidence, WORKTREE); contentType = "file_paths"; }
     }
 
-    const contextTokens = estimateTokens(ragOnText);
+    const contextTokens = countTokens(ragOnText);
     const topScore = searchResults.length > 0 ? searchResults[0]!.score : 0;
     const savedReads = highConfidence.length > 0 ? Math.min(3, highConfidence.length) : 0;
 
@@ -181,7 +181,7 @@ async function main() {
       const highConf = searchResults.filter((r) => r.score >= threshold);
       if (highConf.length > 0) {
         const text = formatAutoInjectContext(highConf, WORKTREE, cfg.openCode.autoInject?.maxTokens ?? 2000, cfg.openCode.autoInject?.maxChunks ?? 5);
-        const tokens = estimateTokens(text);
+        const tokens = countTokens(text);
         tTotalCtx += tokens;
         tInjected++;
       }
@@ -222,6 +222,7 @@ async function main() {
   report.push(`**Codebase:** ${WORKTREE}`);
   report.push(`**Indexed chunks:** ${indexedCount}`);
   report.push(`**Embedding model:** ${cfg.embedding.provider}/${cfg.embedding.model}`);
+  report.push(`**Tokenizer:** ${TOKENIZER === "tiktoken" ? "tiktoken cl100k_base (BPE)" : "heuristic (characters / 4)"}`);
   report.push(`**Retrieval:** topK=${cfg.retrieval.topK}, minScore=${cfg.retrieval.minScore}, hybrid=${cfg.retrieval.hybridSearch?.enabled ?? false}`);
   report.push(`**Auto-inject:** minScore=${cfg.openCode.autoInject?.minScore ?? 0.85}, maxChunks=${cfg.openCode.autoInject?.maxChunks ?? 5}, maxTokens=${cfg.openCode.autoInject?.maxTokens ?? 3000}`);
   report.push("");

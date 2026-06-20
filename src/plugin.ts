@@ -18,6 +18,7 @@ import {
 import { resolveApiKey } from "./core/resolve-api-key.js";
 import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
+import { countTokens, estimateContextTokensFormatted } from "./eval/token-counter.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -196,8 +197,6 @@ function formatAutoInjectContext(
 ): string {
   if (results.length === 0) return "";
 
-  const estimateTokens = (text: string) => Math.ceil(text.length / 4);
-
   const sorted = [...results].sort((a, b) => b.score - a.score);
   const included = sorted.slice(0, maxChunks);
 
@@ -229,7 +228,7 @@ function formatAutoInjectContext(
   };
 
   let formatted = buildString(included);
-  while (estimateTokens(formatted) > maxTokens && included.length > 1) {
+  while (countTokens(formatted) > maxTokens && included.length > 1) {
     included.pop();
     formatted = buildString(included);
   }
@@ -435,6 +434,12 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   const sessionLastMessage = new Map<string, string>();
   const sessionRetrievalCache = new Map<string, { messageText: string; rawResults: SearchResult[] }>();
 
+  // Session-level tool usage tracking for nudge mechanism
+  const RAG_TOOL_NAMES = new Set(["search_semantic", "get_file_skeleton", "find_usages"]);
+  const sessionRagToolCalls = new Map<string, number>();
+  const sessionMessageCount = new Map<string, number>();
+  const sessionSkeletonCalls = new Map<string, Set<string>>(); // sessionID → set of filePaths
+
   // Evaluation session logger — captures OpenCode events for analysis
   const sessionLogger: SessionLogger = createSessionLogger(options.storePath);
 
@@ -448,8 +453,9 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   const retrievalTool = tool({
     description:
       "Search the indexed codebase by meaning, not just keywords. " +
-      "Call when the user asks 'how does X work?', 'where is Y?', or you need to understand code behavior. " +
-      "Returns the most relevant code snippets with file paths, line numbers, and relevance scores.",
+      "ESSENTIAL before any code task — replaces blind reading with targeted retrieval. " +
+      "Call when the user asks 'how does X work?', 'where is Y?', references files/functions you haven't read, " +
+      "or you need to understand code behavior. Returns the most relevant code snippets with file paths, line numbers, and relevance scores.",
     args: {
       query: tool.schema.string().min(1, "A retrieval query is required."),
       pathHints: tool.schema.array(tool.schema.string().min(1)).max(10).optional(),
@@ -625,6 +631,24 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       sessionLogger.onEvent(event as Parameters<typeof sessionLogger.onEvent>[0]);
     },
     tool: tools,
+    async "tool.execute.after"(input, output) {
+      // Track RAG tool usage per session
+      if (RAG_TOOL_NAMES.has(input.tool)) {
+        const prev = sessionRagToolCalls.get(input.sessionID) ?? 0;
+        sessionRagToolCalls.set(input.sessionID, prev + 1);
+      }
+    },
+    async "tool.execute.before"(input, output) {
+      // Track skeleton calls per session for read-interception analytics
+      if (input.tool === "get_file_skeleton") {
+        const filePath = output.args?.filePath as string | undefined;
+        if (filePath) {
+          const set = sessionSkeletonCalls.get(input.sessionID) ?? new Set<string>();
+          set.add(filePath);
+          sessionSkeletonCalls.set(input.sessionID, set);
+        }
+      }
+    },
     async "experimental.chat.system.transform"(_input, output) {
       appendDebugLog(options.logFilePath, {
         scope: "experimental.chat.system.transform",
@@ -637,6 +661,12 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         "- `get_file_skeleton(filePath)`: structural overview of a file. Call BEFORE reading any file.",
         "- `find_usages(symbolName)`: find all references. Call BEFORE editing any function, class, or variable.",
         "",
+        "Decision tree — ALWAYS follow this order:",
+        "1. User mentions code behavior/architecture → `search_semantic(query)`",
+        "2. User mentions a file path → `get_file_skeleton(filePath)` THEN `read` on specific lines",
+        "3. User mentions a function/class/variable to edit → `find_usages(symbolName)` THEN `search_semantic` THEN `edit`",
+        "4. User asks a code question → `search_semantic` to gather context before answering",
+        "",
         "Proactive triggers — you MUST call these tools when:",
         "- User asks about code behavior, architecture, or implementation details",
         "- User asks to edit, refactor, or fix code — call `find_usages` first",
@@ -644,6 +674,12 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         "- User says \"find\", \"search\", \"look up\", \"where is\", \"how does\"",
         "- Before answering ANY code-related question, retrieve context first",
         "- Before reading ANY file, call `get_file_skeleton` to orient first",
+        "",
+        "Anti-patterns — NEVER do these:",
+        "- Reading full files without calling `get_file_skeleton` first (wastes tokens)",
+        "- Editing a function without calling `find_usages` first (breaks call sites)",
+        "- Answering code questions without calling `search_semantic` first (you guess at behavior)",
+        "- Using `grep`/`glob` when `search_semantic` would find the answer faster",
       ];
 
       output.system.unshift(guidance.join("\n"));
@@ -654,6 +690,10 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         if (text.length === 0) return;
 
         sessionLastMessage.set(input.sessionID, text);
+
+        // Track message count for nudge mechanism
+        const prevMsgCount = sessionMessageCount.get(input.sessionID) ?? 0;
+        sessionMessageCount.set(input.sessionID, prevMsgCount + 1);
 
         const pendingInjection = consumePendingRagInjection(options.storePath);
 
@@ -692,11 +732,10 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
             effectiveCfg.openCode.autoInject?.maxTokens ?? 3000,
             maxChunks
           );
-          const estimateTokens = (t: string) => Math.ceil(t.length / 4);
           sessionLogger.onRagContext(input.sessionID, input.messageID, {
             chunkCount: topChunks.length,
             uniqueFiles: new Set(topChunks.map((r) => r.chunk.metadata.filePath)).size,
-            contextTokens: chunkContext ? estimateTokens(chunkContext) : 0,
+            contextTokens: chunkContext ? countTokens(chunkContext) : 0,
             topScore: topChunks[0]?.score ?? 0,
             retrievalTimeMs,
           });
@@ -713,11 +752,10 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
         if (pendingInjection === "files") {
           const fileList = formatFileList(results, options.worktree);
-          const estimateTokens = (t: string) => Math.ceil(t.length / 4);
           sessionLogger.onRagContext(input.sessionID, input.messageID, {
             chunkCount: 0,
             uniqueFiles: 0,
-            contextTokens: fileList ? estimateTokens(fileList) : 0,
+            contextTokens: fileList ? countTokens(fileList) : 0,
             topScore: results[0]?.score ?? 0,
             retrievalTimeMs,
           });
@@ -760,12 +798,10 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           }
         }
 
-        const estimateTokens = (text: string) => Math.ceil(text.length / 4);
-
         sessionLogger.onRagContext(input.sessionID, input.messageID, {
           chunkCount: injectedChunks.length,
           uniqueFiles: new Set(injectedChunks.map((r) => r.chunk.metadata.filePath)).size,
-          contextTokens: suggestionList ? estimateTokens(suggestionList) : 0,
+          contextTokens: suggestionList ? countTokens(suggestionList) : 0,
           topScore: injectedChunks[0]?.score ?? 0,
           retrievalTimeMs,
         });

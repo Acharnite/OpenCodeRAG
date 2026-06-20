@@ -235,8 +235,9 @@ export function createSearchSemanticTool(
   return tool({
     description:
       "Search the indexed codebase by meaning, not just keywords. " +
-      "Call when the user asks 'how does X work?', 'where is Y?', or you need to understand code behavior. " +
-      "Returns the most relevant code snippets with file paths and line numbers.",
+      "ESSENTIAL before any code task — replaces blind reading with targeted retrieval. " +
+      "Call when the user asks 'how does X work?', 'where is Y?', references files/functions you haven't read, " +
+      "or you need to understand code behavior. Returns the most relevant code snippets with file paths, line numbers, and relevance scores.",
 
     args: {
       query: tool.schema.string().min(1, "A search query is required."),
@@ -346,7 +347,7 @@ export function createFileSkeletonTool(
     description:
       "Get a quick structural overview of a source file — functions, classes, " +
       "interfaces, methods, and other top-level declarations with their line numbers. " +
-      "Call before reading a large file to decide which sections to focus on. " +
+      "MANDATORY before reading any file — calling read without this wastes tokens on irrelevant sections. " +
       "Supports TypeScript, JavaScript, Python, Java, Go, Rust, C/C++, C#, Ruby, Swift, Kotlin, and more.",
 
     args: {
@@ -494,8 +495,8 @@ export function createFindUsagesTool(
   return tool({
     description:
       "Find usages and references of a symbol (function, variable, class, etc.) " +
-      "across the indexed codebase. Call BEFORE editing any function, variable, or class " +
-      "to understand the impact — it shows every line that references the symbol with surrounding context.",
+      "across the indexed codebase. REQUIRED before editing any function, variable, or class — " +
+      "skipping this breaks unseen call sites. Shows every line that references the symbol with surrounding context.",
 
     args: {
       symbolName: tool.schema.string().min(1, "A symbol name is required."),

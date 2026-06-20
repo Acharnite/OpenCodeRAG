@@ -9,8 +9,7 @@
 
 import { readSessionEvents, computeSummary } from "./storage.js";
 import type { SessionEvent, TokenUsage } from "./types.js";
-
-const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
+import { countTokens } from "./token-counter.js";
 
 /** Average tokens consumed by a `read` tool call (typical file read). */
 const AVG_READ_TOOL_TOKENS = 1200;
@@ -371,11 +370,11 @@ export function formatTokenReport(
 }
 
 /**
- * Estimate the token overhead of RAG auto-injection for given text content.
- * Uses the same formula as the plugin: Math.ceil(text.length / 4).
+ * Estimate the token count for given text content.
+ * Uses tiktoken BPE (cl100k_base) when available, falls back to ceil(len/4).
  */
 export function estimateContextTokens(text: string): number {
-  return estimateTokens(text);
+  return countTokens(text);
 }
 
 /**

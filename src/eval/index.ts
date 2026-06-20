@@ -20,3 +20,10 @@ export {
   projectTokenSavings,
 } from "./token-analysis.js";
 export type { TokenAnalysis, PerQueryBreakdown } from "./token-analysis.js";
+export {
+  countTokens,
+  countTokensBatch,
+  sumTokens,
+  estimateContextTokensFormatted,
+  tokenizerMethod,
+} from "./token-counter.js";

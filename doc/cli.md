@@ -215,6 +215,59 @@ opencode-rag clear
 opencode-rag index --config ./config/my-rag-config.json
 ```
 
+## Evaluation Commands
+
+### `eval:sessions`
+
+List all logged evaluation sessions.
+
+```bash
+opencode-rag eval:sessions [options]
+```
+
+**Options:**
+| Flag | Default | Description |
+|---|---|---|
+| `-c, --config <path>` | auto-detected | Path to config file |
+
+**Output:** Table of sessions with ID, message count, input tokens, RAG context tokens, and cost.
+
+### `eval:analyze <sessionID>`
+
+Analyze token usage for a specific session with RAG impact projection.
+
+```bash
+opencode-rag eval:analyze <sessionID> [options]
+```
+
+**Options:**
+| Flag | Default | Description |
+|---|---|---|
+| `-c, --config <path>` | auto-detected | Path to config file |
+
+**Output sections:**
+- Total input/output/reasoning tokens, cache stats, cost
+- RAG impact: context injected, system guidance overhead, tool call counts
+- Projection: estimated tokens with vs without RAG, net savings percentage
+- Per-query breakdown: input tokens, RAG context, reads, RAG tools, top score
+
+### `eval:compare <sessionA> <sessionB>`
+
+Compare token usage between two sessions (e.g. RAG-on vs RAG-off).
+
+```bash
+opencode-rag eval:compare <sessionA> <sessionB> [options]
+```
+
+**Options:**
+| Flag | Default | Description |
+|---|---|---|
+| `-c, --config <path>` | auto-detected | Path to config file |
+
+**Output:** Formatted comparison table with delta and percentage change for each metric.
+
+See [Evaluation documentation](evaluation.md) for interpretation and configuration guidance.
+
 ## Programmatic Use
 
 The CLI can also be invoked programmatically:

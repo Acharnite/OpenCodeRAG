@@ -90,6 +90,7 @@
     "canvas": "^3.2.3",
     "chokidar": "^4.0.3",
     "commander": "^13.1.0",
+    "js-tiktoken": "^1.0.21",
     "mammoth": "^1.12.0",
     "p-limit": "^7.3.0",
     "pdfjs-dist": "^5.7.284",
