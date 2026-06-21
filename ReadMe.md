@@ -42,7 +42,7 @@ opencode-rag query "authentication middleware"
 | **Hybrid search** | Vector similarity + TF×IDF keyword fusion |
 | **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings, Ctrl+Enter to add RAG context, MCP registration on `init` |
 | **Incremental indexing** | File-hash manifest, background watcher, auto-rebuild on corruption |
-| **Privacy-first** | All processing stays local with Ollama |
+| **Privacy-first** | All processing stays local (when using Ollama) |
 | **CLI** | `index`, `query`, `status`, `list`, `show`, `dump`, `clear`, `init`, `ui`, `mcp` |
 | **Programmatic API** | TypeScript `search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()`, `createBackgroundIndexer()`, `getIndexStatusSummary()` |
 | **Proxy-aware** | Corporate proxy support with raw-socket localhost bypass |
