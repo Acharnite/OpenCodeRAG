@@ -48,8 +48,8 @@ npm install --legacy-peer-deps
 ### Uninstall
 
 ```bash
-./install.sh uninstall
-.\install.ps1 uninstall
+./install.sh uninstall (Linux)
+.\install.ps1 uninstall (Windows)
 ```
 
 This removes all copies and config entries of OpenCodeRAG.
@@ -75,7 +75,7 @@ This creates:
 
 Use `--skip-install` to skip the npm install step. Use `--force` to overwrite existing files. Use `--skip-health-check` to skip provider validation (useful in offline environments).
 
-After writing config, `init` validates that your embedding provider is reachable and all configured models (embedding + description) are available. For Ollama, if models are missing, you're prompted to pull them automatically.
+After writing config, `init` validates that your embedding provider is reachable and all configured models (embedding, description & visual) are available. For Ollama, if models are missing, you will be asked to pull them automatically.
 
 ## Running Without Global Installation
 
@@ -105,7 +105,7 @@ This shows the index statistics, store path, provider, model, manifest status, a
 
 ## Recommended: Enable LSP
 
-OpenCode supports Language Server Protocol (LSP) for richer code intelligence. For this project (TypeScript/Node.js), enable the TypeScript LSP in your `opencode.json`:
+OpenCode supports Language Server Protocol (LSP) for richer code intelligence. It is recommended to enable LSP in your `opencode.json`:
 
 ```json
 {
@@ -114,7 +114,7 @@ OpenCode supports Language Server Protocol (LSP) for richer code intelligence. F
 }
 ```
 
-This gives agents hover info, go-to-definition, and diagnostics — complementing OpenCodeRAG's semantic search with precise type-aware context.
+Then ask OpenCode to install the LSPs for the programming languages you are using. This gives agents more info about code structure and definitions, and error diagnostics to complement OpenCodeRAG's semantic search with precise type-aware context. 
 
 ## Agent Tools
 
