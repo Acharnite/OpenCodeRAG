@@ -11,18 +11,22 @@
 If you don't have Ollama installed, download it from [ollama.com](https://ollama.com) and start the service. Then pull the required model:
 
 ```bash
-# Embedding model (required for vector search)
+# Small embedding model (required for vector search)
 ollama pull qwen3-embedding:0.6b
 
-# Description model (optional, for LLM-generated chunk descriptions)
+# Small description model (optional, for LLM-generated chunk descriptions)
 ollama pull qwen2.5:3b
+
+# Small vision model (optional, for describing images)
+ollama pull minicpm-v4.6
 ```
 
-OpenCodeRAG uses two models:
-- **Embedding model** — converts code chunks into vectors for semantic search. Configured via `embedding.model` (default: `qwen3-embedding:0.6b`).
-- **Description model** — generates natural-language descriptions of code chunks before embedding. Configured via `description.model` (default: `qwen2.5:3b`).
+OpenCodeRAG uses three models:
+- **Embedding model** - converts code chunks into vectors for semantic search. Configured via `embedding.model` (default: `qwen3-embedding:0.6b`).
+- **Description model** - generates natural-language descriptions of code chunks before embedding. Configured via `description.model` (default: `qwen2.5:3b`).
+- **Vision model** - generates natural-language descriptions of images before embedding. Configured via `imageDescription.model` (default: `minicpm-v4.6`).
 
-> **Tip:** Smaller embedding models (≤3B) work well on CPU. For better quality with GPU, use a larger embedding model like `qwen3-embedding:1.7b` and activate description model usage in OpenCodeRAG config.
+> **Tip:** Smaller embedding models (≤3B) work well on CPU. For better search results, use a larger embedding model like `qwen3-embedding:1.7b` and activate description and image descripion model usage in OpenCodeRAG config (dedicated GPU recommended).
 
 ## Install
 
@@ -39,7 +43,7 @@ npm install --legacy-peer-deps
 .\install.ps1         # Windows
 ```
 
-> **Important:** The install scripts build from source (npm pack). They never call `opencode plugin <name> --global`, which would download a potentially stale npm-published version.
+> **Important:** The install scripts build from source (npm pack). They never call `opencode plugin <name> --global`, which could download a potentially stale npm-published version. If you don't use the install script, the opencode-rag CLI and web tools would be missing.
 
 ### Uninstall
 
@@ -48,7 +52,7 @@ npm install --legacy-peer-deps
 .\install.ps1 uninstall
 ```
 
-This removes all copies from `~/.local/bin/`, `~/.config/opencode/node_modules/`, `~/.opencode/node_modules/`, and cleans up `.tgz` files and config entries.
+This removes all copies and config entries of OpenCodeRAG.
 
 ## Workspace Initialization
 
