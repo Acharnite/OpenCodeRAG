@@ -48,7 +48,8 @@
       ".docx",
       ".doc",
       ".xls",
-      ".xlsx"
+      ".xlsx",
+      ".png"
     ],
     "excludeDirs": [
       "node_modules",
@@ -91,11 +92,23 @@
       "contentType": "file_paths"
     }
   },
+  "imageDescription": {
+    "enabled": true,
+    "provider": "ollama",
+    "model": "minicpm-v4.6:latest",
+    "baseUrl": "http://localhost:11434/api",
+    "timeoutMs": 60000,
+    "think": true,
+    "numCtx": 4096,
+    "prompt": "Describe this image precisely and concisely: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image showing ...\""
+  },
   "description": {
     "enabled": true,
     "provider": "ollama",
     "baseUrl": "http://localhost:11434/api",
     "model": "qwen2.5:3b",
+    "think": false,
+    "numCtx": 4096,
     "timeoutMs": 60000,
     "systemPrompt": "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose."
   },

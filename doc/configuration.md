@@ -163,7 +163,7 @@ Controls LLM-based description generation for code chunks.
 | `retryMax` | `3` | Retry attempts on failure |
 | `retryBaseDelayMs` | `1000` | Base delay for exponential backoff |
 
-When enabled, the embedded text is `description + "\n\n" + code content`. Even when disabled, descriptions include the file path and line range (e.g., `src/foo.ts, lines 10-42`). On LLM failure, falls back to embedding raw content.
+When enabled, the embedded text is `filePath + "\n\n" + description + "\n\n" + code content`. Even when disabled, descriptions include the line range and language (e.g., `lines 10-42, typescript`). On LLM failure, falls back to embedding filePath + raw content.
 
 > **Recommendation:** Disable (`description.enabled: false`) if you don't have a dedicated GPU or want faster indexing.
 

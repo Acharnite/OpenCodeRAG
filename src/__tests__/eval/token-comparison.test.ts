@@ -26,6 +26,7 @@ import {
   estimateContextTokens,
   projectTokenSavings,
 } from "../../eval/token-analysis.js";
+import { handleEvalAnalysis, handleEvalTokenCompare, handleEvalProjectSavings } from "../../web/api.js";
 import type { EmbeddingProvider, SearchResult, VectorStore, KeywordIndex } from "../../core/interfaces.js";
 import type { SessionEvent } from "../../eval/types.js";
 
@@ -540,5 +541,95 @@ describe("system prompt guidance overhead", () => {
     console.log(`    System guidance: ${guidance.length} chars ≈ ${guidanceTokens} tokens`);
     assert.ok(guidanceTokens >= 100, `Expected ≥100 tokens for system guidance, got ${guidanceTokens}`);
     assert.ok(guidanceTokens <= 500, `Expected ≤500 tokens for system guidance, got ${guidanceTokens}`);
+  });
+});
+
+// ── Web API handler tests ──────────────────────────────────────
+
+describe("web API token analysis handlers", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("handleEvalAnalysis returns TokenAnalysis for valid session", async () => {
+    appendSessionEvent(tmpDir, { ts: 100, event: "session.created", sessionID: "s1", sessionTitle: "Test" });
+    appendSessionEvent(tmpDir, { ts: 200, event: "message", sessionID: "s1", messageID: "m1", role: "assistant", modelID: "gpt-4o", tokens: { input: 3000, output: 200, reasoning: 0, cache: { read: 50, write: 0 } }, cost: 0.012 });
+    appendSessionEvent(tmpDir, { ts: 210, event: "rag.context", sessionID: "s1", messageID: "m1", ragInjected: true, ragChunkCount: 3, ragContextTokens: 400, ragTopScore: 0.9 });
+
+    const result = await handleEvalAnalysis(tmpDir, "s1");
+    assert.equal(result.status, 200);
+    const body = result.body as { analysis: { sessionID: string; queryCount: number; totals: { inputTokens: number }; estimates: { netSavings: number } } };
+    assert.equal(body.analysis.sessionID, "s1");
+    assert.equal(body.analysis.queryCount, 1);
+    assert.equal(body.analysis.totals.inputTokens, 3000);
+    assert.equal(typeof body.analysis.estimates.netSavings, "number");
+  });
+
+  it("handleEvalAnalysis returns 404 for missing session", async () => {
+    const result = await handleEvalAnalysis(tmpDir, "missing");
+    assert.equal(result.status, 404);
+  });
+
+  it("handleEvalAnalysis returns 400 for invalid session ID", async () => {
+    const result = await handleEvalAnalysis(tmpDir, "../../etc/passwd");
+    assert.equal(result.status, 400);
+  });
+
+  it("handleEvalTokenCompare returns comparison with verdict", async () => {
+    appendSessionEvent(tmpDir, { ts: 100, event: "session.created", sessionID: "on", sessionTitle: "RAG On" });
+    appendSessionEvent(tmpDir, { ts: 200, event: "message", sessionID: "on", messageID: "m1", role: "assistant", tokens: { input: 3500, output: 200, reasoning: 0, cache: { read: 0, write: 0 } }, cost: 0.015 });
+    appendSessionEvent(tmpDir, { ts: 210, event: "rag.context", sessionID: "on", messageID: "m1", ragInjected: true, ragChunkCount: 3, ragContextTokens: 500, ragTopScore: 0.9, ragRetrievalTimeMs: 30 });
+
+    appendSessionEvent(tmpDir, { ts: 100, event: "session.created", sessionID: "off", sessionTitle: "RAG Off" });
+    appendSessionEvent(tmpDir, { ts: 200, event: "message", sessionID: "off", messageID: "m1", role: "assistant", tokens: { input: 2800, output: 250, reasoning: 0, cache: { read: 0, write: 0 } }, cost: 0.012 });
+
+    const params = new URLSearchParams({ a: "on", b: "off" });
+    const result = await handleEvalTokenCompare(tmpDir, params);
+    assert.equal(result.status, 200);
+    const body = result.body as { ragOn: { estimates: { netSavings: number } }; ragOff: { estimates: { netSavings: number } }; comparison: { verdict: string } };
+    assert.equal(typeof body.comparison.verdict, "string");
+    assert.ok(body.comparison.verdict.length > 0);
+    assert.equal(typeof body.ragOn.estimates.netSavings, "number");
+    assert.equal(typeof body.ragOff.estimates.netSavings, "number");
+  });
+
+  it("handleEvalTokenCompare returns 400 without both IDs", async () => {
+    const params = new URLSearchParams({ a: "only-a" });
+    const result = await handleEvalTokenCompare(tmpDir, params);
+    assert.equal(result.status, 400);
+  });
+
+  it("handleEvalProjectSavings returns projection for valid params", () => {
+    const result = handleEvalProjectSavings({
+      avgChunkSize: 600,
+      avgChunksPerQuery: 3,
+      avgReadsPerQueryWithoutRAG: 2.5,
+      avgReadsPerQueryWithRAG: 0.5,
+      queryCount: 10,
+    });
+    assert.equal(result.status, 200);
+    const body = result.body as { projection: { ragOverheadTokens: number; savedReadTokens: number; netSavings: number; isPositive: boolean } };
+    assert.equal(typeof body.projection.ragOverheadTokens, "number");
+    assert.equal(typeof body.projection.savedReadTokens, "number");
+    assert.equal(typeof body.projection.netSavings, "number");
+    assert.equal(typeof body.projection.isPositive, "boolean");
+    assert.ok(body.projection.ragOverheadTokens > 0);
+    assert.ok(body.projection.savedReadTokens > 0);
+  });
+
+  it("handleEvalProjectSavings returns 400 with invalid params", () => {
+    const result = handleEvalProjectSavings({ avgChunkSize: "not-a-number" });
+    assert.equal(result.status, 400);
+  });
+
+  it("handleEvalProjectSavings returns 400 with null body", () => {
+    const result = handleEvalProjectSavings(null);
+    assert.equal(result.status, 400);
   });
 });

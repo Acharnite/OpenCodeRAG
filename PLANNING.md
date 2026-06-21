@@ -19,14 +19,14 @@
 - [x] Web UI with chunk browser, file explorer, and evaluation dashboard
 - [x] MCP server (`opencode-rag mcp`) — expose `search_semantic`, `get_file_skeleton`, `find_usages` via stdio MCP for any MCP-compatible client
 - [x] Programmatic TypeScript API (`search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()`, `createBackgroundIndexer()`, `getIndexStatusSummary()`)
+- [x] Retrieval debug surfaces (explain why files/chunks were returned) — `SearchExplanation` type, `getMatchedTerms()`, `--explain` CLI flag, `explain` param on API calls
 
 ## Short Term
-
+- [ ] Add function `describe_image` for OpenCode plugin and MCP server to describe images via vision LLMs and index descriptions as searchable vector chunks
 - [ ] LLM-based re-ranking layer (cross-encoder or lightweight model after vector search)
 - [ ] Query rewriting / multi-variant expansion
 - [ ] Context window optimization (dedup, merge adjacent chunks)
 - [ ] Better ranking/diversity for `chat.message` file suggestions
-- [x] Retrieval debug surfaces (explain why files/chunks were returned) — `SearchExplanation` type, `getMatchedTerms()`, `--explain` CLI flag, `explain` param on API/MCP/plugin tools
 - [ ] Persistent query cache (disk-based, not just in-memory)
 
 ## Mid Term

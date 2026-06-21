@@ -35,6 +35,11 @@ export interface RuntimeOverrides {
     model?: string;
     baseUrl?: string;
   };
+  imageDescription?: {
+    enabled?: boolean;
+    model?: string;
+    provider?: string;
+  };
   tui?: {
     fileListKeybinding?: string;
     chunksKeybinding?: string;
@@ -133,6 +138,21 @@ export function applyRuntimeOverrides(
     if (overrides.description.baseUrl !== undefined) {
       if (!merged.description) merged.description = { enabled: true, provider: "ollama", baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
       merged.description.baseUrl = overrides.description.baseUrl;
+    }
+  }
+
+  if (overrides.imageDescription) {
+    if (overrides.imageDescription.enabled !== undefined) {
+      if (!merged.imageDescription) merged.imageDescription = { enabled: false, provider: "ollama", model: "llama3.2-vision", baseUrl: "http://127.0.0.1:11434/api", timeoutMs: 60000, prompt: "" };
+      merged.imageDescription.enabled = overrides.imageDescription.enabled;
+    }
+    if (overrides.imageDescription.provider !== undefined) {
+      if (!merged.imageDescription) merged.imageDescription = { enabled: false, provider: "ollama", model: "llama3.2-vision", baseUrl: "http://127.0.0.1:11434/api", timeoutMs: 60000, prompt: "" };
+      merged.imageDescription.provider = overrides.imageDescription.provider;
+    }
+    if (overrides.imageDescription.model !== undefined) {
+      if (!merged.imageDescription) merged.imageDescription = { enabled: false, provider: "ollama", model: "llama3.2-vision", baseUrl: "http://127.0.0.1:11434/api", timeoutMs: 60000, prompt: "" };
+      merged.imageDescription.model = overrides.imageDescription.model;
     }
   }
 

@@ -159,7 +159,7 @@ Walks the workspace directory tree, filtering by `includeExtensions` and `exclud
 Dispatches to the appropriate `Chunker` based on file extension. Each chunker splits content into semantically meaningful units (AST nodes, headings, paragraphs, etc.).
 
 ### 3. Description (Optional, `DescriptionProvider`)
-An LLM generates a natural-language description of each chunk. The embedded text becomes `description + "\n\n" + content`. If disabled, the description defaults to `filePath, lines N-M`.
+An LLM generates a natural-language description of each chunk. The embedded text becomes `filePath + "\n\n" + description + "\n\n" + content`. If disabled, the description defaults to `lines N-M, language`.
 
 ### 4. Embedding (`embedBatch` in `embedder/factory.ts`)
 Texts are optionally prefixed with `documentPrefix` (e.g., `search_document:`) and sent to the embedding provider in batches. The resulting vectors are written to the chunk objects.

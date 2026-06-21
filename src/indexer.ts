@@ -3,10 +3,13 @@ import path from "node:path";
 import pLimit from "p-limit";
 import { chunkFile } from "./chunker/factory.js";
 import { extractPdfText } from "./chunker/pdf.js";
+import { uuid } from "./chunker/uuid.js";
 import { extractDocxText } from "./chunker/docx.js";
 import { extractDocText } from "./chunker/doc.js";
 import { extractExcelText } from "./chunker/excel.js";
+import { createImageVisionProvider, getMimeType, SUPPORTED_IMAGE_EXTENSIONS } from "./chunker/image.js";
 import type { RagConfig } from "./core/config.js";
+import type { ImageVisionProvider } from "./chunker/image.js";
 import {
   computeFileHash,
   loadManifest,
@@ -108,10 +111,33 @@ export async function walkFiles(
   return results;
 }
 
-export async function scanWorkspace(cwd: string, config: RagConfig): Promise<WorkspaceFile[]> {
+function isImageFile(fp: string, extensions: Set<string> | string[]): boolean {
+  const lower = fp.toLowerCase();
+  for (const ext of extensions) {
+    if (lower.endsWith(ext.toLowerCase())) return true;
+  }
+  return false;
+}
+
+function imageExtensionSet(extensions: string[]): Set<string> {
+  return new Set(extensions.map((e) => e.toLowerCase()));
+}
+
+export async function scanWorkspace(cwd: string, config: RagConfig, logger?: Logger): Promise<WorkspaceFile[]> {
+  const extensions = new Set(config.indexing.includeExtensions);
+
+  let imageVisionProvider: ImageVisionProvider | null = null;
+  const imageCfg = config.imageDescription;
+  if (imageCfg?.enabled) {
+    for (const ext of SUPPORTED_IMAGE_EXTENSIONS) {
+      extensions.add(ext.toLowerCase());
+    }
+    imageVisionProvider = createImageVisionProvider(imageCfg);
+  }
+
   const files = await walkFiles(
     cwd,
-    new Set(config.indexing.includeExtensions),
+    extensions,
     new Set(config.indexing.excludeDirs)
   );
 
@@ -152,6 +178,18 @@ export async function scanWorkspace(cwd: string, config: RagConfig): Promise<Wor
       } catch (err) {
         content = "";
       }
+    } else if (imageVisionProvider && isImageFile(filePath, SUPPORTED_IMAGE_EXTENSIONS)) {
+      const buffer = await fs.readFile(filePath);
+      try {
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeType = getMimeType(ext);
+        const b64 = buffer.toString("base64");
+        const prompt = imageCfg!.prompt;
+        content = await imageVisionProvider.describeImage(b64, mimeType, prompt);
+      } catch (err) {
+        logger?.warn(`  ${filePath} (vision failed: ${(err as Error).message})`);
+        content = "";
+      }
     } else {
       content = await fs.readFile(filePath, "utf-8");
     }
@@ -189,7 +227,7 @@ function createIndexStats(totalFiles: number, manifestStatus: IndexRunStats["man
 
 export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexRunStats> {
   const logger = createLogger(options.logger);
-  const workspaceFiles = await scanWorkspace(options.cwd, options.config);
+  const workspaceFiles = await scanWorkspace(options.cwd, options.config, logger);
   const loadResult = await loadManifest(options.storePath);
   const manifest = loadResult.manifest;
   let manifestStatus = loadResult.status;
@@ -279,10 +317,26 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
           isModified = true;
         }
 
-        const chunks = await chunkFile(file.filePath, file.content, options.config.chunking?.nodeTypes).catch((err) => {
-          logger.warn(`  ${fileLabel} (chunking failed: ${(err as Error).message})`);
-          return null;
-        });
+        let chunks;
+
+        // Images: 1 image → 1 chunk (description as content, no paragraph splitting)
+        if (isImageFile(file.filePath, SUPPORTED_IMAGE_EXTENSIONS) && file.content.trim().length > 0) {
+          chunks = [{
+            id: uuid(),
+            content: file.content,
+            metadata: {
+              filePath: file.filePath,
+              startLine: 1,
+              endLine: 1,
+              language: "image",
+            },
+          }];
+        } else {
+          chunks = await chunkFile(file.filePath, file.content, options.config.chunking?.nodeTypes).catch((err) => {
+            logger.warn(`  ${fileLabel} (chunking failed: ${(err as Error).message})`);
+            return null;
+          });
+        }
 
         if (chunks === null || chunks.length === 0) {
           if (chunks === null) {
@@ -300,6 +354,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
 
         try {
         const docPrefix = options.config.embedding.documentPrefix ?? "";
+        const relPath = path.relative(options.cwd, file.filePath).replace(/\\/g, "/");
         const textToEmbed: string[] = [];
 
         if (options.descriptionProvider) {
@@ -317,22 +372,21 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
             const batchDesc = descriptionMap?.get(chunk.id);
             if (batchDesc && batchDesc.trim().length > 0) {
               chunk.description = batchDesc;
-              textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
+              textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description + "\n\n" + chunk.content);
             } else {
               try {
                 chunk.description = await options.descriptionProvider.generateDescription(chunk);
-                textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
+                textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description + "\n\n" + chunk.content);
               } catch (err) {
                 logger.warn(`Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
-                textToEmbed.push(docPrefix + chunk.content);
+                textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.content);
               }
             }
           }
         } else {
           for (const chunk of chunks) {
-            const relPath = path.relative(options.cwd, chunk.metadata.filePath).replace(/\\/g, "/");
-            chunk.description = `${relPath}, lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}`;
-            textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
+            chunk.description = `lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}, ${chunk.metadata.language}`;
+            textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description + "\n\n" + chunk.content);
           }
         }
 

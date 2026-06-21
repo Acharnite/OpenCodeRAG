@@ -1,5 +1,6 @@
 import { registerChunker } from "./factory.js";
 import type { RagConfig, ChunkerConfig } from "../core/config.js";
+import { ImageChunker, SUPPORTED_IMAGE_EXTENSIONS } from "./image.js";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -33,6 +34,11 @@ export async function loadChunkersFromConfig(
   config: RagConfig,
   configDir: string
 ): Promise<void> {
+  if (config.imageDescription?.enabled) {
+    const chunker = new ImageChunker([...SUPPORTED_IMAGE_EXTENSIONS]);
+    registerChunker(chunker, [...SUPPORTED_IMAGE_EXTENSIONS]);
+  }
+
   if (!config.chunkers || config.chunkers.length === 0) return;
 
   for (const entry of config.chunkers) {

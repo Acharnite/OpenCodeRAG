@@ -81,11 +81,14 @@ Produces a formatted table comparing all metrics with deltas and percentage chan
 
 ## Web UI Evaluate Tab
 
-The Web UI provides the same data in a browser interface:
+The Web UI provides the same data in a browser interface with interactive token analysis:
 
 - **Session list** with columns for messages, input tokens, cost, RAG calls, RAG tokens
-- **Session detail** with KPI cards, tool call breakdown, event timeline
-- **Comparison view** — select 2 sessions for side-by-side comparison
+- **Session detail** with KPI cards, tool call breakdown, event timeline, and **token analysis** (savings projection, per-query breakdown with RAG context/chunk/score)
+- **Comparison view** — select 2 sessions for side-by-side comparison with **verdict banner** and enhanced delta table
+- **What-If Projection** — interactive sliders to project token savings for different chunk sizes, reads, and query counts
+
+All token analysis features use the `analyzeTokenUsage()` and `compareTokenAnalyses()` functions from `src/eval/token-analysis.ts`.
 
 See [Web UI documentation](webui.md) for details.
 

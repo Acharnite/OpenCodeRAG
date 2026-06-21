@@ -38,6 +38,7 @@ opencode-rag query "authentication middleware"
 | **MCP server** | `opencode-rag mcp` - stdio-based MCP server exposing `search_semantic`, `get_file_skeleton`, `find_usages` tools for any MCP-compatible client |
 | **AST chunking** | 26 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, Bash, PHP, PowerShell, SQL, JSON, HTML, CSS, XML, YAML, TOML, INI, Dockerfile, Markdown, LaTeX, Razor) |
 | **Document support** | Markdown, LaTeX, PDF, DOCX, DOC, Excel |
+| **Image indexing** | Describe images via vision LLMs (Ollama, OpenAI, Anthropic, Gemini) and store descriptions as searchable vector chunks |
 | **Hybrid search** | Vector similarity + TF×IDF keyword fusion |
 | **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings, Ctrl+Enter to add RAG context, MCP registration on `init` |
 | **Incremental indexing** | File-hash manifest, background watcher, auto-rebuild on corruption |
@@ -73,6 +74,27 @@ Launch with `opencode-rag ui`. See [Web UI documentation](doc/webui.md) for deta
 | [Development](doc/development.md) | Setup, testing, conventions, adding providers |
 | [Troubleshooting](doc/troubleshooting.md) | Common issues, logging, debugging |
 | [Roadmap](doc/roadmap.md) | Completed items, short/mid/long-term plans |
+
+## Image Indexing
+
+OpenCodeRAG can index image files (PNG, JPEG, WebP, etc.) by sending them to a vision-capable LLM and storing the generated text descriptions as searchable vector chunks. This makes visual assets discoverable via natural language queries (e.g., "login screen screenshot", "architecture diagram").
+
+**Supported providers:** Ollama (`llama3.2-vision`, `minicpm-v`, etc.), OpenAI (`gpt-4o-mini`), Anthropic (`claude-3-haiku`), Google Gemini.
+
+```json
+{
+  "imageDescription": {
+    "enabled": true,
+    "provider": "ollama",
+    "model": "llama3.2-vision",
+    "baseUrl": "http://localhost:11434/api",
+    "timeoutMs": 60000,
+    "prompt": "Describe this image in detail. Include what it shows, any text content, layout, colors, objects, and the overall purpose or context."
+  }
+}
+```
+
+**Disabled by default** — enable in `opencode-rag.json` to opt in.
 
 ## MCP Server
 

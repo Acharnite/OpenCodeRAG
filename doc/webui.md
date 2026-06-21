@@ -122,7 +122,26 @@ Session analytics dashboard for tracking token usage, costs, and RAG performance
 - **Metrics:** Messages, Steps, RAG Injections, Avg Response time
 - **Tool Calls:** Breakdown of tool usage (bash, read, edit, webfetch, grep, glob, task, search_semantic, question)
 - **Models Used:** List of models active in the session
+- **Token Analysis:** RAG savings projection, per-query breakdown with RAG context/chunk/score per query
 - **Event Timeline:** Chronological log of session events with timestamps
+
+**Token Analysis (per session):** Automatically computed for each session detail view:
+
+- **Savings Projection:** Estimated tokens with vs without RAG, net savings, and percentage
+- **RAG Overhead:** Context tokens injected + system guidance tokens
+- **Per-Query Breakdown:** Table showing input/output tokens, RAG context, chunk count, top score, and read/RAG tool calls per query. RAG-injected queries highlighted with cyan border.
+
+**Comparison (enhanced):** When comparing 2 sessions:
+
+- **Verdict Banner:** Prominent banner showing whether RAG saves or costs tokens (green/red)
+- **Delta Table:** All metrics with delta and percentage change columns
+- **Savings Projection:** Side-by-side savings estimate for both sessions
+
+**What-If Projection Panel:** Interactive tool in the Evaluate view for projecting token savings:
+
+- **Sliders:** Avg chunk size, chunks per query, reads per query (with/without RAG), query count
+- **Live Output:** RAG overhead tokens, saved read tokens, net savings, and verdict
+- Fires debounced API calls on slider changes
 
 For CLI-based session analysis (`eval:sessions`, `eval:analyze`, `eval:compare`), see [Evaluation documentation](evaluation.md).
 
@@ -159,5 +178,8 @@ The web server exposes a REST API under `/api/`:
 | `/api/eval/sessions` | GET | All recorded sessions with summary stats |
 | `/api/eval/sessions/:id` | GET | Single session detail with events |
 | `/api/eval/sessions/:id` | DELETE | Delete a recorded session |
+| `/api/eval/sessions/:id/analysis` | GET | Token analysis with RAG savings projection and per-query breakdown |
+| `/api/eval/token-compare?a=&b=` | GET | Token analysis comparison with verdict, deltas, and percent changes |
+| `/api/eval/project-savings` | POST | Project token savings for given chunk/reads parameters (body: JSON) |
 
 All endpoints return JSON with `Access-Control-Allow-Origin: *`.

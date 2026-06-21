@@ -7,7 +7,8 @@ export { retrieve } from "./retriever/retriever.js";
 export { loadConfig, DEFAULT_CONFIG } from "./core/config.js";
 export { createBackgroundIndexer } from "./watcher.js";
 export { createWatchIgnore } from "./indexer.js";
-export type { RagConfig, DescriptionConfig } from "./core/config.js";
+export { ImageChunker, createImageVisionProvider, getMimeType, SUPPORTED_IMAGE_EXTENSIONS } from "./chunker/image.js";
+export type { RagConfig, DescriptionConfig, ImageDescriptionConfig } from "./core/config.js";
 export type { Chunk, SearchResult, Chunker, DescriptionProvider, EmbeddingProvider, VectorStore } from "./core/interfaces.js";
 
 // High-level convenience API

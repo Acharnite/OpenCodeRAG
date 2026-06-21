@@ -11,6 +11,9 @@ export function resolveApiKey(
   if (cfg.description) {
     resolveForSection(cfg.description.provider, cfg.description, worktree);
   }
+  if (cfg.imageDescription?.enabled && cfg.imageDescription.provider !== "ollama") {
+    resolveForSection(cfg.imageDescription.provider, cfg.imageDescription, worktree);
+  }
 }
 
 function isPlaceholder(value: string): boolean {

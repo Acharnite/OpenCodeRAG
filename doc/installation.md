@@ -69,7 +69,9 @@ This creates:
 - `.opencode/.gitignore` — ignores `node_modules/` and `rag_db/`
 - Runs `npm install` to install workspace dependencies
 
-Use `--skip-install` to skip the npm install step. Use `--force` to overwrite existing files.
+Use `--skip-install` to skip the npm install step. Use `--force` to overwrite existing files. Use `--skip-health-check` to skip provider validation (useful in offline environments).
+
+After writing config, `init` validates that your embedding provider is reachable and all configured models (embedding + description) are available. For Ollama, if models are missing, you're prompted to pull them automatically.
 
 ## Running Without Global Installation
 
@@ -96,6 +98,19 @@ opencode-rag status
 ```
 
 This shows the index statistics, store path, provider, model, manifest status, and keyword index status.
+
+## Recommended: Enable LSP
+
+OpenCode supports Language Server Protocol (LSP) for richer code intelligence. For this project (TypeScript/Node.js), enable the TypeScript LSP in your `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "lsp": true
+}
+```
+
+This gives agents hover info, go-to-definition, and diagnostics — complementing OpenCodeRAG's semantic search with precise type-aware context.
 
 ## Agent Tools
 

@@ -46,6 +46,21 @@ export interface DescriptionConfig {
   batchTimeoutMs?: number;
   retryMax?: number;
   retryBaseDelayMs?: number;
+  think?: boolean;
+  numCtx?: number;
+}
+
+export interface ImageDescriptionConfig {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiKey?: string;
+  timeoutMs: number;
+  prompt: string;
+  think?: boolean;
+  numCtx?: number;
+  proxy?: ProxyConfig;
 }
 
 export interface UiConfig {
@@ -107,6 +122,7 @@ export interface RagConfig {
     nodeTypes?: Record<string, string[]>;
   };
   description?: DescriptionConfig;
+  imageDescription?: ImageDescriptionConfig;
   mcp?: McpConfig;
   ui?: UiConfig;
   tui: TuiConfig;
@@ -124,7 +140,7 @@ export const DEFAULT_CONFIG: RagConfig = {
   embedding: {
     provider: "ollama",
     baseUrl: "http://127.0.0.1:11434/api",
-    model: "embeddinggemma:latest",
+    model: "qwen3-embedding:0.6b",
     timeoutMs: 30000,
   },
   indexing: {
@@ -172,6 +188,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     ".sh",
     ".bash",
     ".zsh",
+    ".png",
     ".php",
     ".ps1",
     ".psm1",
@@ -229,14 +246,26 @@ export const DEFAULT_CONFIG: RagConfig = {
       contentType: "file_paths",
     },
   },
+  imageDescription: {
+    enabled: true,
+    provider: "ollama",
+    model: "minicpm-v4.6:latest",
+    baseUrl: "http://127.0.0.1:11434/api",
+    timeoutMs: 60000,
+    prompt: "Describe this image precisely and concisely: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image showing ...\"",
+    think: true,
+    numCtx: 4096,
+  },
   description: {
     enabled: true,
     provider: "ollama",
     baseUrl: "http://127.0.0.1:11434/api",
     model: "qwen2.5:3b",
+    think: false,
+    numCtx: 4096,
     timeoutMs: 60000,
     systemPrompt:
-      "You are a code analysis assistant. Describe code for embedding search in caveman style: short simple words, rough grammar. Include what code do, main names, data in, data out, side effects, errors, and search words. No markdown, no code, no line-by-line talk. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, give the description directly.",
+      "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose.",
     batchMaxChunks: 25,
     batchTimeoutMs: 120000,
     retryMax: 3,
@@ -284,7 +313,7 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
   const KNOWN_TOP_KEYS = new Set([
     "embedding", "indexing", "vectorStore", "retrieval",
     "openCode", "chunkers", "chunking", "description",
-    "mcp", "ui", "tui", "logging",
+    "imageDescription", "mcp", "ui", "tui", "logging",
   ]);
   const topKeys = new Set(Object.keys(config as unknown as Record<string, unknown>));
   for (const key of topKeys) {
@@ -349,6 +378,14 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
     }
     if (config.description.timeoutMs != null && config.description.timeoutMs <= 0) {
       warnings.push("description.timeoutMs must be > 0");
+    }
+  }
+
+  if (config.imageDescription) {
+    if (config.imageDescription.enabled) {
+      if (config.imageDescription.timeoutMs <= 0) {
+        warnings.push("imageDescription.timeoutMs must be > 0");
+      }
     }
   }
 
@@ -426,6 +463,10 @@ export function loadConfig(filePath: string, validate: boolean = true): RagConfi
       ...DEFAULT_CONFIG.description,
       ...(safeObj<DescriptionConfig>((parsed as { description?: unknown }).description) ?? {}),
     } as DescriptionConfig,
+    imageDescription: {
+      ...DEFAULT_CONFIG.imageDescription,
+      ...(safeObj<ImageDescriptionConfig>((parsed as { imageDescription?: unknown }).imageDescription) ?? {}),
+    } as ImageDescriptionConfig,
     mcp: {
       ...DEFAULT_CONFIG.mcp,
       ...(safeObj<McpConfig>((parsed as { mcp?: unknown }).mcp) ?? {}),

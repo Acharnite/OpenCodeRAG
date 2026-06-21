@@ -144,4 +144,4 @@ npm run cli           # tsx src/cli.ts
 3. Update `RagConfig.embedding.provider` union type in `config.ts`
 
 ### Description-Based Embedding
-Enabled by default. Pipeline: content → LLM description → embedder (`description + "\n\n" + content`). Keyword search uses raw content. Set `description.enabled: false` to disable.
+Enabled by default. Pipeline: filePath → LLM description → embedder (`filePath + "\n\n" + description + "\n\n" + content`). Keyword search uses raw content. Set `description.enabled: false` to disable.

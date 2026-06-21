@@ -155,6 +155,30 @@ describe("opencode-rag init", () => {
     assert.deepEqual(opencodeConfig.plugin, ["other-plugin"]);
   });
 
+  it("skips health check with --skip-health-check", async () => {
+    process.cwd = () => tmpDir;
+
+    const { runCli } = await import("../cli.js");
+    // Write a config with an unreachable provider (non-existent host)
+    const configPath = join(tmpDir, "opencode-rag.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        embedding: { provider: "ollama", baseUrl: "http://127.0.0.1:19999/api", model: "nonexistent" },
+      }),
+      "utf-8"
+    );
+
+    // Without --skip-health-check, this would fail with "Connection refused"
+    // With --skip-health-check, it should complete successfully
+    await runCli(["node", "cli.ts", "init", "--skip-install", "--skip-health-check"]);
+
+    // Config should not be overwritten since it already exists and no --force
+    const content = readFileSync(configPath, "utf-8");
+    const parsed = JSON.parse(content);
+    assert.equal(parsed.embedding.model, "nonexistent", "config should not be overwritten");
+  });
+
   it("resolves symlinked cli entrypoints", async () => {
     // Skip on Windows due to symlink permission requirements
     if (process.platform === "win32") {

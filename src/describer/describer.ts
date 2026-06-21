@@ -8,7 +8,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  message?: { content?: string };
+  message?: { content?: string; thinking?: string };
   choices?: Array<{ message?: { content?: string } }>;
 }
 
@@ -93,7 +93,7 @@ export class LLMDescriptionProvider implements DescriptionProvider {
       : `${baseUrl}${baseUrl.endsWith("/v1") ? "" : "/v1"}/chat/completions`;
 
     const body = isOllama
-      ? { model: this.config.model, messages, stream: false }
+      ? { model: this.config.model, messages, stream: false, think: this.config.think ?? false, options: { num_ctx: this.config.numCtx } }
       : { model: this.config.model, messages };
 
     const headers: Record<string, string> = {};

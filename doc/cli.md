@@ -25,6 +25,7 @@ opencode-rag init [options]
 |---|---|---|
 | `-f, --force` | `false` | Overwrite existing files |
 | `--skip-install` | `false` | Skip npm install step |
+| `--skip-health-check` | `false` | Skip provider connectivity and model availability check |
 
 **Creates:**
 - `.opencode/` directory structure
@@ -36,6 +37,9 @@ opencode-rag init [options]
 - `opencode-rag.json` — runtime configuration
 - `.opencode/.gitignore` — ignores `node_modules/` and `rag_db/`
 - Runs `npm install` to install workspace dependencies
+
+**Health check:**
+After writing config files, `init` validates provider connectivity and model availability for all configured models (embedding + description + image description if enabled). For Ollama, if models are missing, you're prompted to pull them automatically. Use `--skip-health-check` to bypass (e.g., for offline environments).
 
 ### `index`
 

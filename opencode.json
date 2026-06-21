@@ -8,6 +8,14 @@
           "path": "../node_modules/typescript/lib/tsserver.js"
         }
       }
+    },
+    "html": {
+      "command": ["npx", "--package=vscode-langservers-extracted", "vscode-html-language-server", "--stdio"],
+      "extensions": [".html", ".htm"]
+    },
+    "css": {
+      "command": ["npx", "--package=vscode-langservers-extracted", "vscode-css-language-server", "--stdio"],
+      "extensions": [".css", ".scss", ".less"]
     }
   }
 }

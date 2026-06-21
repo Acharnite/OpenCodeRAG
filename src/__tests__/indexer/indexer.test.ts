@@ -356,7 +356,8 @@ describe("indexer", () => {
 
       assert.equal(stats.newFiles, 1);
       assert.ok(stats.totalChunks > 0);
-      // Verify that the embedded text contains both the description and the code
+      // Verify that the embedded text contains filePath, description, and the code
+      assert.ok(embeddedTexts.some((t) => t.includes("src/a.ts")));
       assert.ok(embeddedTexts.some((t) => t.includes("Description for")));
       assert.ok(embeddedTexts.some((t) => t.includes("function alpha")));
     });
@@ -392,7 +393,8 @@ describe("indexer", () => {
       });
 
       assert.equal(stats.newFiles, 1);
-      // Should fall back to embedding raw content
+      // Should fall back to embedding filePath + content
+      assert.ok(embeddedTexts.some((t) => t.includes("src/b.ts")));
       assert.ok(embeddedTexts.some((t) => t.includes("function beta")));
     });
 
@@ -417,6 +419,8 @@ describe("indexer", () => {
       });
 
       assert.equal(stats.newFiles, 1);
+      // Verify filePath and new description format (lines + language) are included
+      assert.ok(embeddedTexts.some((t) => t.includes("src/c.ts")));
       assert.ok(embeddedTexts.some((t) => t.includes("function gamma")));
     });
 
@@ -463,7 +467,53 @@ describe("indexer", () => {
       });
 
       assert.ok(embeddedTexts.every((t) => t.startsWith("search_document: ")));
+      // Verify the embedded text contains filePath after the document prefix
+      assert.ok(embeddedTexts.every((t) => t.includes("src/d.ts")));
       assert.ok(embeddedTexts.some((t) => t.includes("A delta function.")));
+    });
+
+    it("always includes filePath as first component in embedding text", async () => {
+      await writeFile(path.join(workspaceDir, "src", "e.ts"), "function epsilon() { return 5; }\n");
+
+      const descProvider: DescriptionProvider = {
+        async generateDescription(): Promise<string> {
+          return "An epsilon function.";
+        },
+        async generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>> {
+          const result = new Map<string, string>();
+          for (const chunk of chunks) {
+            result.set(chunk.id, "An epsilon function.");
+          }
+          return result;
+        },
+      };
+
+      const embeddedTexts: string[] = [];
+      const trackingEmbedder: EmbeddingProvider = {
+        name: "test",
+        async embed(texts: string[]): Promise<number[][]> {
+          embeddedTexts.push(...texts);
+          return texts.map(() => [0.1, 0.2, 0.3, 0.4]);
+        },
+      };
+
+      await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder: trackingEmbedder,
+        descriptionProvider: descProvider,
+      });
+
+      // Format should be: relPath\n\ndescription\n\ncontent
+      assert.ok(embeddedTexts.some((t) => {
+        const idx = t.indexOf("src/e.ts");
+        if (idx < 0) return false;
+        // filePath should be followed by description
+        return t.includes("src/e.ts\n\nAn epsilon function.\n\nfunction epsilon()")
+          || t.includes("src/e.ts\n\nAn epsilon function.");
+      }));
     });
   });
 });

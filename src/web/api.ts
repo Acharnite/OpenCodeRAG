@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { LanceDBStore } from "../vectorstore/lancedb.js";
 import { KeywordIndex } from "../retriever/keyword-index.js";
 import { listSessions, getSession, deleteSession, compareSessions, validateSessionID } from "../eval/storage.js";
+import { analyzeTokenUsage, compareTokenAnalyses, projectTokenSavings } from "../eval/token-analysis.js";
 
 interface ApiResponse {
   status: number;
@@ -70,8 +71,18 @@ export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex
       } else if (path.startsWith("/api/eval/sessions/") && method === "DELETE") {
         const id = path.slice("/api/eval/sessions/".length);
         response = await handleEvalDeleteSession(storePath, id);
-      } else if (path === "/api/eval/compare" && method === "GET") {
+      }       else if (path === "/api/eval/compare" && method === "GET") {
         response = await handleEvalCompare(storePath, params);
+      }
+      // Token analysis endpoints
+      else if (path.startsWith("/api/eval/sessions/") && path.endsWith("/analysis") && method === "GET") {
+        const id = path.slice("/api/eval/sessions/".length, -"/analysis".length);
+        response = await handleEvalAnalysis(storePath, id);
+      } else if (path === "/api/eval/token-compare" && method === "GET") {
+        response = await handleEvalTokenCompare(storePath, params);
+      } else if (path === "/api/eval/project-savings" && method === "POST") {
+        const body = await readBody(req);
+        response = handleEvalProjectSavings(body);
       } else {
         return false;
       }
@@ -253,4 +264,82 @@ async function handleEvalCompare(storePath: string, params: URLSearchParams): Pr
   }
 
   return { status: 200, body: result };
+}
+
+// ── Token Analysis API ────────────────────────────────────────────────
+
+export async function handleEvalAnalysis(storePath: string, id: string): Promise<ApiResponse> {
+  if (!validateSessionID(id)) {
+    return { status: 400, body: { error: "Invalid session ID" } };
+  }
+  const session = getSession(storePath, id);
+  if (!session) {
+    return { status: 404, body: { error: "Session not found" } };
+  }
+  const analysis = analyzeTokenUsage(storePath, id);
+  return { status: 200, body: { analysis } };
+}
+
+export async function handleEvalTokenCompare(storePath: string, params: URLSearchParams): Promise<ApiResponse> {
+  const idA = params.get("a") ?? "";
+  const idB = params.get("b") ?? "";
+
+  if (!idA || !idB) {
+    return { status: 400, body: { error: "Both 'a' and 'b' session IDs are required" } };
+  }
+  if (!validateSessionID(idA) || !validateSessionID(idB)) {
+    return { status: 400, body: { error: "Invalid session ID" } };
+  }
+
+  const sessionA = getSession(storePath, idA);
+  const sessionB = getSession(storePath, idB);
+  if (!sessionA || !sessionB) {
+    return { status: 404, body: { error: "One or both sessions not found" } };
+  }
+
+  const analysisA = analyzeTokenUsage(storePath, idA);
+  const analysisB = analyzeTokenUsage(storePath, idB);
+  const comparison = compareTokenAnalyses(analysisA, analysisB);
+
+  return { status: 200, body: { ragOn: analysisA, ragOff: analysisB, comparison } };
+}
+
+export function handleEvalProjectSavings(body: unknown): ApiResponse {
+  if (!body || typeof body !== "object") {
+    return { status: 400, body: { error: "Request body required" } };
+  }
+  const b = body as Record<string, unknown>;
+  const avgChunkSize = Number(b.avgChunkSize);
+  const avgChunksPerQuery = Number(b.avgChunksPerQuery);
+  const avgReadsPerQueryWithoutRAG = Number(b.avgReadsPerQueryWithoutRAG);
+  const avgReadsPerQueryWithRAG = Number(b.avgReadsPerQueryWithRAG);
+  const queryCount = Number(b.queryCount);
+
+  if ([avgChunkSize, avgChunksPerQuery, avgReadsPerQueryWithoutRAG, avgReadsPerQueryWithRAG, queryCount].some(isNaN)) {
+    return { status: 400, body: { error: "All projection parameters must be numbers" } };
+  }
+
+  const projection = projectTokenSavings({
+    avgChunkSize,
+    avgChunksPerQuery,
+    avgReadsPerQueryWithoutRAG,
+    avgReadsPerQueryWithRAG,
+    queryCount,
+  });
+
+  return { status: 200, body: { projection } };
+}
+
+async function readBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  const raw = Buffer.concat(chunks).toString("utf8");
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return {};
+  }
 }

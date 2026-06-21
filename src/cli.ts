@@ -14,6 +14,7 @@ import { appendDebugLog } from "./core/fileLogger.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { createEmbedder } from "./embedder/factory.js";
 import { createDescriptionProvider } from "./describer/factory.js";
+import { checkProviderHealth, pullOllamaModels } from "./embedder/health.js";
 import { retrieve } from "./retriever/retriever.js";
 import type { KeywordIndex, SearchResult } from "./core/interfaces.js";
 import {
@@ -57,6 +58,7 @@ interface CliOptions {
 interface InitOptions {
   force?: boolean;
   skipInstall?: boolean;
+  skipHealthCheck?: boolean;
 }
 
 interface PackageMetadata {
@@ -1097,6 +1099,24 @@ function generateDefaultConfigJson(): string {
           contentType: DEFAULT_CONFIG.openCode.autoInject!.contentType,
         },
       },
+      imageDescription: {
+        enabled: DEFAULT_CONFIG.imageDescription!.enabled,
+        provider: DEFAULT_CONFIG.imageDescription!.provider,
+        model: DEFAULT_CONFIG.imageDescription!.model,
+        baseUrl: DEFAULT_CONFIG.imageDescription!.baseUrl,
+        timeoutMs: DEFAULT_CONFIG.imageDescription!.timeoutMs,
+        think: DEFAULT_CONFIG.imageDescription!.think,
+        numCtx: DEFAULT_CONFIG.imageDescription!.numCtx,
+      },
+      description: {
+        enabled: DEFAULT_CONFIG.description!.enabled,
+        provider: DEFAULT_CONFIG.description!.provider,
+        baseUrl: DEFAULT_CONFIG.description!.baseUrl,
+        model: DEFAULT_CONFIG.description!.model,
+        think: DEFAULT_CONFIG.description!.think,
+        numCtx: DEFAULT_CONFIG.description!.numCtx,
+        timeoutMs: DEFAULT_CONFIG.description!.timeoutMs,
+      },
       mcp: {
         enabled: DEFAULT_CONFIG.mcp!.enabled,
       },
@@ -1118,6 +1138,7 @@ program
   .description("Configure the current workspace for OpenCodeRAG")
   .option("-f, --force", "overwrite existing files")
   .option("--skip-install", "skip installing workspace-local plugin dependencies")
+  .option("--skip-health-check", "skip provider connectivity and model availability check")
   .action(async (options: InitOptions) => {
     const cwd = process.cwd();
     const packageMetadata = getPackageMetadata();
@@ -1243,6 +1264,56 @@ program
       console.log(`  ${configExists ? c.updated("Updated:") : c.created("Created:")} opencode-rag.json`);
     } else {
       console.log(`  ${c.exists("Exists:")}   opencode-rag.json`);
+    }
+
+    // ── Provider health check ──────────────────────────────────
+    if (!options.skipHealthCheck) {
+      console.log(`\n${c.heading("Checking provider connectivity...")}\n`);
+
+      const logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      const ragConfig = loadConfig(configPath);
+      const results = await checkProviderHealth(ragConfig);
+
+      for (const r of results) {
+        const icon = r.status === "ok" ? c.success("✓") : r.status === "missing" ? c.warn("○") : c.error("✗");
+        const typeLabel = r.type === "image_description" ? "image description" : r.type;
+        const label = `${typeLabel} model`;
+        console.log(`  ${icon} ${c.value(r.model)} (${r.provider}) — ${label}: ${r.status}`);
+        if (r.error) console.log(`    ${c.dim(r.error)}`);
+      }
+
+      const missingOllama = results.filter((r) => r.status === "missing" && r.provider === "ollama");
+      if (missingOllama.length > 0) {
+        const modelNames = missingOllama.map((r) => r.model);
+        console.log(`\n  ${c.warn("Models not found:")} ${modelNames.join(", ")}`);
+
+        const readline = await import("node:readline");
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const answer = await new Promise<string>((resolve) => {
+          rl.question(`  Pull ${modelNames.length === 1 ? "this model" : "these models"} now? (y/n) `, resolve);
+        });
+        rl.close();
+
+        if (answer.toLowerCase() === "y" || answer.toLowerCase() === "yes") {
+          console.log();
+          try {
+            await pullOllamaModels(modelNames, (model, line) => {
+              console.log(`  ${c.value(model)}: ${line}`);
+            });
+            console.log(`\n  ${c.success("Models pulled successfully.")}`);
+          } catch (err) {
+            console.error(`\n  ${c.error("Pull failed:")} ${(err as Error).message}`);
+            console.log(`  ${c.dim("Pull manually with: ollama pull <model>")}`);
+          }
+        } else {
+          console.log(`  ${c.dim("Skipped. Pull manually with: ollama pull <model>")}`);
+        }
+      }
+
+      const hasErrors = results.some((r) => r.status === "error");
+      if (hasErrors) {
+        console.log(`\n  ${c.warn("Some providers are not reachable.")} Check configuration and network, then run ${c.file("'opencode-rag index'")}.`);
+      }
     }
 
     if (!options.skipInstall) {
