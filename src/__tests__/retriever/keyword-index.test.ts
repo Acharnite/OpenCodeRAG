@@ -62,6 +62,31 @@ describe("tokenize", () => {
     assert.ok(tokens.includes("foo"));
     assert.ok(tokens.includes("bar"));
   });
+
+  it("stems plural forms for keyword matching", () => {
+    const tokens = tokenize("images screenshots diagrams");
+    assert.ok(tokens.includes("image"), "should stem 'images' to 'image'");
+    assert.ok(tokens.includes("screenshot"), "should stem 'screenshots' to 'screenshot'");
+    assert.ok(tokens.includes("diagram"), "should stem 'diagrams' to 'diagram'");
+  });
+
+  it("stems -ing suffix", () => {
+    const tokens = tokenize("indexing searching");
+    assert.ok(tokens.includes("index"), "should stem 'indexing' to 'index'");
+    assert.ok(tokens.includes("search"), "should stem 'searching' to 'search'");
+  });
+
+  it("stems -ed suffix", () => {
+    const tokens = tokenize("indexed searched");
+    assert.ok(tokens.includes("index"), "should stem 'indexed' to 'index'");
+    assert.ok(tokens.includes("search"), "should stem 'searched' to 'search'");
+  });
+
+  it("preserves original tokens alongside stemmed forms", () => {
+    const tokens = tokenize("images");
+    assert.ok(tokens.includes("images"), "should keep original 'images'");
+    assert.ok(tokens.includes("image"), "should also have stemmed 'image'");
+  });
 });
 
 describe("KeywordIndex", () => {
@@ -164,6 +189,16 @@ describe("KeywordIndex", () => {
       assert.equal(results[0]!.chunk.metadata.startLine, 5);
       assert.equal(results[0]!.chunk.metadata.endLine, 15);
       assert.equal(results[0]!.chunk.metadata.language, "typescript");
+    });
+
+    it("matches plural queries via stemming", () => {
+      const index = new KeywordIndex();
+      index.addChunks([
+        makeChunk("c1", "[image] [png] [doc/assets/eval.png] Image of a dashboard"),
+        makeChunk("c2", "[image] [png] [doc/assets/webui.png] Image of a web interface"),
+      ]);
+      const results = index.search("find all images", 10);
+      assert.ok(results.length >= 2, "should find image chunks via stemming");
     });
   });
 

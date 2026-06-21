@@ -8,6 +8,7 @@ export interface Chunk {
     startLine: number;
     endLine: number;
     language: string;
+    contentType?: string;
   };
 }
 

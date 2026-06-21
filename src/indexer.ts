@@ -84,6 +84,98 @@ function createLogger(logger?: Partial<Logger>): Logger {
   };
 }
 
+const FILE_TYPE_LABELS: Record<string, string> = {
+  ".pdf": "pdf",
+  ".docx": "docx",
+  ".doc": "doc",
+  ".xls": "excel",
+  ".xlsx": "excel",
+  ".md": "markdown",
+  ".mdx": "markdown",
+  ".json": "json",
+  ".yaml": "yaml",
+  ".yml": "yaml",
+  ".toml": "toml",
+  ".xml": "xml",
+  ".html": "html",
+  ".css": "css",
+  ".csv": "csv",
+  ".txt": "text",
+  ".ts": "typescript",
+  ".tsx": "typescript",
+  ".js": "javascript",
+  ".jsx": "javascript",
+  ".py": "python",
+  ".java": "java",
+  ".go": "go",
+  ".rs": "rust",
+  ".c": "c",
+  ".cpp": "cpp",
+  ".h": "c",
+  ".hpp": "cpp",
+  ".cs": "csharp",
+  ".rb": "ruby",
+  ".php": "php",
+  ".swift": "swift",
+  ".kt": "kotlin",
+  ".sql": "sql",
+  ".sh": "bash",
+  ".bash": "bash",
+  ".ps1": "powershell",
+  ".dockerfile": "dockerfile",
+  ".tex": "latex",
+  ".razor": "razor",
+  ".sln": "sln",
+  ".ini": "ini",
+};
+
+function classifyContentType(relPath: string): string {
+  const lower = relPath.toLowerCase();
+  const parts = lower.split("/");
+  const basename = parts[parts.length - 1] ?? "";
+
+  if (basename.startsWith("readme")) return "readme";
+  if (/^(test|tests|__tests__|spec|specs|__spec__)\b/.test(basename) || /\.(test|spec)\.[^.]+$/.test(basename)) return "test";
+  if (parts.some((p) => /^(docs?|documentation|guides?|manual|tutorial|tutorial)s?$/.test(p))) return "documentation";
+  if (parts.some((p) => /^(config|conf|configuration|settings|env)s?$/.test(p)) || /\.(config|conf)\.[^.]+$/.test(basename)) return "configuration";
+  if (parts.some((p) => /^(src|source|lib|packages?|modules?)$/.test(p))) return "source";
+  if (parts.some((p) => /^(ci|cd|\.github|\.gitlab|build|deploy|scripts?)$/.test(p))) return "build";
+  if (parts.some((p) => /^(examples?|samples?|demo|demos?)$/.test(p))) return "example";
+  return "";
+}
+
+function extractDocumentTitle(content: string, filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".md" || ext === ".mdx") {
+    const match = content.match(/^#{1,3}\s+(.+)$/m);
+    if (match?.[1]) return match[1].trim().slice(0, 80);
+  }
+  const basename = path.basename(filePath, ext);
+  return basename
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .slice(0, 80);
+}
+
+function buildFileMetadataHeader(filePath: string, cwd: string, content: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  const relPath = path.relative(cwd, filePath).replace(/\\/g, "/");
+  const fileType = FILE_TYPE_LABELS[ext] ?? ext.slice(1);
+  const dirParts = relPath.split("/");
+  dirParts.pop();
+  const topDir = dirParts[0] ?? "";
+  const contentType = classifyContentType(relPath);
+  const title = extractDocumentTitle(content, filePath);
+
+  const parts: string[] = [];
+  if (fileType) parts.push(`[${fileType}]`);
+  if (topDir) parts.push(`[${topDir}]`);
+  if (contentType) parts.push(`[${contentType}]`);
+  if (title) parts.push(title);
+
+  return parts.length > 0 ? parts.join(" ") : "";
+}
+
 export async function walkFiles(
   dir: string,
   extensions: Set<string>,
@@ -321,14 +413,18 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
 
         // Images: 1 image → 1 chunk (description as content, no paragraph splitting)
         if (isImageFile(file.filePath, SUPPORTED_IMAGE_EXTENSIONS) && file.content.trim().length > 0) {
+          const imgExt = path.extname(file.filePath).toLowerCase();
+          const imgRelPath = path.relative(options.cwd, file.filePath).replace(/\\/g, "/");
+          const metaHeader = `[image] [${imgExt.slice(1)}] [${imgRelPath}]`;
           chunks = [{
             id: uuid(),
-            content: file.content,
+            content: metaHeader + " " + file.content,
             metadata: {
               filePath: file.filePath,
               startLine: 1,
               endLine: 1,
               language: "image",
+              contentType: "image",
             },
           }];
         } else {
@@ -355,6 +451,10 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
         try {
         const docPrefix = options.config.embedding.documentPrefix ?? "";
         const relPath = path.relative(options.cwd, file.filePath).replace(/\\/g, "/");
+        const isImage = isImageFile(file.filePath, SUPPORTED_IMAGE_EXTENSIONS);
+        const metaHeader = isImage
+          ? ""
+          : buildFileMetadataHeader(file.filePath, options.cwd, file.content);
         const textToEmbed: string[] = [];
 
         if (options.descriptionProvider) {
@@ -370,23 +470,35 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
 
           for (const chunk of chunks) {
             const batchDesc = descriptionMap?.get(chunk.id);
-            if (batchDesc && batchDesc.trim().length > 0) {
+            if (isImage) {
+              const imgExt = path.extname(file.filePath).toLowerCase();
+              chunk.description = batchDesc && batchDesc.trim().length > 0
+                ? batchDesc
+                : `image file (${imgExt.slice(1)}): ${relPath}`;
+              textToEmbed.push(docPrefix + relPath + "\n\n[Content type: image file]\n\n" + chunk.description + "\n\n" + chunk.content);
+            } else if (batchDesc && batchDesc.trim().length > 0) {
               chunk.description = batchDesc;
-              textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description + "\n\n" + chunk.content);
+              textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.description + "\n\n" + chunk.content);
             } else {
               try {
                 chunk.description = await options.descriptionProvider.generateDescription(chunk);
-                textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description + "\n\n" + chunk.content);
+                textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.description + "\n\n" + chunk.content);
               } catch (err) {
                 logger.warn(`Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
-                textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.content);
+                textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.content);
               }
             }
           }
         } else {
           for (const chunk of chunks) {
-            chunk.description = `lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}, ${chunk.metadata.language}`;
-            textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description + "\n\n" + chunk.content);
+            if (isImage) {
+              const imgExt = path.extname(file.filePath).toLowerCase();
+              chunk.description = `image file (${imgExt.slice(1)}): ${relPath}`;
+              textToEmbed.push(docPrefix + relPath + "\n\n[Content type: image file]\n\n" + chunk.description + "\n\n" + chunk.content);
+            } else {
+              chunk.description = `lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}, ${chunk.metadata.language}`;
+              textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.description + "\n\n" + chunk.content);
+            }
           }
         }
 

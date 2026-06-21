@@ -506,13 +506,12 @@ describe("indexer", () => {
         descriptionProvider: descProvider,
       });
 
-      // Format should be: relPath\n\ndescription\n\ncontent
+      // Format should be: relPath\n\n[metaHeader]\n\ndescription\n\ncontent
       assert.ok(embeddedTexts.some((t) => {
         const idx = t.indexOf("src/e.ts");
         if (idx < 0) return false;
-        // filePath should be followed by description
-        return t.includes("src/e.ts\n\nAn epsilon function.\n\nfunction epsilon()")
-          || t.includes("src/e.ts\n\nAn epsilon function.");
+        // filePath should be followed by optional metadata header, then description, then content
+        return t.includes("src/e.ts\n\n") && t.includes("An epsilon function.") && t.includes("function epsilon()");
       }));
     });
   });

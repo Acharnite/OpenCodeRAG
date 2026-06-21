@@ -1,6 +1,6 @@
 import type { Chunk, SearchResult } from "../core/interfaces.js";
 
-const INDEX_VERSION = 1;
+const INDEX_VERSION = 2;
 
 interface SerializedKeywordIndex {
   version: number;
@@ -16,6 +16,20 @@ interface SerializedKeywordIndex {
   }>;
 }
 
+/** Simple suffix-stripping stemmer for English and German keywords. */
+function stem(word: string): string {
+  if (word.length < 5) return word;
+  if (word.endsWith("ing") && word.length >= 6) return word.slice(0, -3);
+  if (word.endsWith("ed") && word.length >= 5) return word.slice(0, -2);
+  if (word.endsWith("ly") && word.length >= 5) return word.slice(0, -2);
+  if (word.endsWith("es") && word.length >= 5) return word.slice(0, -2);
+  if (word.endsWith("er") && word.length >= 5) return word.slice(0, -2);
+  if (word.endsWith("en") && word.length >= 5) return word.slice(0, -2);
+  if (word.endsWith("s") && !word.endsWith("ss") && word.length >= 4) return word.slice(0, -1);
+  if (word.endsWith("e") && word.length >= 5) return word.slice(0, -1);
+  return word;
+}
+
 export function tokenize(text: string): string[] {
   const tokens = new Set<string>();
 
@@ -26,15 +40,24 @@ export function tokenize(text: string): string[] {
 
     const lower = word.toLowerCase();
     tokens.add(lower);
+    tokens.add(stem(lower));
 
     const camelParts = word.split(/(?=[A-Z])/);
     for (const part of camelParts) {
-      if (part.length >= 2) tokens.add(part.toLowerCase());
+      if (part.length >= 2) {
+        const p = part.toLowerCase();
+        tokens.add(p);
+        tokens.add(stem(p));
+      }
     }
 
     const snakeParts = word.split("_");
     for (const part of snakeParts) {
-      if (part.length >= 2) tokens.add(part.toLowerCase());
+      if (part.length >= 2) {
+        const p = part.toLowerCase();
+        tokens.add(p);
+        tokens.add(stem(p));
+      }
     }
   }
 
