@@ -76,10 +76,32 @@ export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex
       }
       // File content endpoint (for serving images)
       else if (path === "/api/file" && method === "GET") {
-        if (cwd) {
-          response = handleFileContent(cwd, params);
-        } else {
+        if (!cwd) {
           response = { status: 400, body: { error: "Workspace path not configured" } };
+        } else {
+          const filePath = params.get("path");
+          if (!filePath) {
+            response = { status: 400, body: { error: "Missing 'path' query parameter" } };
+          } else {
+            const resolved = resolvePath(cwd, filePath);
+            if (!resolved) {
+              response = { status: 403, body: { error: "Invalid file path" } };
+            } else {
+              try {
+                const raw = readFileSync(resolved);
+                const ext = extname(resolved).toLowerCase();
+                const mime = FILE_MIME_TYPES[ext] ?? "application/octet-stream";
+                if (mime.startsWith("image/")) {
+                  res.writeHead(200, { "Content-Type": mime, "Content-Length": raw.length, "Cache-Control": "no-cache" });
+                  res.end(raw);
+                  return true;
+                }
+                response = { status: 200, body: { data: raw.toString("base64"), mime } };
+              } catch {
+                response = { status: 404, body: { error: "File not found" } };
+              }
+            }
+          }
         }
       }
       // Eval endpoints
@@ -241,28 +263,6 @@ async function handleCompare(
 }
 
 // ── File Content API ──────────────────────────────────────────────────
-
-function handleFileContent(cwd: string, params: URLSearchParams): ApiResponse {
-  const filePath = params.get("path");
-  if (!filePath) {
-    return { status: 400, body: { error: "Missing 'path' query parameter" } };
-  }
-
-  const resolved = resolvePath(cwd, filePath);
-  if (!resolved) {
-    return { status: 403, body: { error: "Invalid file path" } };
-  }
-
-  try {
-    const data = readFileSync(resolved);
-    const ext = extname(resolved).toLowerCase();
-    const mime = FILE_MIME_TYPES[ext] ?? "application/octet-stream";
-    const b64 = data.toString("base64");
-    return { status: 200, body: { data: b64, mime } };
-  } catch {
-    return { status: 404, body: { error: "File not found" } };
-  }
-}
 
 function resolvePath(cwd: string, filePath: string): string | null {
   const resolved = resolvePathModule(cwd, filePath);
