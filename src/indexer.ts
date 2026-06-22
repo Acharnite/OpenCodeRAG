@@ -460,41 +460,40 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
         if (options.descriptionProvider) {
           let descriptionMap: Map<string, string> | null = null;
 
-          if (chunks.length > 1) {
+          const nonImageChunks = chunks.filter(c => c.metadata.contentType !== "image");
+          if (nonImageChunks.length > 1) {
             try {
-              descriptionMap = await options.descriptionProvider.generateBatchDescriptions(chunks);
+              descriptionMap = await options.descriptionProvider.generateBatchDescriptions(nonImageChunks);
             } catch (err) {
               logger.warn(`Batch description failed, falling back to individual: ${(err as Error).message}`);
             }
           }
 
           for (const chunk of chunks) {
-            const batchDesc = descriptionMap?.get(chunk.id);
             if (isImage) {
-              const imgExt = path.extname(file.filePath).toLowerCase();
-              chunk.description = batchDesc && batchDesc.trim().length > 0
-                ? batchDesc
-                : `image file (${imgExt.slice(1)}): ${relPath}`;
-              textToEmbed.push(docPrefix + relPath + "\n\n[Content type: image file]\n\n" + chunk.description + "\n\n" + chunk.content);
-            } else if (batchDesc && batchDesc.trim().length > 0) {
-              chunk.description = batchDesc;
-              textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.description + "\n\n" + chunk.content);
+              chunk.description = chunk.content;
+              textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description);
             } else {
-              try {
-                chunk.description = await options.descriptionProvider.generateDescription(chunk);
+              const batchDesc = descriptionMap?.get(chunk.id);
+              if (batchDesc && batchDesc.trim().length > 0) {
+                chunk.description = batchDesc;
                 textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.description + "\n\n" + chunk.content);
-              } catch (err) {
-                logger.warn(`Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
-                textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.content);
+              } else {
+                try {
+                  chunk.description = await options.descriptionProvider.generateDescription(chunk);
+                  textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.description + "\n\n" + chunk.content);
+                } catch (err) {
+                  logger.warn(`Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
+                  textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.content);
+                }
               }
             }
           }
         } else {
           for (const chunk of chunks) {
             if (isImage) {
-              const imgExt = path.extname(file.filePath).toLowerCase();
-              chunk.description = `image file (${imgExt.slice(1)}): ${relPath}`;
-              textToEmbed.push(docPrefix + relPath + "\n\n[Content type: image file]\n\n" + chunk.description + "\n\n" + chunk.content);
+              chunk.description = chunk.content;
+              textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description);
             } else {
               chunk.description = `lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}, ${chunk.metadata.language}`;
               textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.description + "\n\n" + chunk.content);
