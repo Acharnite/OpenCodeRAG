@@ -173,6 +173,50 @@ When enabled, the embedded text is `filePath + "\n\n" + description + "\n\n" + c
 
 > **Recommendation:** Disable (`description.enabled: false`) if you don't have a dedicated GPU or want faster indexing.
 
+### `imageDescription`
+
+Controls image-to-text description generation via vision-capable LLMs. Disabled by default; enable to make image files searchable.
+
+```json
+{
+  "imageDescription": {
+    "enabled": false,
+    "provider": "ollama",
+    "baseUrl": "http://127.0.0.1:11434/api",
+    "apiKey": null,
+    "model": "minicpm-v4.6",
+    "timeoutMs": 60000,
+    "proxy": {
+      "url": null,
+      "username": null,
+      "password": null,
+      "noProxy": "localhost,127.0.0.1,.local"
+    },
+    "prompt": "Describe this image in detail for a codebase search index.",
+    "concurrency": 2,
+    "maxImageBytes": 10485760
+  }
+}
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `enabled` | `false` | Enable image description indexing |
+| `provider` | `"ollama"` | Vision provider: `"ollama"`, `"openai"`, `"anthropic"`, `"gemini"` |
+| `baseUrl` | `http://127.0.0.1:11434/api` | Provider API endpoint |
+| `apiKey` | `null` | API key; auto-resolved from OpenCode provider config for OpenAI/Anthropic/Gemini |
+| `model` | `"minicpm-v4.6"` | Vision model name |
+| `timeoutMs` | `60000` | Request timeout (vision calls can be slower) |
+| `proxy` | — | Proxy settings (same shape as `embedding.proxy`) |
+| `prompt` | `"Describe this image..."` | System prompt sent to the vision model |
+| `concurrency` | `2` | Number of parallel description requests during indexing |
+| `maxImageBytes` | `10485760` | Skip images larger than this (bytes) |
+
+**Notes:**
+
+- Supported raster image extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`. SVG is handled by the XML chunker, not the vision pipeline.
+- Descriptions are embedded using the standard embedding provider and stored as vector chunks. Re-index after enabling or changing vision settings.
+
 ### `openCode`
 
 Controls the OpenCode plugin integration.

@@ -1,6 +1,6 @@
 ﻿# OpenCodeRAG
 
-OpenCodeRAG is a **local-first RAG plugin** for semantic code search. It converts your codebase into vector indices and retrieves relevant code chunks on natural language queries. The primary aim is to save tokens by replacing full-file reads with targeted chunk retrieval and to speed-up tool calls for large codebases. Integrates seamlessly with [OpenCode](https://opencode.ai) and works as standalone MCP server or CLI tool.
+OpenCodeRAG is a **local-first RAG plugin** for semantic code and image search. It converts your codebase into vector indices and retrieves relevant code chunks on natural language queries. The primary aim is to save tokens by replacing full-file reads with targeted chunk retrieval and to speed-up tool calls for large codebases. Integrates seamlessly with [OpenCode](https://opencode.ai) and works as a standalone MCP server or CLI tool.
 
 You don't need a dedicated GPU to run smaller embedding LLMs, as these models can still run performant on modern CPUs.
 
@@ -12,7 +12,7 @@ You don't need a dedicated GPU to run smaller embedding LLMs, as these models ca
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/your-org/OpenCodeRAG.git
+git clone https://github.com/MrDoe/OpenCodeRAG.git
 cd OpenCodeRAG
 npm install --legacy-peer-deps
 npm run build
@@ -35,8 +35,8 @@ opencode-rag query "authentication middleware"
 
 | Feature | Description |
 |---|---|
-| **MCP server** | `opencode-rag mcp` - stdio-based MCP server exposing `search_semantic`, `get_file_skeleton`, `find_usages` tools for any MCP-compatible client |
-| **AST chunking** | 26 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, Bash, PHP, PowerShell, SQL, JSON, HTML, CSS, XML, YAML, TOML, INI, Dockerfile, Markdown, LaTeX, Razor) |
+| **MCP server** | `opencode-rag mcp` - stdio-based MCP server exposing `search_semantic`, `get_file_skeleton`, `find_usages`, and `describe_image` tools for any MCP-compatible client |
+| **AST chunking** | 26 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, Bash, PHP, PowerShell, SQL, JSON, HTML, CSS, XML (including SVG), YAML, TOML, INI, Dockerfile, Markdown, LaTeX, Razor) |
 | **Document support** | Markdown, LaTeX, PDF, DOCX, DOC, Excel |
 | **Image indexing** | Describe images via vision LLMs (Ollama, OpenAI, Anthropic, Gemini) and store descriptions as searchable vector chunks |
 | **Hybrid search** | Vector similarity + TF×IDF keyword fusion |
@@ -63,7 +63,7 @@ Launch with `opencode-rag ui`. See [Web UI documentation](doc/webui.md) for deta
 |---|---|
 | [Architecture](doc/architecture.md) | Module design, data flow, tech stack |
 | [Installation](doc/installation.md) | Full install guide, global setup, uninstall |
-| [Configuration](doc/configuration.md) | All options: embedding, indexing, retrieval, description, plugin |
+| [Configuration](doc/configuration.md) | All options: embedding, indexing, retrieval, description, image description, plugin |
 | [Chunking](doc/chunking.md) | Language matrix, adding new chunkers, custom chunkers |
 | [Embedding](doc/embedding.md) | Providers, model recommendations, proxy, dimension probing |
 | [Retrieval](doc/retrieval.md) | Pipeline, hybrid search, score fusion, caching |
@@ -97,6 +97,7 @@ opencode-rag mcp
 | `search_semantic` | Vector + keyword hybrid search across the indexed codebase |
 | `get_file_skeleton` | AST-based file outline (functions, classes, methods) |
 | `find_usages` | Find all references to a symbol by name |
+| `describe_image` | Return the pre-generated description for an indexed image file |
 
 Clients can configure the MCP server manually, or `opencode-rag init` auto-registers it.
 
@@ -107,8 +108,9 @@ OpenCodeRAG registers tools that agents can invoke directly. Agents discover the
 1. **Skeleton first** - `get_file_skeleton(filePath)` to orient in a file
 2. **Find usages** - `find_usages(symbolName)` before editing any symbol
 3. **Search** - `search_semantic(query)` to find relevant code
-4. **Read** - use `read` on specific line ranges
-5. **Edit** - make changes with full context
+4. **Describe images** - `describe_image(filePath)` when context involves an image
+5. **Read** - use `read` on specific line ranges
+6. **Edit** - make changes with full context
 
 ### Available Tools
 
@@ -117,6 +119,7 @@ OpenCodeRAG registers tools that agents can invoke directly. Agents discover the
 | `search_semantic` | General-purpose code retrieval | Before any code task when you haven't read the relevant code |
 | `get_file_skeleton` | Quick file overview via AST | Before reading a large file to decide which sections matter |
 | `find_usages` | Symbol reference search | **Before editing** any function, variable, or class |
+| `describe_image` | Retrieve pre-generated image description | When a user asks about a screenshot, diagram, or visual asset |
 | `read` (optional) | RAG-enhanced file read | Full file contents with supplementary context chunks |
 
 ## OpenCode Integration

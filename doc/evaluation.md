@@ -35,6 +35,16 @@ interface TokenUsage {
 }
 ```
 
+### Scope of Token Tracking
+
+Session evaluation tracks tokens used during OpenCode agent sessions (prompt + completion + reasoning + cache). It does **not** include:
+
+- Tokens used by the embedding provider during indexing
+- Tokens used by the description model during indexing
+- Tokens used by the vision provider to describe images during indexing
+
+To monitor indexing-time costs, check your provider's dashboard or logs.
+
 See [Plugin Integration](plugin.md) for how the logger hooks into OpenCode.
 
 ## CLI Commands

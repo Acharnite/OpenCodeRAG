@@ -165,3 +165,12 @@ Adding a new provider means:
 1. Create `src/embedder/<name>.ts` implementing `EmbeddingProvider`
 2. Add a dispatch case in `createEmbedder()` in `factory.ts`
 3. Update the `RagConfig.embedding.provider` union type in `config.ts`
+
+## Relationship to Description and Vision Providers
+
+Embedding only converts text to vectors. OpenCodeRAG supports two optional text-generation steps that produce the text to be embedded:
+
+- **Description model** (`description.*`): generates natural-language summaries of code chunks. See [Configuration](configuration.md).
+- **Vision model** (`imageDescription.*`): generates natural-language descriptions of images. See [Configuration](configuration.md).
+
+These providers are independent of the embedding provider, and their outputs are embedded using the configured embedding model.

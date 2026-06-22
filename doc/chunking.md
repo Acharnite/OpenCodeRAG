@@ -4,7 +4,7 @@ OpenCodeRAG uses **tree-sitter** (AST-based) parsing for programming languages, 
 
 ## Supported Languages & Formats
 
-### AST-Based (tree-sitter) — 25 Languages
+### AST-Based (tree-sitter) — 26 Languages
 
 | Language | Chunker | Extensions |
 |---|---|---|
@@ -27,7 +27,7 @@ OpenCodeRAG uses **tree-sitter** (AST-based) parsing for programming languages, 
 | JSON | `json.ts` | `.json` |
 | HTML | `html.ts` | `.html`, `.htm` |
 | CSS | `css.ts` | `.css` |
-| XML | `xml.ts` | `.xml` |
+| XML | `xml.ts` | `.xml`, `.csproj`, `.svg` |
 | YAML | `yaml.ts` | `.yaml`, `.yml` |
 | TOML | `toml.ts` | `.toml` |
 | INI | `ini.ts` | `.ini`, `.cfg` |
@@ -56,6 +56,23 @@ OpenCodeRAG uses **tree-sitter** (AST-based) parsing for programming languages, 
 | Language | Chunker | Strategy |
 |---|---|---|
 | All others | `fallback.ts` | 100-line raw text blocks |
+
+## Image Indexing (Vision-based Chunking)
+
+Raster images are not parsed as text. Instead, OpenCodeRAG sends each image to a vision-capable LLM and stores the generated description as a single chunk.
+
+- **Chunker:** `src/chunker/image.ts`
+- **Supported extensions:** `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`
+- **Process:**
+  1. Read image file as a Buffer
+  2. Base64-encode and detect MIME type
+  3. Call the configured vision provider (`imageDescription.*`) with the prompt
+  4. Store the resulting description as a chunk (file path, line range 1–1)
+  5. Embed and index the description using the standard embedding pipeline
+
+- **Notes:**
+  - Disabled by default; enable via `imageDescription.enabled` in `opencode-rag.json`.
+  - SVG files are indexed as XML via the AST chunker, not the vision pipeline.
 
 ## How Chunkers Work
 

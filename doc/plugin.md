@@ -30,6 +30,7 @@ For autonomous agent workflows, the plugin also registers smaller, focused tools
 | `get_file_skeleton` | Structural file overview via tree-sitter AST | `filePath` (req) |
 | `get_file_skeleton` | Structural file overview via tree-sitter AST | `filePath` (req) |
 | `find_usages` | Find all references to a symbol | `symbolName` (req), `pathHint?`, `topK?` |
+| `describe_image` | Retrieve stored description of an indexed image | `filePath` (req) |
 
 #### `search_semantic`
 Conceptual code search — answers questions like *"How does authentication work?"* or *"Where is the chunking logic?"*. Uses vector + hybrid keyword search and returns the most relevant code snippets with file paths, line numbers, and relevance scores.
@@ -78,6 +79,17 @@ Usages of "createRagHooks" — 5 references across 2 files
 |------|------|
 | 178 | const hooks = createRagHooks({ ... |
 ```
+
+#### `describe_image`
+
+Returns the pre-generated natural-language description for an indexed image file. Does not re-run the vision model — it retrieves the stored description created at index time.
+
+**Parameters:**
+| Param | Required | Description |
+|-------|----------|-------------|
+| `filePath` | Yes | Path to the image file (relative or absolute) |
+
+**Returns:** Markdown block with file path and the stored description text.
 
 ### 2. `chat.message` Hook — Auto-Injection
 

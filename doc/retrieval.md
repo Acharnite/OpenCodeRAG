@@ -93,6 +93,14 @@ This captures both semantic meaning (from the description) and code-level simila
 
 See [Configuration](configuration.md#description) for details.
 
+### Image Description Chunks
+
+When image indexing is enabled, images are converted to text descriptions by a vision provider and then embedded and stored like any other chunk. This means:
+
+- Queries like "login screen" or "architecture diagram" can match image descriptions via the same vector and hybrid search pipeline.
+- No special retrieval call is needed; use `search_semantic` as usual.
+- To retrieve the raw description for a specific image, use the `describe_image` tool instead of `search_semantic`.
+
 ## Caching
 
 The plugin maintains a **session-level retrieval cache** that avoids re-embedding repeated queries within the same session. This cache is ephemeral and does not persist across sessions.
