@@ -5,7 +5,7 @@ import { resolveApiKey } from "./resolve-api-key.js";
 import { loadChunkersFromConfig } from "../chunker/loader.js";
 import { createEmbedder } from "../embedder/factory.js";
 import { createDescriptionProvider } from "../describer/factory.js";
-import { LanceDBStore } from "../vectorstore/lancedb.js";
+import { createVectorStore } from "../vectorstore/factory.js";
 import { KeywordIndex } from "../retriever/keyword-index.js";
 import type {
   EmbeddingProvider,
@@ -91,7 +91,7 @@ export async function resolveRagContext(
   const embedder = createEmbedder(cfg);
   const dimension = await probeDimension(embedder);
   const storePath = path.resolve(workDir, cfg.vectorStore.path);
-  const store = new LanceDBStore(storePath, dimension);
+  const store = createVectorStore(cfg, storePath, dimension);
   const keywordIndex = await loadKeywordIndex(storePath);
 
   const descriptionConfig = cfg.description;

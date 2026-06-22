@@ -98,6 +98,7 @@ export interface RagConfig {
   };
   vectorStore: {
     path: string;
+    provider?: "lancedb" | "memory";
   };
   retrieval: {
     topK: number;
@@ -232,6 +233,7 @@ export const DEFAULT_CONFIG: RagConfig = {
   },
   vectorStore: {
     path: "./.opencode/rag_db",
+    provider: "lancedb",
   },
   retrieval: {
     topK: 10,

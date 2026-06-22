@@ -4,7 +4,7 @@ import type { EmbeddingProvider, DescriptionProvider, KeywordIndex, VectorStore,
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { createEmbedder } from "./embedder/factory.js";
 import { createDescriptionProvider } from "./describer/factory.js";
-import { LanceDBStore } from "./vectorstore/lancedb.js";
+import { createVectorStore } from "./vectorstore/factory.js";
 import { retrieve } from "./retriever/retriever.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { appendDebugLog } from "./core/fileLogger.js";
@@ -315,13 +315,13 @@ async function loadRetrievedResults(
 
 type RagPluginDependencies = {
   createEmbedder: typeof createEmbedder;
-  createStore: (storePath: string) => VectorStore;
+  createStore: (storePath: string, dimension: number, config: RagConfig) => VectorStore;
   retrieve: typeof retrieve;
 };
 
 const defaultDependencies: RagPluginDependencies = {
   createEmbedder,
-  createStore: (storePath) => new LanceDBStore(storePath),
+  createStore: (storePath, dimension, config) => createVectorStore(config, storePath, dimension),
   retrieve,
 };
 
@@ -414,7 +414,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     ...options.dependencies,
   };
   const embedder = options.embedder ?? dependencies.createEmbedder(options.cfg);
-  const store = options.store ?? dependencies.createStore(options.storePath);
+  const store = options.store ?? dependencies.createStore(options.storePath, 384, options.cfg);
   const keywordIndex = options.keywordIndex;
 
   // Runtime overrides for live config editing from TUI
@@ -1060,7 +1060,7 @@ export const ragPlugin: Plugin = async (
     }, logLevel);
   }
 
-  const store = new LanceDBStore(storePath, vectorDimension);
+  const store = createVectorStore(effectiveCfg, storePath, vectorDimension);
 
   // Load or create keyword index for hybrid search
   const keywordIndex = await loadKeywordIndex(storePath, logFilePath, logLevel);

@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig } from "../core/config.js";
 import { createEmbedder } from "../embedder/factory.js";
-import { LanceDBStore } from "../vectorstore/lancedb.js";
+import { createVectorStore } from "../vectorstore/factory.js";
 import { retrieve } from "../retriever/retriever.js";
 import { KeywordIndex } from "../retriever/keyword-index.js";
 import { loadRuntimeOverrides, applyRuntimeOverrides } from "../core/runtime-overrides.js";
@@ -97,7 +97,7 @@ async function main() {
 
   const cfg = getConfig();
   const embedder = createEmbedder(cfg);
-  const store = new LanceDBStore(STORE_PATH);
+  const store = createVectorStore(cfg, STORE_PATH, 384);
 
   let keywordIndex: KeywordIndex | undefined;
   try { keywordIndex = await KeywordIndex.load(STORE_PATH); } catch { /* optional */ }

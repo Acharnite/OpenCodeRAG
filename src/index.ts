@@ -2,7 +2,9 @@
 export { chunkFile, getChunker, registerChunker } from "./chunker/factory.js";
 export { createEmbedder, embedBatch } from "./embedder/factory.js";
 export { createDescriptionProvider } from "./describer/factory.js";
+export { createVectorStore } from "./vectorstore/factory.js";
 export { LanceDBStore } from "./vectorstore/lancedb.js";
+export { InMemoryVectorStore } from "./vectorstore/memory.js";
 export { retrieve } from "./retriever/retriever.js";
 export { loadConfig, DEFAULT_CONFIG } from "./core/config.js";
 export { createBackgroundIndexer } from "./watcher.js";
