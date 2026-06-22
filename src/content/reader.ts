@@ -112,10 +112,14 @@ export async function scanWorkspaceFiles(
     new Set(config.indexing.excludeDirs),
   );
 
+  logger?.info(`Found ${files.length} files to scan`);
+
   const minSize = config.indexing.minFileSizeBytes ?? 0;
   const workspaceFiles: WorkspaceFile[] = [];
+  const totalFiles = files.length;
 
-  for (const filePath of files) {
+  for (let i = 0; i < files.length; i++) {
+    const filePath = files[i]!;
     const isBinary =
       pdfExtractor.PDF_EXTENSIONS.has(filePath.toLowerCase()) ||
       docxExtractor.DOCX_EXTENSIONS.has(filePath.toLowerCase()) ||
@@ -143,6 +147,10 @@ export async function scanWorkspaceFiles(
       extractionStatus: result.ok ? "ok" : "failed",
       extractionError: result.ok ? undefined : result.error,
     });
+
+    if (totalFiles > 20 && (i + 1) % 50 === 0) {
+      logger?.info(`  Scanning files... ${i + 1}/${totalFiles}`);
+    }
   }
 
   return workspaceFiles;

@@ -84,12 +84,30 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
     }
   }
 
+  let newCount = 0;
+  let modifiedCount = 0;
+  let unchangedCount = 0;
+  for (const file of workspaceFiles) {
+    const previous = manifest.files[file.normalizedPath];
+    if (file.isEmpty || file.isTooSmall) continue;
+    if (previous && previous.hash === file.hash) {
+      unchangedCount++;
+    } else if (previous) {
+      modifiedCount++;
+    } else {
+      newCount++;
+    }
+  }
+  logger.info(`Processing ${workspaceFiles.length} files (${newCount} new, ${modifiedCount} modified, ${unchangedCount} unchanged)...`);
+
   const limit = pLimit(options.config.indexing.concurrency);
+  let completed = 0;
+  const total = workspaceFiles.length;
 
   const workerResults = await Promise.all(
     workspaceFiles.map((file) =>
-      limit(() =>
-        processFile(
+      limit(async () => {
+        const result = await processFile(
           file,
           options.cwd,
           manifest.files[file.normalizedPath],
@@ -99,8 +117,13 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
           options.embedder,
           options.descriptionProvider,
           logger,
-        ),
-      ),
+        );
+        completed++;
+        if (total > 20 && completed % 50 === 0) {
+          logger.info(`  Processing file ${completed}/${total}...`);
+        }
+        return result;
+      }),
     ),
   );
 
