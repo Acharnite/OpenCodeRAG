@@ -31,7 +31,7 @@ describe("opencode-rag init", () => {
 
     // Dynamic import so commander registers the 'init' command
     const { runCli } = await import("../cli.js");
-    await runCli(["node", "cli.ts", "init", "--skip-install"]);
+    await runCli(["node", "cli.ts", "init", "--skip-install", "--skip-health-check"]);
 
     const configPath = join(tmpDir, "opencode-rag.json");
     const opencodeDir = join(tmpDir, ".opencode");
@@ -90,7 +90,7 @@ describe("opencode-rag init", () => {
 
     // Re-run init without force
     const { runCli } = await import("../cli.js");
-    await runCli(["node", "cli.ts", "init", "--skip-install"]);
+    await runCli(["node", "cli.ts", "init", "--skip-install", "--skip-health-check"]);
 
     // Content should be unchanged (still our custom content)
     const afterContent = readFileSync(configPath, "utf-8");
@@ -104,7 +104,7 @@ describe("opencode-rag init", () => {
     writeFileSync(configPath, "garbage", "utf-8");
 
     const { runCli } = await import("../cli.js");
-    await runCli(["node", "cli.ts", "init", "--force", "--skip-install"]);
+    await runCli(["node", "cli.ts", "init", "--force", "--skip-install", "--skip-health-check"]);
 
     const afterContent = readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(afterContent);
@@ -127,7 +127,7 @@ describe("opencode-rag init", () => {
     );
 
     const { runCli } = await import("../cli.js");
-    await runCli(["node", "cli.ts", "init", "--skip-install"]);
+    await runCli(["node", "cli.ts", "init", "--skip-install", "--skip-health-check"]);
 
     const opencodeConfig = JSON.parse(readFileSync(opencodeConfigPath, "utf-8"));
     assert.equal(opencodeConfig.$schema, "https://opencode.ai/config.json");

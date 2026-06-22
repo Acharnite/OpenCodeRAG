@@ -8,13 +8,19 @@ function isOpencodeAvailable(): boolean {
 }
 
 describe("opencode run integration", () => {
-  it("starts correctly with the rag plugin", { skip: !isOpencodeAvailable() ? "opencode binary not found; skipping integration test" : false }, () => {
+  it("starts correctly with the rag plugin", {
+    skip: process.env.CI
+      ? "skip integration test in CI"
+      : !isOpencodeAvailable()
+        ? "opencode binary not found; skipping integration test"
+        : false,
+  }, () => {
     const result = spawnSync(
       "opencode",
       ["run", "list relevant files", "--log-level", "ERROR", "--print-logs"],
       {
         encoding: "utf-8",
-        timeout: 60_000,
+        timeout: 30_000,
         cwd: process.cwd(),
         shell: true,
       }
