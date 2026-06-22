@@ -233,8 +233,8 @@ export const DEFAULT_CONFIG: RagConfig = {
     ],
     chunkOverlap: 0,
     minFileSizeBytes: 0,
-    concurrency: 4,
-    embedBatchSize: 50,
+    concurrency: 8,
+    embedBatchSize: 100,
   },
   vectorStore: {
     path: "./.opencode/rag_db",

@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import pLimit from "p-limit";
 import type { RagConfig } from "../core/config.js";
-import { computeFileHash, normalizeFilePath } from "../core/manifest.js";
+import { computeFileHash, normalizeFilePath, type FileManifest } from "../core/manifest.js";
 import {
   createImageVisionProvider,
   type ImageVisionProvider,
@@ -22,6 +23,8 @@ export interface WorkspaceFile {
   isTooSmall: boolean;
   extractionStatus: "ok" | "skipped" | "failed";
   extractionError?: string;
+  mtime?: number;
+  size?: number;
 }
 
 interface Logger {
@@ -93,6 +96,7 @@ export async function scanWorkspaceFiles(
   cwd: string,
   config: RagConfig,
   logger?: Logger,
+  manifest?: FileManifest,
 ): Promise<WorkspaceFile[]> {
   const extensions = new Set(config.indexing.includeExtensions);
 
@@ -113,47 +117,92 @@ export async function scanWorkspaceFiles(
     new Set(config.indexing.excludeDirs),
   );
 
-  logger?.info(`Found ${files.length} files to scan`);
+  const totalFiles = files.length;
+  logger?.info(`Found ${totalFiles} files to scan`);
 
   const minSize = config.indexing.minFileSizeBytes ?? 0;
-  const workspaceFiles: WorkspaceFile[] = [];
-  const totalFiles = files.length;
+  const scanConcurrency = Math.min(config.indexing.concurrency * 2, 16);
+  const limit = pLimit(scanConcurrency);
 
-  for (let i = 0; i < files.length; i++) {
-    const filePath = files[i]!;
-    const isBinary =
-      pdfExtractor.PDF_EXTENSIONS.has(filePath.toLowerCase()) ||
-      docxExtractor.DOCX_EXTENSIONS.has(filePath.toLowerCase()) ||
-      docExtractor.DOC_EXTENSIONS.has(filePath.toLowerCase()) ||
-      excelExtractor.EXCEL_EXTENSIONS.has(filePath.toLowerCase()) ||
-      (imageVisionProvider !== null && imageExtractor.isImageFile(filePath));
+  let completed = 0;
 
-    const buffer = isBinary ? await fs.readFile(filePath) : Buffer.alloc(0);
-    const result = await dispatchExtraction(filePath, buffer, imageVisionProvider, imagePrompt);
+  const tasks = files.map((filePath) =>
+    limit(async () => {
+      const normalizedPath = normalizeFilePath(filePath);
 
-    if (!result.ok) {
-      logger?.warn(`  ${filePath} (extraction failed: ${result.error})`);
-    }
+      if (manifest?.files[normalizedPath]) {
+        try {
+          const stat = await fs.stat(filePath);
+          const entry = manifest.files[normalizedPath]!;
+          if (entry.mtime === stat.mtimeMs && entry.size === stat.size) {
+            completed++;
+            return {
+              filePath,
+              normalizedPath,
+              content: "",
+              hash: entry.hash,
+              isEmpty: false,
+              isTooSmall: false,
+              extractionStatus: "ok" as const,
+              mtime: stat.mtimeMs,
+              size: stat.size,
+            } satisfies WorkspaceFile;
+          }
+        } catch {
+          /* stat failed, fall through to full read */
+        }
+      }
 
-    const content = result.content;
-    const byteLength = Buffer.byteLength(content, "utf-8");
+      const isBinary =
+        pdfExtractor.PDF_EXTENSIONS.has(filePath.toLowerCase()) ||
+        docxExtractor.DOCX_EXTENSIONS.has(filePath.toLowerCase()) ||
+        docExtractor.DOC_EXTENSIONS.has(filePath.toLowerCase()) ||
+        excelExtractor.EXCEL_EXTENSIONS.has(filePath.toLowerCase()) ||
+        (imageVisionProvider !== null && imageExtractor.isImageFile(filePath));
 
-    workspaceFiles.push({
-      filePath,
-      normalizedPath: normalizeFilePath(filePath),
-      content,
-      hash: computeFileHash(content),
-      isEmpty: content.trim().length === 0,
-      isTooSmall: !content.trim().length === false && byteLength < minSize,
-      extractionStatus: result.ok ? "ok" : "failed",
-      extractionError: result.ok ? undefined : result.error,
-    });
+      const buffer = isBinary ? await fs.readFile(filePath) : Buffer.alloc(0);
+      const result = await dispatchExtraction(filePath, buffer, imageVisionProvider, imagePrompt);
 
-    if (totalFiles > 20 && (i + 1) % 50 === 0) {
-      logger?.info(`  Scanning files... ${i + 1}/${totalFiles}`);
-    }
-    logger?.debug(`  scanWorkspaceFiles: ${filePath}`);
-  }
+      if (!result.ok) {
+        logger?.warn(`  ${filePath} (extraction failed: ${result.error})`);
+      }
 
+      const content = result.content;
+      const byteLength = Buffer.byteLength(content, "utf-8");
+
+      let fileMtime: number | undefined;
+      let fileSize: number | undefined;
+      if (result.ok) {
+        try {
+          const stat = await fs.stat(filePath);
+          fileMtime = stat.mtimeMs;
+          fileSize = stat.size;
+        } catch {
+          /* best-effort stat */
+        }
+      }
+
+      completed++;
+      if (totalFiles > 20 && completed % 50 === 0) {
+        logger?.info(`  Scanning files... ${completed}/${totalFiles}`);
+      }
+      logger?.debug(`  scanWorkspaceFiles: ${filePath}`);
+
+      return {
+        filePath,
+        normalizedPath,
+        content,
+        hash: computeFileHash(content),
+        isEmpty: content.trim().length === 0,
+        isTooSmall: content.trim().length === 0 ? false : byteLength < minSize,
+        extractionStatus: result.ok ? "ok" : "failed",
+        extractionError: result.ok ? undefined : result.error,
+        mtime: fileMtime,
+        size: fileSize,
+      } satisfies WorkspaceFile;
+    }),
+  );
+
+  const workspaceFiles = await Promise.all(tasks);
   return workspaceFiles;
 }

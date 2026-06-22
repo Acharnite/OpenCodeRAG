@@ -6,6 +6,8 @@ export interface ManifestEntry {
   hash: string;
   chunkCount: number;
   indexedAt: number;
+  mtime?: number;
+  size?: number;
 }
 
 export const SCHEMA_VERSION = 1;
@@ -14,6 +16,7 @@ export interface FileManifest {
   lastIndexedAt?: number;
   schemaVersion?: number;
   files: Record<string, ManifestEntry>;
+  lastGitCommit?: string;
 }
 
 export type ManifestStatus = "ok" | "missing" | "corrupt";
