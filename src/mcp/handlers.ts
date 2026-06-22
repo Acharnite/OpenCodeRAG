@@ -1,5 +1,6 @@
 import type { EmbeddingProvider, VectorStore, KeywordIndex, SearchResult } from "../core/interfaces.js";
 import type { RagConfig } from "../core/config.js";
+import { SUPPORTED_IMAGE_EXTENSIONS, type ImageVisionProvider } from "../chunker/image.js";
 import { retrieve, type RetrieveOptions } from "../retriever/retriever.js";
 import { Parser } from "web-tree-sitter";
 import { initParser, loadLanguage, walkTree, type AstNode } from "../chunker/grammar.js";
@@ -261,6 +262,64 @@ export interface FindUsagesResult {
   totalMatches: number;
   fileCount: number;
   formatted: string;
+}
+
+export interface DescribeImageParams {
+  filePath: string;
+}
+
+export interface DescribeImageResult {
+  description: string;
+  formatted: string;
+}
+
+export async function handleDescribeImage(
+  params: DescribeImageParams,
+  cfg: RagConfig,
+  worktree: string,
+  visionProvider?: ImageVisionProvider
+): Promise<DescribeImageResult> {
+  const { existsSync, readFileSync } = await import("node:fs");
+  const path = await import("node:path");
+
+  const resolvedPath = resolveFilePath(params.filePath, worktree);
+
+  if (!existsSync(resolvedPath)) {
+    throw new Error(`File not found: ${params.filePath}`);
+  }
+
+  const ext = path.extname(resolvedPath).toLowerCase();
+  if (!SUPPORTED_IMAGE_EXTENSIONS.has(ext)) {
+    const exts = [...SUPPORTED_IMAGE_EXTENSIONS].join(", ");
+    throw new Error(`Unsupported file extension "${ext}". Supported: ${exts}`);
+  }
+
+  const imageDescriptionConfig = cfg.imageDescription;
+  if (!imageDescriptionConfig?.enabled) {
+    throw new Error("Image description is not enabled in config (imageDescription.enabled)");
+  }
+
+  const { getMimeType } = await import("../chunker/image.js");
+  const { resizeImage } = await import("../content/image.js");
+
+  const buffer = readFileSync(resolvedPath);
+  const mimeType = getMimeType(ext);
+  const maxDimension = imageDescriptionConfig.resizeMaxDimension ?? 1024;
+  const sized = maxDimension > 0 ? await resizeImage(buffer, resolvedPath, maxDimension) : buffer;
+  const b64 = sized.toString("base64");
+
+  const provider = visionProvider ?? (await import("../chunker/image.js")).createImageVisionProvider(imageDescriptionConfig);
+  const description = await provider.describeImage(b64, mimeType, imageDescriptionConfig.prompt);
+
+  const formatted = [
+    `**Image description** — ${params.filePath}`,
+    "",
+    description,
+    "",
+    `_Generated with ${imageDescriptionConfig.provider}/${imageDescriptionConfig.model}_`,
+  ].join("\n");
+
+  return { description, formatted };
 }
 
 export async function handleFindUsages(

@@ -10,9 +10,11 @@ import {
   handleSearchSemantic,
   handleFileSkeleton,
   handleFindUsages,
+  handleDescribeImage,
   type SearchSemanticParams,
   type FileSkeletonParams,
   type FindUsagesParams,
+  type DescribeImageParams,
 } from "./handlers.js";
 
 export interface McpServerOptions {
@@ -101,6 +103,27 @@ export async function createMcpServer(options?: McpServerOptions): Promise<RagMc
       } catch (err) {
         return {
           content: [{ type: "text" as const, text: `Search failed: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "describe_image",
+    "Describe an image file using a vision model. Reads the file from disk, sends it to the configured vision provider (Ollama, OpenAI, Anthropic, or Google Gemini), and returns a text description of the image contents.",
+    {
+      filePath: z.string().min(1, "An image file path is required."),
+    },
+    async (args: DescribeImageParams) => {
+      try {
+        const result = await handleDescribeImage(args, ctx.config, cwd);
+        return {
+          content: [{ type: "text" as const, text: result.formatted }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Failed to describe image: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
         };
       }

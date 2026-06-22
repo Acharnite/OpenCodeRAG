@@ -268,12 +268,12 @@ function generateSkillFile(): string {
   return [
     "---",
     "name: opencode-rag",
-    "description: Semantic code retrieval via OpenCodeRAG — vector search, file skeletons, and symbol usage lookup for this workspace",
+    "description: Semantic code & image retrieval via OpenCodeRAG — vector search, file skeletons, symbol usage lookup, and image description lookup for this workspace",
     "---",
     "",
     "## OpenCodeRAG Tools",
     "",
-    "This workspace has OpenCodeRAG indexed for semantic code search. Use these tools BEFORE planning, editing, or answering code questions.",
+    "This workspace has OpenCodeRAG indexed for semantic code and image search. Use these tools BEFORE planning, editing, or answering code questions.",
     "",
     "### Decision tree — ALWAYS follow this order",
     "",
@@ -281,6 +281,7 @@ function generateSkillFile(): string {
     "2. User mentions a file path → `get_file_skeleton(filePath)` THEN `read` on specific lines",
     "3. User mentions a function/class/variable to edit → `find_usages(symbolName)` THEN `search_semantic` THEN `edit`",
     "4. User asks a code question → `search_semantic` to gather context before answering",
+    "5. User asks about an image or visual asset → `describe_image(filePath)` to retrieve its generated description, then optionally `search_semantic` for related code",
     "",
     "### When to use each tool",
     "",
@@ -289,14 +290,16 @@ function generateSkillFile(): string {
     "| `search_semantic` | Any code search — find relevant code by meaning or keyword | `\"authentication middleware\"` |",
     "| `get_file_skeleton` | You have a file path but need to orient before reading | `\"src/plugin.ts\"` |",
     "| `find_usages` | Before editing any function, class, or variable — check all call sites | `\"createRagHooks\"` |",
+    "| `describe_image` | When the user refers to an image or asks \"what's in this screenshot/diagram?\" | `\"assets/login-screen.png\"` |",
     "",
     "### Workflow",
     "",
     "1. **Skeleton first** — call `get_file_skeleton(filePath)` to see structure",
     "2. **Find usages** — call `find_usages(symbolName)` before modifying any symbol",
     "3. **Search** — call `search_semantic(query)` to find relevant code",
-    "4. **Read** — use the `read` tool on specific line ranges identified above",
-    "5. **Edit** — now you have full context to make safe changes",
+    "4. **Describe images** — call `describe_image(filePath)` when context involves an image file",
+    "5. **Read** — use the `read` tool on specific line ranges identified above",
+    "6. **Edit** — now you have full context to make safe changes",
     "",
     "### Anti-patterns — NEVER do these",
     "",
@@ -304,12 +307,14 @@ function generateSkillFile(): string {
     "- Editing a function without calling `find_usages` first (breaks call sites)",
     "- Answering code questions without calling `search_semantic` first (you guess at behavior)",
     "- Using `grep`/`glob` when `search_semantic` would find the answer faster",
+    "- Treating image files as text — use `describe_image` instead of reading raw bytes",
     "",
     "### Parameters",
     "",
     "- `search_semantic`: `query` (req), `pathHints?`, `languageHints?`, `topK?`",
     "- `get_file_skeleton`: `filePath` (req)",
     "- `find_usages`: `symbolName` (req), `pathHint?`, `topK?`",
+    "- `describe_image`: `filePath` (req)",
     "",
     "### Tips",
     "",
@@ -317,6 +322,7 @@ function generateSkillFile(): string {
     "- Use `languageHints` to filter by file type",
     "- `find_usages` is essential before refactoring — it shows every reference",
     "- If no results appear, the workspace may not be indexed yet — run `opencode-rag index`",
+    "- Image descriptions are generated at index time using the configured vision provider; ensure `imageDescription` is configured in `opencode-rag.json` if your project includes images",
     "",
   ].join("\n");
 }
@@ -802,6 +808,66 @@ program
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
       logCliError(logFilePath, "dump", `\nDump failed: ${message}`, err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("describe-image")
+  .description("Describe an image file using a vision model")
+  .argument("<filePath>", "path to image file")
+  .option("-c, --config <path>", "path to config file")
+  .action(async (filePath: string, options: CliOptions) => {
+    try {
+      const cwd = process.cwd();
+      let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { config } = ctx;
+      logFilePath = ctx.logFilePath;
+
+      const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(cwd, filePath);
+
+      if (!existsSync(resolvedPath)) {
+        logCliError(logFilePath, "describe-image", `\nFile not found: ${filePath}`, undefined);
+        process.exit(1);
+      }
+
+      const ext = path.extname(resolvedPath).toLowerCase();
+      const { SUPPORTED_IMAGE_EXTENSIONS, createImageVisionProvider, getMimeType } = await import("./chunker/image.js");
+
+      if (!SUPPORTED_IMAGE_EXTENSIONS.has(ext)) {
+        const exts = [...SUPPORTED_IMAGE_EXTENSIONS].join(", ");
+        logCliError(logFilePath, "describe-image", `\nUnsupported file extension "${ext}". Supported: ${exts}`, undefined);
+        process.exit(1);
+      }
+
+      const imageDescriptionConfig = config.imageDescription;
+      if (!imageDescriptionConfig?.enabled) {
+        logCliError(logFilePath, "describe-image", `\nImage description is not enabled in config. Set imageDescription.enabled to true.`, undefined);
+        process.exit(1);
+      }
+
+      const { resizeImage } = await import("./content/image.js");
+
+      logCliInfo(logFilePath, "describe-image", `\n${c.heading("Describing image:")} ${c.file(filePath)}`);
+      logCliInfo(logFilePath, "describe-image", `  ${c.label("Provider:")} ${c.value(imageDescriptionConfig.provider)}`);
+      logCliInfo(logFilePath, "describe-image", `  ${c.label("Model:")}    ${c.value(imageDescriptionConfig.model)}`);
+
+      const buffer = readFileSync(resolvedPath);
+      const mimeType = getMimeType(ext);
+      const maxDimension = imageDescriptionConfig.resizeMaxDimension ?? 1024;
+      const sized = maxDimension > 0 ? await resizeImage(buffer, resolvedPath, maxDimension) : buffer;
+      const b64 = sized.toString("base64");
+
+      const provider = createImageVisionProvider(imageDescriptionConfig);
+      const description = await provider.describeImage(b64, mimeType, imageDescriptionConfig.prompt);
+
+      logCliInfo(logFilePath, "describe-image", `\n${c.desc(description)}\n`);
+      await cleanupContext(ctx);
+    } catch (err) {
+      const message = (err as Error).message || String(err);
+      const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
+      logCliError(logFilePath, "describe-image", `\nDescribe image failed: ${message}`, err);
       process.exit(1);
     }
   });

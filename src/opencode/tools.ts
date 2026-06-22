@@ -5,6 +5,7 @@
  * - search_semantic   → conceptual code search
  * - get_file_skeleton → quick structural overview of a file
  * - find_usages       → find where a symbol is used/referenced
+ * - describe_image    → describe an image file using a vision model
  *
  * These complement the general-purpose search_semantic tool.
  */
@@ -13,6 +14,8 @@ import { tool } from "@opencode-ai/plugin/tool";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import type { EmbeddingProvider, VectorStore, KeywordIndex, SearchResult } from "../core/interfaces.js";
 import type { RagConfig } from "../core/config.js";
+import { SUPPORTED_IMAGE_EXTENSIONS, createImageVisionProvider, getMimeType, type ImageVisionProvider } from "../chunker/image.js";
+import { resizeImage } from "../content/image.js";
 import { retrieve, type RetrieveOptions } from "../retriever/retriever.js";
 import { Parser } from "web-tree-sitter";
 import { initParser, loadLanguage, walkTree, type AstNode } from "../chunker/grammar.js";
@@ -420,6 +423,99 @@ export interface FindUsagesToolOptions {
  * 3. Within matching chunks, extract the specific lines containing the symbol
  *    plus 2 lines of surrounding context
  */
+// ────────────────────────────────────────────────────────────────────────────
+// Tool 4: describe_image
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface DescribeImageToolOptions {
+  worktree: string;
+  config: RagConfig;
+  visionProvider?: ImageVisionProvider;
+}
+
+export function createDescribeImageTool(
+  options: DescribeImageToolOptions
+): ToolDefinition {
+  const { worktree, config, visionProvider } = options;
+
+  return tool({
+    description:
+      "Describe an image file using a vision model. " +
+      "Reads the file from disk, sends it to the configured vision provider (Ollama, OpenAI, Anthropic, or Google Gemini), " +
+      "and returns a natural language description of what the image shows. " +
+      "Use when the user refers to a screenshot, diagram, mockup, or any image in the workspace.",
+
+    args: {
+      filePath: tool.schema.string().min(1, "An image file path is required."),
+    },
+
+    async execute(args) {
+      try {
+        const { existsSync, readFileSync } = await import("node:fs");
+        const path = await import("node:path");
+
+        const resolvedPath = isAbsolute(args.filePath)
+          ? args.filePath
+          : resolve(worktree, args.filePath);
+
+        if (!existsSync(resolvedPath)) {
+          return {
+            title: "Describe image",
+            output: `File not found: ${args.filePath}`,
+            metadata: { tool: "describe_image", filePath: args.filePath, error: "not_found" },
+          };
+        }
+
+        const ext = path.extname(resolvedPath).toLowerCase();
+        if (!SUPPORTED_IMAGE_EXTENSIONS.has(ext)) {
+          const exts = [...SUPPORTED_IMAGE_EXTENSIONS].join(", ");
+          return {
+            title: "Describe image",
+            output: `Unsupported file extension "${ext}". Supported: ${exts}`,
+            metadata: { tool: "describe_image", filePath: args.filePath, error: "unsupported_extension" },
+          };
+        }
+
+        const imageDescriptionConfig = config.imageDescription;
+        if (!imageDescriptionConfig?.enabled) {
+          return {
+            title: "Describe image",
+            output: "Image description is not enabled in config (imageDescription.enabled).",
+            metadata: { tool: "describe_image", filePath: args.filePath, error: "disabled" },
+          };
+        }
+
+        const buffer = readFileSync(resolvedPath);
+        const mimeType = getMimeType(ext);
+        const maxDimension = imageDescriptionConfig.resizeMaxDimension ?? 1024;
+        const sized = maxDimension > 0 ? await resizeImage(buffer, resolvedPath, maxDimension) : buffer;
+        const b64 = sized.toString("base64");
+
+        const provider = visionProvider ?? createImageVisionProvider(imageDescriptionConfig);
+        const description = await provider.describeImage(b64, mimeType, imageDescriptionConfig.prompt);
+
+        return {
+          title: `Image description — ${args.filePath}`,
+          output: `**${args.filePath}**\n\n${description}\n\n_Generated with ${imageDescriptionConfig.provider}/${imageDescriptionConfig.model}_`,
+          metadata: {
+            tool: "describe_image",
+            filePath: args.filePath,
+            description,
+            provider: imageDescriptionConfig.provider,
+            model: imageDescriptionConfig.model,
+          },
+        };
+      } catch (err) {
+        return {
+          title: "Describe image",
+          output: `Failed to describe image: ${err instanceof Error ? err.message : String(err)}`,
+          metadata: { tool: "describe_image", filePath: args.filePath, error: String(err) },
+        };
+      }
+    },
+  });
+}
+
 export function createFindUsagesTool(
   options: FindUsagesToolOptions
 ): ToolDefinition {

@@ -14,6 +14,7 @@ import { createRagReadTool } from "./opencode/create-read-tool.js";
 import {
   createFileSkeletonTool,
   createFindUsagesTool,
+  createDescribeImageTool,
 } from "./opencode/tools.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
 import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
@@ -604,6 +605,20 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     });
   }
 
+  try {
+    const describeImageTool = createDescribeImageTool({
+      worktree: options.worktree,
+      config: effectiveCfg,
+    });
+    tools["describe_image"] = describeImageTool;
+  } catch (err) {
+    appendDebugLog(options.logFilePath, {
+      scope: "plugin",
+      message: "Failed to register describe_image tool",
+      error: err,
+    });
+  }
+
   if (readOverride) {
     const readTool = createRagReadTool({
       worktree: options.worktree,
@@ -662,18 +677,21 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         "- `search_semantic(query)`: retrieve relevant code chunks. Call BEFORE planning, editing, or answering. Accepts `pathHints` and `languageHints`.",
         "- `get_file_skeleton(filePath)`: structural overview of a file. Call BEFORE reading any file.",
         "- `find_usages(symbolName)`: find all references. Call BEFORE editing any function, class, or variable.",
+        "- `describe_image(filePath)`: describe an image file using a vision model. Call when user refers to a screenshot, diagram, or image.",
         "",
         "Decision tree — ALWAYS follow this order:",
         "1. User mentions code behavior/architecture → `search_semantic(query)`",
         "2. User mentions a file path → `get_file_skeleton(filePath)` THEN `read` on specific lines",
         "3. User mentions a function/class/variable to edit → `find_usages(symbolName)` THEN `search_semantic` THEN `edit`",
         "4. User asks a code question → `search_semantic` to gather context before answering",
+        "5. User asks about an image or visual asset → `describe_image(filePath)` to retrieve its generated description, then optionally `search_semantic` for related code",
         "",
         "Proactive triggers — you MUST call these tools when:",
         "- User asks about code behavior, architecture, or implementation details",
         "- User asks to edit, refactor, or fix code — call `find_usages` first",
         "- User references files or functions you haven't read yet",
         "- User says \"find\", \"search\", \"look up\", \"where is\", \"how does\"",
+        "- User refers to an image, screenshot, diagram, or visual asset",
         "- Before answering ANY code-related question, retrieve context first",
         "- Before reading ANY file, call `get_file_skeleton` to orient first",
         "",
@@ -682,6 +700,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         "- Editing a function without calling `find_usages` first (breaks call sites)",
         "- Answering code questions without calling `search_semantic` first (you guess at behavior)",
         "- Using `grep`/`glob` when `search_semantic` would find the answer faster",
+        "- Treating image files as text — use `describe_image` instead of reading raw bytes",
       ];
 
       output.system.unshift(guidance.join("\n"));
