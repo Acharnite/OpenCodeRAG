@@ -275,6 +275,13 @@ export class LanceDBStore implements VectorStore {
     }
   }
 
+  async close(): Promise<void> {
+    this.table?.close();
+    this.table = null;
+    this.db?.close();
+    this.db = null;
+  }
+
   async clear(): Promise<void> {
     this.table = null;
     try {

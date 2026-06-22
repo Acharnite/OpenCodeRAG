@@ -61,4 +61,5 @@ export interface VectorStore {
   count(): Promise<number>;
   clear(): Promise<void>;
   deleteByFilePath(filePath: string): Promise<void>;
+  close(): Promise<void>;
 }

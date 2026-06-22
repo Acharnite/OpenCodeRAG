@@ -34,6 +34,9 @@ export class InMemoryVectorStore implements VectorStore {
   async deleteByFilePath(filePath: string): Promise<void> {
     this.chunks = this.chunks.filter((c) => c.metadata.filePath !== filePath);
   }
+
+  async close(): Promise<void> {
+  }
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {

@@ -19,6 +19,7 @@ import { appendDebugLog } from "./core/fileLogger.js";
 import { createEmbedder } from "./embedder/factory.js";
 import { checkProviderHealth, pullOllamaModels } from "./embedder/health.js";
 import { retrieve } from "./retriever/retriever.js";
+import { destroyAllPooledConnections } from "./embedder/http.js";
 import type { SearchResult } from "./core/interfaces.js";
 import {
   createWatchPassScheduler,
@@ -92,6 +93,11 @@ function logConfigDetails(logFilePath: string, config: RagConfig): void {
   logCliInfo(logFilePath, "config", `  ${c.label("Embedding provider:")} ${c.value(config.embedding.provider)}`);
   logCliInfo(logFilePath, "config", `  ${c.label("Embedding model:")}    ${c.value(config.embedding.model)}`);
   logCliInfo(logFilePath, "config", `  ${c.label("Vector store:")}       ${c.file(config.vectorStore.path)}`);
+}
+
+async function cleanupContext(ctx: RagContext): Promise<void> {
+  await ctx.store.close();
+  destroyAllPooledConnections();
 }
 
 function formatTimestamp(timestamp?: number): string {
@@ -468,6 +474,7 @@ program
       await runPass(false);
 
       if (!options.watch) {
+        await cleanupContext(ctx);
         return;
       }
 
@@ -505,6 +512,7 @@ program
           watcher.close(),
           new Promise((r) => setTimeout(r, 5000)),
         ]);
+        await cleanupContext(ctx);
         process.exit(0);
       };
 
@@ -547,6 +555,7 @@ program
       const indexedCount = await store.count();
       if (indexedCount === 0) {
         logCliInfo(logFilePath, "query", `${c.warn("No indexed chunks found.")} Run 'opencode-rag index' first.`);
+        await cleanupContext(ctx);
         return;
       }
       logCliInfo(logFilePath, "query", `${c.label("Searching")} ${c.num(indexedCount)} indexed chunks...`);
@@ -566,6 +575,7 @@ program
 
       if (results.length === 0) {
         logCliInfo(logFilePath, "query", c.warn("No results found."));
+        await cleanupContext(ctx);
         return;
       }
 
@@ -584,6 +594,7 @@ program
         }
         logCliInfo(logFilePath, "query", `  ${pc.dim(r.chunk.content.slice(0, 200).replace(/\n/g, "\n  "))}`);
       }
+      await cleanupContext(ctx);
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
@@ -617,6 +628,7 @@ program
 
       await store.clear();
       logCliInfo(logFilePath, "clear", `${c.success("Done.")} vector database directory removed.`);
+      await cleanupContext(ctx);
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
@@ -671,6 +683,7 @@ program
       if (summary.storeChunkCount > 0 && summary.manifestExpectedChunks > 0 && summary.storeChunkCount < summary.manifestExpectedChunks * 0.5) {
         logCliInfo(logFilePath, "status", `${c.label("Data loss detected:")} ${c.warn("yes")} — store has fewer chunks than expected. Run 'opencode-rag index' to rebuild.`);
       }
+      await cleanupContext(ctx);
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
@@ -679,7 +692,7 @@ program
     }
   });
 
-program
+  program
   .command("list")
   .description("List all indexed files with chunk counts")
   .option("-c, --config <path>", "path to config file")
@@ -695,6 +708,7 @@ program
 
       if (files.length === 0) {
         logCliInfo(logFilePath, "list", `${c.warn("No indexed files found.")} Run 'opencode-rag index' first.`);
+        await cleanupContext(ctx);
         return;
       }
 
@@ -702,6 +716,7 @@ program
       for (const f of files) {
         logCliInfo(logFilePath, "list", `  ${c.file(f.filePath)}  ${c.label("(")}${c.lang(f.language)}${c.label(", ")}${c.num(f.chunkCount)} chunk${f.chunkCount === 1 ? "" : "s"}${c.label(")")}`);
       }
+      await cleanupContext(ctx);
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
@@ -726,6 +741,7 @@ program
 
       if (chunks.length === 0) {
         logCliInfo(logFilePath, "show", `${c.warn(`No chunks found for '${file}'.`)}`);
+        await cleanupContext(ctx);
         return;
       }
 
@@ -737,6 +753,7 @@ program
         }
         logCliInfo(logFilePath, "show", `  ${chunk.content}\n`);
       }
+      await cleanupContext(ctx);
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
@@ -763,6 +780,7 @@ program
 
       if (total === 0) {
         logCliInfo(logFilePath, "dump", `${c.warn("No indexed chunks found.")} Run 'opencode-rag index' first.`);
+        await cleanupContext(ctx);
         return;
       }
 
@@ -779,6 +797,7 @@ program
       if (offset + limit < total) {
         logCliInfo(logFilePath, "dump", `  ${c.dim(`... ${total - offset - limit} more (use --offset ${offset + limit} to continue)`)}`);
       }
+      await cleanupContext(ctx);
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");
