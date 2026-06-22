@@ -8,15 +8,13 @@ import { fileURLToPath } from "node:url";
 import chokidar from "chokidar";
 import pc from "picocolors";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
-import { resolveApiKey } from "./core/resolve-api-key.js";
+import { resolveRagContext, type RagContext } from "./core/bootstrap.js";
 
 import { appendDebugLog } from "./core/fileLogger.js";
-import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { createEmbedder } from "./embedder/factory.js";
-import { createDescriptionProvider } from "./describer/factory.js";
 import { checkProviderHealth, pullOllamaModels } from "./embedder/health.js";
 import { retrieve } from "./retriever/retriever.js";
-import type { KeywordIndex, SearchResult } from "./core/interfaces.js";
+import type { SearchResult } from "./core/interfaces.js";
 import {
   createWatchPassScheduler,
   createWatchIgnore,
@@ -78,54 +76,17 @@ function logCliInfo(logFilePath: string, scope: string, message: string): void {
   //appendDebugLog(logFilePath, { scope, message });
 }
 
-async function resolveConfig(opt: CliOptions, logFilePath: string): Promise<RagConfig> {
-  const worktree = process.cwd();
-  if (opt.config) {
-    try {
-      const configPath = path.resolve(opt.config);
-      const cfg = loadConfig(configPath);
-      resolveApiKey(cfg, worktree);
-      await loadChunkersFromConfig(cfg, path.dirname(configPath));
-      logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.file(configPath)}`);
-      return logConfigDetails(logFilePath,cfg);
-    } catch (err) {
-      logCliError(logFilePath, "config", `Could not load config from ${opt.config}, using defaults`, err);
-      console.error(c.warn(`Could not load config from ${opt.config}, using defaults`));
-    }
-  }
-  for (const loc of ["opencode-rag.json", ".opencode/opencode-rag.json", ".opencode/rag.json"]) {
-    const configPath = path.resolve(loc);
-    try {
-      const cfg = loadConfig(configPath);
-      resolveApiKey(cfg, worktree);
-      await loadChunkersFromConfig(cfg, path.dirname(configPath));
-      logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.file(configPath)}`);
-      return logConfigDetails(logFilePath, cfg);
-    } catch (err) {
-      logCliError(logFilePath, "config", `Failed to load config from ${configPath}`, err);
-    }
-  }
-  logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.dim("using defaults (no opencode-rag.json found)")}`);
-  return logConfigDetails(logFilePath, DEFAULT_CONFIG);
+async function resolveCliContext(opt: CliOptions, logFilePath: string): Promise<RagContext> {
+  const ctx = await resolveRagContext({ configPath: opt.config });
+  logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.file(ctx.logFilePath)}`);
+  logConfigDetails(logFilePath, ctx.config);
+  return ctx;
 }
 
-async function loadCliKeywordIndex(storePath: string, logFilePath: string): Promise<KeywordIndex | undefined> {
-  const { KeywordIndex } = await import("./retriever/keyword-index.js");
-  try {
-    const index = await KeywordIndex.load(storePath);
-    logCliInfo(logFilePath, "keyword-index", `${c.label("Keyword index loaded")} (${c.num(index.count())} chunks)`);
-    return index;
-  } catch {
-    logCliInfo(logFilePath, "keyword-index", c.warn("Creating keyword index"));
-    return new KeywordIndex(storePath);
-  }
-}
-
-function logConfigDetails(logFilePath: string, config: RagConfig): RagConfig {
+function logConfigDetails(logFilePath: string, config: RagConfig): void {
   logCliInfo(logFilePath, "config", `  ${c.label("Embedding provider:")} ${c.value(config.embedding.provider)}`);
   logCliInfo(logFilePath, "config", `  ${c.label("Embedding model:")}    ${c.value(config.embedding.model)}`);
   logCliInfo(logFilePath, "config", `  ${c.label("Vector store:")}       ${c.file(config.vectorStore.path)}`);
-  return config;
 }
 
 function formatTimestamp(timestamp?: number): string {
@@ -453,35 +414,14 @@ program
     try {
       const cwd = process.cwd();
       let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { config, embedder, store, storePath, keywordIndex, descriptionProvider, dimension } = ctx;
+      logFilePath = ctx.logFilePath;
 
       logCliInfo(logFilePath, "index", `\n${c.heading("Indexing workspace...")}`);
-
-      const embedder = createEmbedder(config);
-
-      // Detect actual vector dimension from the model
-      const probe = await embedder.embed(["dimension-probe"], "query");
-      let vectorDimension = 384;
-      if (probe && probe[0] && probe[0].length > 0 && typeof probe[0][0] === "number") {
-        vectorDimension = (probe[0] as number[]).length;
-      }
-      logCliInfo(logFilePath, "index", `  ${c.label("Vector dimension:")}   ${c.num(vectorDimension)}`);
-
-      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
-      const store = new LanceDBStore(
-        path.resolve(cwd, config.vectorStore.path),
-        vectorDimension
-      );
-
-      const keywordIndex = await loadCliKeywordIndex(path.resolve(cwd, config.vectorStore.path), logFilePath);
-
-      // Create description provider (enabled by default)
-      const descriptionConfig = config.description ?? { enabled: true, provider: "ollama" as const, baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
-      const descriptionProvider = descriptionConfig.enabled
-        ? createDescriptionProvider(descriptionConfig)
-        : undefined;
+      logCliInfo(logFilePath, "index", `  ${c.label("Vector dimension:")}   ${c.num(dimension)}`);
       if (descriptionProvider) {
+        const descriptionConfig = config.description ?? { provider: "ollama" as const, model: "qwen2.5:3b" };
         logCliInfo(logFilePath, "index", `  ${c.label("Description LLM:")}  ${c.value(descriptionConfig.model)} (${descriptionConfig.provider})`);
       }
 
@@ -490,7 +430,7 @@ program
         const passStarted = Date.now();
         const stats = await runIndexPass({
           cwd,
-          storePath: path.resolve(cwd, config.vectorStore.path),
+          storePath,
           config,
           store,
           embedder,
@@ -534,7 +474,7 @@ program
       );
 
       const watcher = chokidar.watch(cwd, {
-        ignored: createWatchIgnore(cwd, config, path.resolve(cwd, config.vectorStore.path)),
+        ignored: createWatchIgnore(cwd, config, storePath),
         ignoreInitial: true,
         persistent: true,
       });
@@ -589,15 +529,12 @@ program
     try {
       const cwd = process.cwd();
       let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { config, embedder, store, storePath, keywordIndex } = ctx;
+      logFilePath = ctx.logFilePath;
 
       logCliInfo(logFilePath, "query", `\n${c.heading("Querying:")} "${query}"`);
       logCliInfo(logFilePath, "query", `${c.label("Top-K:")} ${c.num(parseInt(options.topK ?? "10", 10))}`);
-
-      const embedder = createEmbedder(config);
-      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
-      const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
 
       const indexedCount = await store.count();
       if (indexedCount === 0) {
@@ -608,7 +545,6 @@ program
 
       const topK = parseInt(options.topK ?? "10", 10);
       const minScore = config.retrieval.minScore;
-      const keywordIndex = await loadCliKeywordIndex(path.resolve(cwd, config.vectorStore.path), logFilePath);
       const hybridCfg = config.retrieval.hybridSearch;
       const rawResults = await retrieve(query, embedder, store, {
         topK,
@@ -659,11 +595,10 @@ program
     try {
       const cwd = process.cwd();
       let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { store } = ctx;
+      logFilePath = ctx.logFilePath;
 
-      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
-      const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
       const prevCount = await store.count();
 
       if (prevCount === 0) {
@@ -672,7 +607,7 @@ program
         logCliInfo(logFilePath, "clear", `${c.label("Clearing")} ${c.num(prevCount)} indexed chunks...`);
       }
 
-      await store.dropDatabase();
+      await store.clear();
       logCliInfo(logFilePath, "clear", `${c.success("Done.")} vector database directory removed.`);
     } catch (err) {
       const message = (err as Error).message || String(err);
@@ -690,21 +625,20 @@ program
     try {
       const cwd = process.cwd();
       let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { config, store, storePath, keywordIndex } = ctx;
+      logFilePath = ctx.logFilePath;
 
-      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
-      const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
       const count = await store.count();
       const summary = await getIndexStatusSummary(
         cwd,
-        path.resolve(cwd, config.vectorStore.path),
+        storePath,
         config,
         store
       );
 
       logCliInfo(logFilePath, "status", `\n${c.heading("Indexed chunks:")}    ${c.num(count)}`);
-      logCliInfo(logFilePath, "status", `${c.label("Store path:")}        ${c.file(path.resolve(cwd, config.vectorStore.path))}`);
+      logCliInfo(logFilePath, "status", `${c.label("Store path:")}        ${c.file(storePath)}`);
       logCliInfo(logFilePath, "status", `${c.label("Embedding provider:")} ${c.value(config.embedding.provider)}`);
       logCliInfo(logFilePath, "status", `${c.label("Embedding model:")}   ${c.value(config.embedding.model)}`);
       logCliInfo(logFilePath, "status", `${c.label("File extensions:")}   ${config.indexing.includeExtensions.join(", ")}`);
@@ -718,7 +652,7 @@ program
       logCliInfo(logFilePath, "status", `${c.label("Pending files:")}     ${c.num(summary.pendingFiles)}`);
       logCliInfo(logFilePath, "status", `${c.label("Watch mode:")}        ${c.dim("off")}`);
       const kiCount = config.retrieval.hybridSearch?.enabled
-        ? (await loadCliKeywordIndex(path.resolve(cwd, config.vectorStore.path), logFilePath))?.count() ?? 0
+        ? keywordIndex?.count() ?? 0
         : 0;
       logCliInfo(logFilePath, "status", `${c.label("Keyword index:")}     ${config.retrieval.hybridSearch?.enabled ? c.enabled("enabled") : c.disabled("disabled")} (${c.num(kiCount)} chunks)`);
       if (summary.rebuildRequired) {
@@ -740,12 +674,11 @@ program
     try {
       const cwd = process.cwd();
       let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { store } = ctx;
+      logFilePath = ctx.logFilePath;
 
-      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
-      const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
-      const files = await store.listFiles();
+      const files = await (store as any).listFiles();
 
       if (files.length === 0) {
         logCliInfo(logFilePath, "list", `${c.warn("No indexed files found.")} Run 'opencode-rag index' first.`);
@@ -772,12 +705,11 @@ program
     try {
       const cwd = process.cwd();
       let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { store } = ctx;
+      logFilePath = ctx.logFilePath;
 
-      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
-      const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
-      const chunks = await store.getChunksByFilePath(file);
+      const chunks = await (store as any).getChunksByFilePath(file);
 
       if (chunks.length === 0) {
         logCliInfo(logFilePath, "show", `${c.warn(`No chunks found for '${file}'.`)}`);
@@ -810,11 +742,10 @@ program
     try {
       const cwd = process.cwd();
       let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { store, storePath } = ctx;
+      logFilePath = ctx.logFilePath;
 
-      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
-      const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
       const total = await store.count();
 
       if (total === 0) {
@@ -824,7 +755,7 @@ program
 
       const offset = parseInt(options.offset ?? "0", 10);
       const limit = parseInt(options.limit ?? "25", 10);
-      const chunks = await store.getChunks(offset, limit);
+      const chunks = await (store as any).getChunks(offset, limit);
 
       logCliInfo(logFilePath, "dump", `\n${c.heading("Chunks")} ${c.value(String(offset + 1))}${c.label("-")}${c.value(String(offset + chunks.length))} of ${c.num(total)}:\n`);
       for (const chunk of chunks) {
@@ -853,15 +784,16 @@ program
     try {
       const cwd = process.cwd();
       let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { config, storePath } = ctx;
+      logFilePath = ctx.logFilePath;
 
       const port = parseInt(options.port ?? String(config.ui?.port ?? 3210), 10);
       const openBrowser = options.open !== false && (config.ui?.openBrowser ?? true);
 
       const { startWebUi } = await import("./web/server.js");
       const server = await startWebUi(
-        path.resolve(cwd, config.vectorStore.path),
+        storePath,
         port
       );
 
@@ -930,8 +862,8 @@ program
     try {
       const cwd = process.cwd();
       const logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      const storePath = path.resolve(cwd, config.vectorStore.path);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { storePath } = ctx;
 
       const { listSessions } = await import("./eval/storage.js");
       const sessions = listSessions(storePath);
@@ -969,8 +901,8 @@ program
     try {
       const cwd = process.cwd();
       const logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      const storePath = path.resolve(cwd, config.vectorStore.path);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { storePath } = ctx;
 
       const { analyzeTokenUsage } = await import("./eval/token-analysis.js");
       const analysis = analyzeTokenUsage(storePath, sessionID);
@@ -1032,8 +964,8 @@ program
     try {
       const cwd = process.cwd();
       const logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-      const config = await resolveConfig(options, logFilePath);
-      const storePath = path.resolve(cwd, config.vectorStore.path);
+      const ctx = await resolveCliContext(options, logFilePath);
+      const { storePath } = ctx;
 
       const { analyzeTokenUsage, compareTokenAnalyses, formatTokenReport } = await import("./eval/token-analysis.js");
       const a = analyzeTokenUsage(storePath, sessionA);

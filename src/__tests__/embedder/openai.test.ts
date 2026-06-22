@@ -1,6 +1,6 @@
-import { describe, it } from "node:test";
+import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, get } from "node:http";
 import { OpenAIProvider } from "../../embedder/openai.js";
 
 describe("OpenAIProvider", () => {
@@ -149,5 +149,91 @@ describe("OpenAIProvider", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+function ollamaAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = get("http://127.0.0.1:11434/api/tags", (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const json = JSON.parse(body);
+          resolve(!!json.models);
+        } catch {
+          resolve(false);
+        }
+      });
+    });
+    req.on("error", () => resolve(false));
+    req.setTimeout(2000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+describe("OpenAIProvider — Ollama integration", { skip: process.env.CI === "true" }, () => {
+  const MODEL = "qwen3-embedding:0.6b";
+  const EMBEDDING_DIM = 1024;
+  let available = false;
+
+  before(async () => {
+    available = await ollamaAvailable();
+  });
+
+  it("embeds via Ollama OpenAI-compatible endpoint", async () => {
+    if (!available) return;
+
+    const p = new OpenAIProvider(
+      "http://127.0.0.1:11434/v1",
+      MODEL,
+      "ollama",
+      30000
+    );
+
+    const embeddings = await p.embed(["hello world"]);
+
+    assert.ok(Array.isArray(embeddings));
+    assert.equal(embeddings.length, 1);
+    assert.ok(Array.isArray(embeddings[0]));
+    assert.ok(embeddings[0]!.length > 0);
+    assert.ok(typeof embeddings[0]![0] === "number");
+  });
+
+  it("embeds batch via Ollama OpenAI-compatible endpoint", async () => {
+    if (!available) return;
+
+    const p = new OpenAIProvider(
+      "http://127.0.0.1:11434/v1",
+      MODEL,
+      "ollama",
+      30000
+    );
+
+    const embeddings = await p.embed(["hello", "world", "test batch"]);
+
+    assert.ok(Array.isArray(embeddings));
+    assert.equal(embeddings.length, 3);
+    for (const emb of embeddings) {
+      assert.ok(Array.isArray(emb));
+      assert.ok(emb!.length > 0);
+      assert.ok(typeof emb![0] === "number");
+    }
+  });
+
+  it(`returns ${EMBEDDING_DIM}-dimensional vectors`, async () => {
+    if (!available) return;
+
+    const p = new OpenAIProvider(
+      "http://127.0.0.1:11434/v1",
+      MODEL,
+      "ollama",
+      30000
+    );
+
+    const embeddings = await p.embed(["dimension check"]);
+    assert.equal(embeddings[0]!.length, EMBEDDING_DIM);
   });
 });

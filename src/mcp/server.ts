@@ -2,15 +2,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod/v4";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { EmbeddingProvider, VectorStore, KeywordIndex } from "../core/interfaces.js";
 import type { RagConfig } from "../core/config.js";
-import { loadConfig, DEFAULT_CONFIG } from "../core/config.js";
-import { createEmbedder } from "../embedder/factory.js";
-import { LanceDBStore } from "../vectorstore/lancedb.js";
-import { KeywordIndex as KeywordIndexImpl } from "../retriever/keyword-index.js";
+import { resolveRagContext, type RagContext } from "../core/bootstrap.js";
 import { retrieve } from "../retriever/retriever.js";
-import { existsSync } from "node:fs";
-import path from "node:path";
 import process from "node:process";
 import {
   handleSearchSemantic,
@@ -32,69 +26,12 @@ export interface RagMcpInstance {
   close: () => Promise<void>;
 }
 
-function resolveConfig(cwd: string, configPath?: string): RagConfig {
-  if (configPath) {
-    return loadConfig(path.resolve(configPath));
-  }
-
-  const locations = [
-    path.join(cwd, "opencode-rag.json"),
-    path.join(cwd, ".opencode", "opencode-rag.json"),
-    path.join(cwd, ".opencode", "rag.json"),
-  ];
-  for (const loc of locations) {
-    if (existsSync(loc)) {
-      return loadConfig(loc);
-    }
-  }
-
-  return { ...DEFAULT_CONFIG };
-}
-
-async function probeDimension(embedder: EmbeddingProvider): Promise<number> {
-  try {
-    const probe = await embedder.embed(["dimension-probe"], "query");
-    if (probe && probe[0] && probe[0].length > 0 && typeof probe[0][0] === "number") {
-      return (probe[0] as number[]).length;
-    }
-  } catch {
-  }
-  return 384;
-}
-
-async function loadKeywordIndex(storePath: string): Promise<KeywordIndex> {
-  try {
-    const idx = await KeywordIndexImpl.load(storePath);
-    return idx;
-  } catch {
-    return new KeywordIndexImpl(storePath);
-  }
-}
-
-interface LazyDeps {
-  embedder: EmbeddingProvider;
-  store: VectorStore;
-  keywordIndex: KeywordIndex;
-}
-
 export async function createMcpServer(options?: McpServerOptions): Promise<RagMcpInstance> {
   const cwd = options?.cwd ?? process.cwd();
-  const cfg = resolveConfig(cwd, options?.configPath);
-  const storePath = path.resolve(cwd, cfg.vectorStore.path);
-
-  let depsPromise: Promise<LazyDeps> | undefined;
-  function getDeps(): Promise<LazyDeps> {
-    if (!depsPromise) {
-      depsPromise = (async () => {
-        const embedder = createEmbedder(cfg);
-        const dimension = await probeDimension(embedder);
-        const store: VectorStore = new LanceDBStore(storePath, dimension);
-        const keywordIndex = await loadKeywordIndex(storePath);
-        return { embedder, store, keywordIndex };
-      })();
-    }
-    return depsPromise;
-  }
+  const ctx = await resolveRagContext({
+    cwd,
+    configPath: options?.configPath,
+  });
 
   const server = new McpServer({
     name: "opencode-rag-mcp",
@@ -112,8 +49,7 @@ export async function createMcpServer(options?: McpServerOptions): Promise<RagMc
     },
     async (args: SearchSemanticParams) => {
       try {
-        const { embedder, store, keywordIndex } = await getDeps();
-        const result = await handleSearchSemantic(args, embedder, store, cfg, keywordIndex, retrieve);
+        const result = await handleSearchSemantic(args, ctx.embedder, ctx.store, ctx.config, ctx.keywordIndex, retrieve);
         return {
           content: [{ type: "text" as const, text: result.formatted }],
         };
@@ -158,8 +94,7 @@ export async function createMcpServer(options?: McpServerOptions): Promise<RagMc
     },
     async (args: FindUsagesParams) => {
       try {
-        const { embedder, store, keywordIndex } = await getDeps();
-        const result = await handleFindUsages(args, embedder, store, cfg, keywordIndex, retrieve);
+        const result = await handleFindUsages(args, ctx.embedder, ctx.store, ctx.config, ctx.keywordIndex, retrieve);
         return {
           content: [{ type: "text" as const, text: result.formatted }],
         };
