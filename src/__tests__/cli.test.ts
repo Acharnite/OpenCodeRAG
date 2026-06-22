@@ -196,3 +196,36 @@ describe("opencode-rag init", () => {
     assert.equal(shouldAutoRunCli(cliModuleUrl, undefined), false);
   });
 });
+
+describe("opencode-rag describe-image", () => {
+  let tmpDir: string;
+
+  before(() => {
+    tmpDir = join(tmpdir(), `opencode-rag-describe-cli-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  after(() => {
+    process.cwd = originalCwd;
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+
+  it("describe-image command is registered and shows help", async () => {
+    process.cwd = () => tmpDir;
+
+    const { runCli } = await import("../cli.js");
+    // --help should exit with code 0 and show describe-image in output
+    await assert.doesNotReject(
+      () => runCli(["node", "cli.ts", "describe-image", "--help"]),
+    );
+  });
+
+  it("rejects missing file path argument", async () => {
+    process.cwd = () => tmpDir;
+    const { runCli } = await import("../cli.js");
+    // Missing file argument should throw
+    await assert.rejects(
+      () => runCli(["node", "cli.ts", "describe-image"]),
+    );
+  });
+});

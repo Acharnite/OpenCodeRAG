@@ -1482,7 +1482,7 @@ if (shouldAutoRunCli(import.meta.url, process.argv[1])) {
 } else {
   // Fallback: if the module appears to be running as a CLI (has argv with commands like 'init', 'index', etc.)
   // and not being imported as a library, parse the arguments anyway
-  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump', 'ui', 'mcp', 'update', 'eval:sessions', 'eval:analyze', 'eval:compare'];
+  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump', 'describe-image', 'ui', 'mcp', 'update', 'eval:sessions', 'eval:analyze', 'eval:compare'];
   const cmd = process.argv[2];
   if (process.argv.length > 2 && cmd && commands.includes(cmd.toLowerCase())) {
     void program.parseAsync(process.argv);

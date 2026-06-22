@@ -11,7 +11,8 @@ import { z } from "zod/v4";
 import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult } from "../../core/interfaces.js";
 import type { RagConfig } from "../../core/config.js";
 import { DEFAULT_CONFIG } from "../../core/config.js";
-import { handleSearchSemantic, handleFileSkeleton, handleFindUsages } from "../../mcp/handlers.js";
+import { handleSearchSemantic, handleFileSkeleton, handleFindUsages, handleDescribeImage } from "../../mcp/handlers.js";
+import type { ImageVisionProvider } from "../../chunker/image.js";
 import type { RetrieveOptions } from "../../retriever/retriever.js";
 
 type ToolContent = { type: string; text: string };
@@ -524,6 +525,222 @@ describe("MCP server integration", () => {
       const raw = await client.callTool({
         name: "get_file_skeleton",
         arguments: { filePath: "/nonexistent/path/file.ts" },
+      });
+      const result = raw as ToolResult;
+      assert.equal(result.isError, true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+});
+
+// ─── Fake vision provider for describe_image tests ──────────────────────────
+
+const TEST_DESCRIPTION = "A test image with sample content";
+
+function makeFakeVisionProvider(description = TEST_DESCRIPTION): ImageVisionProvider {
+  return {
+    describeImage: async () => description,
+  };
+}
+
+function makeConfigWithImageDesc(overrides?: Partial<RagConfig>): RagConfig {
+  return {
+    ...DEFAULT_CONFIG,
+    ...overrides,
+    embedding: { ...DEFAULT_CONFIG.embedding, ...overrides?.embedding },
+    retrieval: { ...DEFAULT_CONFIG.retrieval, ...overrides?.retrieval },
+    imageDescription: {
+      enabled: true,
+      provider: "ollama",
+      model: "test-model",
+      baseUrl: "http://localhost:11434/api",
+      timeoutMs: 30000,
+      prompt: "Describe this image",
+      ...(overrides?.imageDescription ?? {}),
+    },
+  } as RagConfig;
+}
+
+// ─── Suite: handleDescribeImage ─────────────────────────────────────────────
+
+describe("handleDescribeImage", () => {
+  let tmpDir: string;
+  let pngPath: string;
+
+  // Valid 2x2 red PNG (sharp needs >1px for JPEG conversion)
+  const MINI_PNG_HEX = "89504e470d0a1a0a0000000d4948445200000002000000020802000000fdd49a730000000970485973000003e8000003e801b57b526b0000001349444154089963f8cfc0f09f018cff333000001fee03fda92fc0e20000000049454e44ae426082";
+
+  before(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "opencode-rag-describe-"));
+    pngPath = path.join(tmpDir, "test.png");
+    writeFileSync(pngPath, Buffer.from(MINI_PNG_HEX, "hex"));
+  });
+
+  after(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("throws on missing file", async () => {
+    const cfg = makeConfigWithImageDesc();
+    await assert.rejects(
+      () => handleDescribeImage({ filePath: "nonexistent.png" }, cfg, tmpDir),
+      /File not found|ENOENT|no such file/i
+    );
+  });
+
+  it("throws on unsupported extension", async () => {
+    const txtPath = path.join(tmpDir, "test.txt");
+    writeFileSync(txtPath, "hello", "utf-8");
+    const cfg = makeConfigWithImageDesc();
+
+    await assert.rejects(
+      () => handleDescribeImage({ filePath: "test.txt" }, cfg, tmpDir),
+      /Unsupported file extension/i
+    );
+  });
+
+  it("throws when imageDescription is disabled", async () => {
+    const cfg = makeConfigWithImageDesc({ imageDescription: { enabled: false } as any });
+
+    await assert.rejects(
+      () => handleDescribeImage({ filePath: "test.png" }, cfg, tmpDir),
+      /not enabled/i
+    );
+  });
+
+  it("returns description when an image is provided with visionProvider", async () => {
+    const cfg = makeConfigWithImageDesc();
+    const fakeVision = makeFakeVisionProvider();
+
+    const result = await handleDescribeImage({ filePath: "test.png" }, cfg, tmpDir, fakeVision);
+
+    assert.equal(result.description, TEST_DESCRIPTION);
+    assert.match(result.formatted, /Image description/);
+    assert.match(result.formatted, /test\.png/);
+    assert.match(result.formatted, /test-model/);
+    assert.match(result.formatted, /test image with sample content/i);
+  });
+
+  it("returns description with custom prompt in formatted output", async () => {
+    const cfg = makeConfigWithImageDesc();
+    const customDesc = "A red 1x1 pixel image";
+    const fakeVision = makeFakeVisionProvider(customDesc);
+
+    const result = await handleDescribeImage({ filePath: "test.png" }, cfg, tmpDir, fakeVision);
+
+    assert.equal(result.description, customDesc);
+    assert.match(result.formatted, /red 1x1 pixel/);
+  });
+
+  it("resolves relative filePath from worktree", async () => {
+    const cfg = makeConfigWithImageDesc();
+    const fakeVision = makeFakeVisionProvider();
+
+    const result = await handleDescribeImage({ filePath: "test.png" }, cfg, tmpDir, fakeVision);
+
+    assert.equal(result.description, TEST_DESCRIPTION);
+  });
+
+  it("resolves absolute filePath", async () => {
+    const cfg = makeConfigWithImageDesc();
+    const fakeVision = makeFakeVisionProvider();
+
+    const result = await handleDescribeImage({ filePath: pngPath }, cfg, tmpDir, fakeVision);
+
+    assert.equal(result.description, TEST_DESCRIPTION);
+  });
+});
+
+// ─── Suite: MCP server integration for describe_image ───────────────────────
+
+describe("MCP server describe_image integration", () => {
+  function createTestServer(): McpServer {
+    const server = new McpServer({
+      name: "test-server",
+      version: "1.0.0",
+    });
+
+    server.tool(
+      "describe_image",
+      "Describe an image file",
+      {
+        filePath: z.string(),
+      },
+      async (args: { filePath: string }) => {
+        try {
+          const cfg = makeConfigWithImageDesc();
+          const fakeVision = makeFakeVisionProvider();
+          const result = await handleDescribeImage(args as { filePath: string }, cfg, process.cwd(), fakeVision);
+          return {
+            content: [{ type: "text" as const, text: result.formatted }],
+          };
+        } catch (err) {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    return server;
+  }
+
+  it("listTools includes describe_image", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createTestServer();
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    try {
+      const result = await client.listTools();
+      const names = result.tools.map((t: { name: string }) => t.name);
+      assert.ok(names.includes("describe_image"));
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("callTool describe_image returns text content with image description", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createTestServer();
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    try {
+      const raw = await client.callTool({
+        name: "describe_image",
+        arguments: { filePath: "BetterSuno_Library.png" },
+      });
+      const result = raw as ToolResult;
+      assert.ok(result.content);
+      assert.equal(result.content[0]?.type, "text");
+      assert.match(result.content[0]?.text ?? "", /Image description/);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("callTool describe_image returns isError when file is not an image", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createTestServer();
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    try {
+      const raw = await client.callTool({
+        name: "describe_image",
+        arguments: { filePath: "nonexistent.png" },
       });
       const result = raw as ToolResult;
       assert.equal(result.isError, true);
