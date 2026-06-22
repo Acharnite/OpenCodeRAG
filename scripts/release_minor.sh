@@ -23,6 +23,19 @@ die() {
 
 trap 'die "Failed at line $LINENO"' ERR
 
+PREV_TAG=$(git describe --tags --abbrev=0)
+echo "Previous tag: $PREV_TAG"
+
+NOTES=$(git log --oneline "$PREV_TAG"..HEAD || true)
+if [[ -z "$NOTES" ]]; then
+  die "No new commits since $PREV_TAG"
+fi
+
+DATE=$(date +%Y-%m-%d)
+NOTES_FILE=$(mktemp)
+trap 'rm -f "$NOTES_FILE"' EXIT
+printf '%s\n\n%s' "$DATE" "$NOTES" > "$NOTES_FILE"
+
 if [[ "$DRY_RUN" != "1" ]]; then
   run git push origin main
 else
@@ -35,8 +48,8 @@ else
   echo "(dry run) would run: npm version minor"
 fi
 
-TAG=$(git describe --tags --abbrev=0)
-echo "Detected tag: $TAG"
+NEW_TAG=$(git describe --tags --abbrev=0)
+echo "New tag: $NEW_TAG"
 
-run git push origin "$TAG"
-run gh release create "$TAG" --title "Version $TAG" --notes "Minor release"
+run git push origin "$NEW_TAG"
+run gh release create "$NEW_TAG" --title "Version $NEW_TAG" --notes-file "$NOTES_FILE"

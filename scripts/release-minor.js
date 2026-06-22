@@ -39,8 +39,8 @@ try {
   if (!dry) run('git push origin main');
   else console.log('(dry run) would run: git push origin main');
 
-  if (!dry) run('npm version patch');
-  else console.log('(dry run) would run: npm version patch');
+  if (!dry) run('npm version minor');
+  else console.log('(dry run) would run: npm version minor');
 
   const newTag = getLatestTag();
   console.log('New tag:', newTag);

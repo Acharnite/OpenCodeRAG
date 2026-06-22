@@ -15,23 +15,39 @@ function Run($cmd) {
 }
 
 try {
-  if (-not $dryRun) {
-    Run 'git push origin main'
-  } else {
-    Write-Host '(dry run) would run: git push origin main'
+  $prevTag = (git describe --tags --abbrev=0).Trim()
+  Write-Host "Previous tag: $prevTag"
+
+  $notes = (git log --oneline "$prevTag..HEAD" 2>$null)
+  if (-not $notes) {
+    throw "No new commits since $prevTag"
   }
 
-  if (-not $dryRun) {
-    Run 'npm version minor'
-  } else {
-    Write-Host '(dry run) would run: npm version minor'
+  $date = Get-Date -Format "yyyy-MM-dd"
+  $notesFile = [System.IO.Path]::GetTempFileName()
+  try {
+    Set-Content -Path $notesFile -Value "$date`n`n$notes"
+
+    if (-not $dryRun) {
+      Run 'git push origin main'
+    } else {
+      Write-Host '(dry run) would run: git push origin main'
+    }
+
+    if (-not $dryRun) {
+      Run 'npm version minor'
+    } else {
+      Write-Host '(dry run) would run: npm version minor'
+    }
+
+    $newTag = (git describe --tags --abbrev=0).Trim()
+    Write-Host "New tag: $newTag"
+
+    Run "git push origin $newTag"
+    Run "gh release create $newTag --title ""Version $newTag"" --notes-file ""$notesFile"""
+  } finally {
+    Remove-Item $notesFile -ErrorAction SilentlyContinue
   }
-
-  $tag = (git describe --tags --abbrev=0).Trim()
-  Write-Host "Detected tag: $tag"
-
-  Run "git push origin $tag"
-  Run "gh release create $tag --title ""Version $tag"" --notes ""Minor release"""
 } catch {
   Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
   exit 1
