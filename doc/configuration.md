@@ -219,16 +219,14 @@ Controls automatic update checking for OpenCodeRAG.
 ```json
 {
   "autoUpdate": {
-    "enabled": false,
-    "checkIntervalMs": 86400000
+    "enabled": false
   }
 }
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `enabled` | `false` | Enable automatic update checks on plugin startup |
-| `checkIntervalMs` | `86400000` | Minimum interval between checks (ms). Minimum: 3600000 (1 hour) |
+| `enabled` | `false` | Enable automatic update check on plugin startup |
 
 When enabled, the plugin checks GitHub Releases API for new versions on startup. If an update is available, a notification is added to the system prompt. You can then run `opencode-rag update` to install the update.
 

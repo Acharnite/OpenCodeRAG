@@ -1,13 +1,10 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const GITHUB_REPO = "MrDoe/OpenCodeRAG";
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-const CHECK_RESULT_FILENAME = ".update-check.json";
-const DEFAULT_CHECK_INTERVAL_MS = 86_400_000; // 24 hours
-const MIN_CHECK_INTERVAL_MS = 3_600_000; // 1 hour
 
 export interface UpdateInfo {
   currentVersion: string;
@@ -15,11 +12,6 @@ export interface UpdateInfo {
   updateAvailable: boolean;
   releaseUrl: string;
   publishedAt: string;
-}
-
-export interface UpdateCheckResult {
-  info: UpdateInfo;
-  checkedAt: number;
 }
 
 function getPackageRoot(): string {
@@ -46,42 +38,6 @@ function compareVersions(a: string, b: string): number {
     if (na < nb) return -1;
   }
   return 0;
-}
-
-function checkResultPath(storePath: string): string {
-  return path.join(storePath, CHECK_RESULT_FILENAME);
-}
-
-export function loadLastCheckResult(storePath: string): UpdateCheckResult | null {
-  const filePath = checkResultPath(storePath);
-  try {
-    if (!existsSync(filePath)) return null;
-    const raw = readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<UpdateCheckResult>;
-    if (!parsed || typeof parsed !== "object" || !parsed.info || typeof parsed.checkedAt !== "number") {
-      return null;
-    }
-    return parsed as UpdateCheckResult;
-  } catch {
-    return null;
-  }
-}
-
-export function saveCheckResult(storePath: string, result: UpdateCheckResult): void {
-  const filePath = checkResultPath(storePath);
-  try {
-    if (!existsSync(storePath)) {
-      mkdirSync(storePath, { recursive: true });
-    }
-    writeFileSync(filePath, JSON.stringify(result, null, 2), "utf-8");
-  } catch {
-    // Best-effort — ignore write errors
-  }
-}
-
-export function shouldCheck(lastCheckedAt: number, intervalMs: number = DEFAULT_CHECK_INTERVAL_MS): boolean {
-  const effectiveInterval = Math.max(intervalMs, MIN_CHECK_INTERVAL_MS);
-  return Date.now() - lastCheckedAt >= effectiveInterval;
 }
 
 export async function checkForUpdate(
@@ -140,7 +96,6 @@ export async function checkForUpdate(
       publishedAt: data.published_at ?? "",
     };
   } catch {
-    // Network error, timeout, etc. — silently return no update
     return {
       currentVersion,
       latestVersion: currentVersion,
@@ -151,21 +106,6 @@ export async function checkForUpdate(
   } finally {
     clearTimeout(timeout);
   }
-}
-
-export async function checkForUpdateWithCaching(
-  storePath: string,
-  currentVersion: string,
-  intervalMs: number = DEFAULT_CHECK_INTERVAL_MS,
-): Promise<UpdateInfo> {
-  const lastResult = loadLastCheckResult(storePath);
-  if (lastResult && !shouldCheck(lastResult.checkedAt, intervalMs)) {
-    return lastResult.info;
-  }
-
-  const info = await checkForUpdate(currentVersion);
-  saveCheckResult(storePath, { info, checkedAt: Date.now() });
-  return info;
 }
 
 export function applyUpdate(options: {
@@ -221,7 +161,6 @@ export function applyUpdate(options: {
           { stdio, timeout: 120_000 },
         );
       } catch {
-        // Retry without native modules
         execSync(
           `npm install --prefix "${targetDir}" --ignore-scripts --no-optional "${tgzPath}"`,
           { stdio, timeout: 120_000 },

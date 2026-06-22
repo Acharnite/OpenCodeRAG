@@ -119,8 +119,7 @@
     "systemPrompt": "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose."
   },
   "autoUpdate": {
-    "enabled": true,
-    "checkIntervalMs": 86400000
+    "enabled": true
   },
   "logging": {
     "level": "debug",

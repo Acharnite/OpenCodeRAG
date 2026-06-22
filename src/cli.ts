@@ -11,7 +11,7 @@ import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./
 import { resolveRagContext, type RagContext } from "./core/bootstrap.js";
 import {
   getCurrentVersion,
-  checkForUpdateWithCaching,
+  checkForUpdate,
   applyUpdate,
 } from "./updater.js";
 
@@ -866,13 +866,12 @@ program
   .action(async (options: { check?: boolean; yes?: boolean; verbose?: boolean }) => {
     try {
       const currentVersion = getCurrentVersion();
-      const storePath = path.resolve(process.cwd(), ".opencode", "rag_db");
 
       console.log(`\n${c.heading("OpenCodeRAG Updater")}\n`);
       console.log(`  ${c.label("Current version:")} ${c.value(currentVersion)}`);
       console.log(`  ${c.label("Checking for updates...")}`);
 
-      const info = await checkForUpdateWithCaching(storePath, currentVersion);
+      const info = await checkForUpdate(currentVersion);
 
       if (!info.updateAvailable) {
         console.log(`  ${c.success("Already up to date.")}\n`);

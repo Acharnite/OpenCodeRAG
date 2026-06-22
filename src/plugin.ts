@@ -19,7 +19,7 @@ import { resolveApiKey } from "./core/resolve-api-key.js";
 import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { countTokens, estimateContextTokensFormatted } from "./eval/token-counter.js";
-import { checkForUpdateWithCaching, type UpdateInfo } from "./updater.js";
+import { checkForUpdate, type UpdateInfo } from "./updater.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1131,8 +1131,8 @@ export const ragPlugin: Plugin = async (
         return "0.0.0";
       }
     })();
-    checkForUpdateWithCaching(storePath, currentVersion, autoUpdateCfg.checkIntervalMs)
-      .then((info) => {
+    checkForUpdate(currentVersion)
+      .then((info: UpdateInfo) => {
         if (info.updateAvailable) {
           pendingUpdateInfo.set(input.directory, info);
           appendDebugLog(logFilePath, {

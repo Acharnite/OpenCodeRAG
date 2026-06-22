@@ -79,7 +79,6 @@ export interface McpConfig {
 
 export interface AutoUpdateConfig {
   enabled: boolean;
-  checkIntervalMs: number;
 }
 
 export interface RagConfig {
@@ -296,7 +295,6 @@ export const DEFAULT_CONFIG: RagConfig = {
   },
   autoUpdate: {
     enabled: false,
-    checkIntervalMs: 86_400_000,
   },
   ui: {
     port: 3210,
@@ -388,12 +386,6 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
 
   if (!["debug", "info", "error", "none"].includes(config.logging.level)) {
     warnings.push(`logging.level "${config.logging.level}" — expected "debug", "info", "error", or "none"`);
-  }
-
-  if (config.autoUpdate) {
-    if (config.autoUpdate.checkIntervalMs != null && config.autoUpdate.checkIntervalMs < 3_600_000) {
-      warnings.push("autoUpdate.checkIntervalMs must be >= 3600000 (1 hour)");
-    }
   }
 
   if (config.ui) {
