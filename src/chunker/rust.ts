@@ -1,5 +1,10 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for Rust source files (.rs).
+ * Uses tree-sitter to parse and split by functions, structs, enums, traits,
+ * impl blocks, and type aliases.
+ */
 export class RustChunker extends TreeSitterChunker {
   readonly language = "rust";
   readonly fileExtensions = [".rs"];
@@ -14,4 +19,5 @@ export class RustChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link RustChunker}. */
 export const rustChunker = new RustChunker();

@@ -1,6 +1,12 @@
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 
+/**
+ * Count the number of newline characters up to a given position in the content.
+ * @param content - The full file content string.
+ * @param end - The character index at which to stop counting (exclusive).
+ * @returns The count of newline characters before `end`.
+ */
 function countNewlines(content: string, end: number): number {
   let count = 0;
   for (let i = 0; i < end; i++) {
@@ -9,6 +15,13 @@ function countNewlines(content: string, end: number): number {
   return count;
 }
 
+/**
+ * Find all `@code { ... }` or `@functions { ... }` blocks in a Razor file.
+ * Correctly handles nested braces to determine block boundaries.
+ * @param content - The full file content string.
+ * @param keyword - The directive keyword to search for (e.g. "code" or "functions").
+ * @returns An array of { start, end } positions for each matched block.
+ */
 function findCodeBlocks(
   content: string,
   keyword: string
@@ -33,10 +46,21 @@ function findCodeBlocks(
   return blocks;
 }
 
+/**
+ * Chunker for Razor view files (.razor, .cshtml).
+ * Splits content into alternating markup and code-block regions (`@code { }`
+ * and `@functions { }`), creating one chunk per region.
+ */
 export class RazorChunker implements Chunker {
   readonly language = "razor";
   readonly fileExtensions = [".razor", ".cshtml"];
 
+  /**
+   * Split the Razor content into markup and code-block chunks.
+   * @param filePath - Original file path (for metadata).
+   * @param content - Full content of the Razor file.
+   * @returns A list of text chunks with file-path and line-range metadata.
+   */
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
 
@@ -95,4 +119,5 @@ export class RazorChunker implements Chunker {
   }
 }
 
+/** Default singleton instance of {@link RazorChunker}. */
 export const razorChunker = new RazorChunker();

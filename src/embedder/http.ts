@@ -2,6 +2,10 @@ import net from "node:net";
 import tls from "node:tls";
 import type { ProxyConfig } from "../core/config.js";
 
+/**
+ * Minimal HTTP response interface compatible with the standard `Response` API.
+ * Used internally to abstract over raw socket responses and fetch-based responses.
+ */
 export interface HttpResponseLike {
   ok: boolean;
   status: number;
@@ -12,6 +16,7 @@ export interface HttpResponseLike {
 const MAX_POOL_SIZE = 4;
 const IDLE_TIMEOUT_MS = 30000;
 
+/** A socket tracked in the connection pool with its idle-timeout timer. */
 interface PooledSocket {
   socket: net.Socket | tls.TLSSocket;
   idleTimer: ReturnType<typeof setTimeout>;
@@ -77,6 +82,14 @@ function destroyAllPooledConnections(): void {
 
 export { destroyAllPooledConnections };
 
+/**
+ * Check whether a hostname refers to the local machine.
+ *
+ * Matches "localhost", "::1", "127.0.0.1", and any 127.x.x.x address.
+ *
+ * @param hostname - The hostname to check
+ * @returns True if the hostname is a loopback address
+ */
 export function isLocalhost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
   return (
@@ -87,6 +100,7 @@ export function isLocalhost(hostname: string): boolean {
   );
 }
 
+/** Parse a comma-separated NO_PROXY list into individual patterns. */
 function parseNoProxyList(noProxy?: string): string[] {
   if (!noProxy) return [];
   return noProxy
@@ -95,6 +109,16 @@ function parseNoProxyList(noProxy?: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+/**
+ * Check whether a hostname should bypass the proxy according to the NO_PROXY list.
+ *
+ * Supports wildcard `*`, domain-prefix `.example.com`, and exact matches.
+ * Localhost addresses always bypass the proxy.
+ *
+ * @param hostname - The hostname to check
+ * @param noProxy - The raw NO_PROXY string (comma-separated)
+ * @returns True if this hostname should be connected to directly
+ */
 export function matchesNoProxy(hostname: string, noProxy?: string): boolean {
   const normalized = hostname.toLowerCase();
   const patterns = parseNoProxyList(noProxy);
@@ -111,6 +135,7 @@ export function matchesNoProxy(hostname: string, noProxy?: string): boolean {
   return false;
 }
 
+/** Build a Basic authorization header value from proxy credentials. */
 function buildProxyAuthHeader(proxy?: ProxyConfig): string | undefined {
   if (proxy?.username && proxy?.password) {
     const encoded = Buffer.from(`${proxy.username}:${proxy.password}`).toString("base64");
@@ -119,6 +144,7 @@ function buildProxyAuthHeader(proxy?: ProxyConfig): string | undefined {
   return undefined;
 }
 
+/** Apply the proxy URL to environment variables if they are not already set. */
 function applyProxyEnv(proxy?: ProxyConfig): { httpProxy: string; httpsProxy: string } | null {
   if (!proxy?.url) return null;
 
@@ -133,6 +159,17 @@ function applyProxyEnv(proxy?: ProxyConfig): { httpProxy: string; httpsProxy: st
   };
 }
 
+/**
+ * Send an HTTP POST request directly via raw TCP/TLS sockets, bypassing any
+ * proxy. Follows up to 5 redirects automatically.
+ *
+ * @param url - The target URL
+ * @param body - The JSON-serializable request body
+ * @param headers - Additional HTTP headers
+ * @param timeoutMs - Request timeout in milliseconds
+ * @param redirectCount - Internal redirect counter (starts at 0)
+ * @returns A promise resolving to an HttpResponseLike
+ */
 export function directRequest(
   url: URL,
   body: unknown,
@@ -145,6 +182,7 @@ export function directRequest(
 
 const CRLF = Buffer.from("\r\n");
 
+/** Build the full raw HTTP/1.1 request buffer (headers + JSON body). */
 function buildRequestPayload(body: unknown, headers: Record<string, string>, url: URL): Buffer {
   const payload = JSON.stringify(body);
   const requestHeaders: Record<string, string> = {
@@ -166,6 +204,7 @@ function buildRequestPayload(body: unknown, headers: Record<string, string>, url
   return Buffer.from(requestText, "utf8");
 }
 
+/** Parse HTTP/1.1 response header lines into a key-value map. */
 function parseHeaderLines(headerText: string): Record<string, string> {
   const headers: Record<string, string> = {};
   const lines = headerText.split("\r\n");
@@ -183,6 +222,7 @@ function parseHeaderLines(headerText: string): Record<string, string> {
   return headers;
 }
 
+/** Decode a chunked transfer-encoded body into a single contiguous buffer. */
 function decodeChunkedBody(body: Buffer): Buffer {
   const chunks: Buffer[] = [];
   let offset = 0;
@@ -215,6 +255,7 @@ function decodeChunkedBody(body: Buffer): Buffer {
   return Buffer.concat(chunks);
 }
 
+/** Parse a raw HTTP/1.1 response buffer into status code, headers, and body. */
 function parseResponse(buffer: Buffer): { status: number; headers: Record<string, string>; body: Buffer } {
   const headerEnd = buffer.indexOf(Buffer.from("\r\n\r\n"));
   if (headerEnd < 0) {
@@ -244,6 +285,7 @@ function parseResponse(buffer: Buffer): { status: number; headers: Record<string
   return { status, headers, body };
 }
 
+/** Raw HTTP/1.1 POST over TCP/TLS with connection pooling, redirect following, and timeout. */
 async function sendRawHttpRequest(
   url: URL,
   body: unknown,
@@ -414,6 +456,20 @@ async function sendRawHttpRequest(
   };
 }
 
+/**
+ * POST JSON to a URL, optionally routing through a proxy.
+ *
+ * For direct (non-proxied) connections to localhost or NO_PROXY-listed hosts
+ * it uses raw TCP/TLS sockets (`directRequest`). Otherwise it falls back to
+ * the global `fetch` API with environment-variable proxy support.
+ *
+ * @param urlString - The target URL string
+ * @param body - The JSON-serializable request body
+ * @param headers - Additional HTTP headers
+ * @param timeoutMs - Request timeout in milliseconds
+ * @param proxy - Optional proxy configuration
+ * @returns A promise resolving to an HttpResponseLike
+ */
 export async function postJson(
   urlString: string,
   body: unknown,
@@ -432,6 +488,7 @@ export async function postJson(
   return postJsonViaFetch(urlString, body, headers, timeoutMs, proxy);
 }
 
+/** Send JSON via the global `fetch` API with proxy environment variable overrides. */
 async function postJsonViaFetch(
   urlString: string,
   body: unknown,

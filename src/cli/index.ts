@@ -27,7 +27,13 @@ import {
   registerDescribeImageCommand,
 } from "./commands/index.js";
 
-/** The top-level Commander program instance. */
+/**
+ * The top-level Commander program instance that defines the `opencode-rag` CLI.
+ *
+ * All command modules register their sub-commands against this instance during
+ * module initialization. The program is parsed either on auto-run detection or
+ * when {@link runCli} is called programmatically.
+ */
 const program = new Command();
 
 program

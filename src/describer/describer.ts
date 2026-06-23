@@ -14,15 +14,26 @@ interface ChatResponse {
   choices?: Array<{ message?: { content?: string } }>;
 }
 
+/** HTTP status codes that are safe to retry on. */
 const RETRYABLE_STATUSES = new Set([404, 408, 429, 500, 502, 503, 504]);
 
+/**
+ * Description provider that works with any OpenAI-compatible chat API (including Ollama).
+ *
+ * Supports Bearer-token authentication, optional proxy, and retry with exponential backoff.
+ * For Ollama, uses the `/api/chat` endpoint and sends additional options like `num_ctx` and `think`.
+ */
 export class LLMDescriptionProvider implements DescriptionProvider {
   private readonly config: DescriptionConfig;
 
+  /**
+   * @param config - Configuration for the LLM provider, including base URL, model, API key, proxy, and retry settings.
+   */
   constructor(config: DescriptionConfig) {
     this.config = config;
   }
 
+  /** @inheritdoc */
   async generateDescription(chunk: Chunk): Promise<string> {
     const messages: ChatMessage[] = [
       { role: "system", content: this.config.systemPrompt },
@@ -32,6 +43,7 @@ export class LLMDescriptionProvider implements DescriptionProvider {
     return this.chatRequest(messages, this.config.timeoutMs ?? 60000);
   }
 
+  /** @inheritdoc */
   async generateBatchDescriptions(chunks: Chunk[], logDebug?: (msg: string) => void): Promise<Map<string, string>> {
     const concurrency = this.config.batchConcurrency ?? 3;
     const total = chunks.length;
@@ -63,6 +75,15 @@ export class LLMDescriptionProvider implements DescriptionProvider {
     return result;
   }
 
+  /**
+   * Sends a chat completion request to the LLM API with retry and exponential backoff.
+   * For Ollama, uses the `/api/chat` endpoint with streaming disabled; otherwise uses the standard `/v1/chat/completions` endpoint.
+   *
+   * @param messages - The conversation messages including system prompt and user content.
+   * @param timeoutMs - Request timeout in milliseconds.
+   * @returns The trimmed response text extracted from the API response.
+   * @throws When all retry attempts are exhausted or the response is empty.
+   */
   private async chatRequest(
     messages: ChatMessage[],
     timeoutMs: number
@@ -115,6 +136,15 @@ export class LLMDescriptionProvider implements DescriptionProvider {
 
 
 
+/**
+ * Extracts the response text from a chat completion response.
+ * For Ollama, reads from `message.content`; for OpenAI-compatible APIs, reads from `choices[0].message.content`.
+ *
+ * @param json - The parsed chat response object.
+ * @param isOllama - Whether the response is from an Ollama API (different response shape).
+ * @returns The trimmed response text.
+ * @throws If the response contains no usable text content.
+ */
 function extractResponseText(json: ChatResponse, isOllama: boolean): string {
   if (isOllama) {
     const content = json.message?.content;

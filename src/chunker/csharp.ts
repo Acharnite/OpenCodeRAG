@@ -1,5 +1,10 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for C# source files (.cs).
+ * Uses tree-sitter to parse and split by method, interface, struct, record,
+ * and enum declarations.
+ */
 export class CSharpChunker extends TreeSitterChunker {
   readonly language = "csharp";
   readonly fileExtensions = [".cs"];
@@ -13,4 +18,5 @@ export class CSharpChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link CSharpChunker}. */
 export const csharpChunker = new CSharpChunker();

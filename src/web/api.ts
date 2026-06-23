@@ -16,11 +16,13 @@ const FILE_MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
+/** Internal shape for a JSON API response: an HTTP status code and a serialisable body. */
 interface ApiResponse {
   status: number;
   body: unknown;
 }
 
+/** Split a raw URL into its pathname and parsed query-string parameters. */
 function parseQuery(url: string): { path: string; params: URLSearchParams } {
   const [path, queryString] = url.split("?");
   return {
@@ -29,6 +31,7 @@ function parseQuery(url: string): { path: string; params: URLSearchParams } {
   };
 }
 
+/** Serialise an {@link ApiResponse} as JSON and write it to the HTTP response with CORS headers. */
 function sendJson(res: ServerResponse, response: ApiResponse): void {
   res.writeHead(response.status, {
     "Content-Type": "application/json",
@@ -39,6 +42,22 @@ function sendJson(res: ServerResponse, response: ApiResponse): void {
   res.end(JSON.stringify(response.body));
 }
 
+/**
+ * Create the main HTTP request handler for the REST API.
+ *
+ * Routes incoming requests to the appropriate handler based on the URL path:
+ * - `/api/stats`, `/api/files`, `/api/chunks`, `/api/chunks/:id`
+ * - `/api/search`, `/api/compare`
+ * - `/api/file` – serve file content (images / base64)
+ * - `/api/eval/sessions`, `/api/eval/sessions/:id`, `/api/eval/compare`
+ * - `/api/eval/sessions/:id/analysis`, `/api/eval/token-compare`, `/api/eval/project-savings`
+ *
+ * @param store       - The LanceDB vector store instance.
+ * @param keywordIndex - The keyword-index instance for text search.
+ * @param storePath    - Filesystem path to the store directory (used by eval endpoints).
+ * @param cwd          - Optional workspace root for resolving file paths.
+ * @returns An async handler that returns `true` when a route matched or `false` otherwise.
+ */
 export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex, storePath: string, cwd?: string) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = req.url ?? "/";
@@ -139,6 +158,7 @@ export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex
   };
 }
 
+/** Respond with total chunk/file counts and a breakdown by programming language. */
 async function handleStats(store: LanceDBStore): Promise<ApiResponse> {
   const totalChunks = await store.count();
   const files = await store.listFiles();
@@ -162,11 +182,17 @@ async function handleStats(store: LanceDBStore): Promise<ApiResponse> {
   };
 }
 
+/** Respond with the list of all indexed files from the store. */
 async function handleFiles(store: LanceDBStore): Promise<ApiResponse> {
   const files = await store.listFiles();
   return { status: 200, body: files };
 }
 
+/**
+ * Respond with a paginated, optionally filtered list of chunks.
+ *
+ * Query params: `offset` (default 0), `limit` (default 50), `lang`, `file`.
+ */
 async function handleChunks(
   store: LanceDBStore,
   params: URLSearchParams
@@ -197,6 +223,7 @@ async function handleChunks(
   };
 }
 
+/** Respond with a single chunk identified by its ID, or 404 if not found. */
 async function handleChunkById(
   store: LanceDBStore,
   id: string
@@ -211,6 +238,7 @@ async function handleChunkById(
   return { status: 200, body: chunk };
 }
 
+/** Run a keyword search against the index and return ranked results. Query param: `q` (query string), `topK` (default 20). */
 async function handleSearch(
   keywordIndex: KeywordIndex,
   params: URLSearchParams
@@ -243,6 +271,7 @@ async function handleSearch(
   };
 }
 
+/** Fetch multiple chunks by their comma-separated IDs (`ids` query param) for side-by-side comparison. */
 async function handleCompare(
   store: LanceDBStore,
   params: URLSearchParams
@@ -264,6 +293,7 @@ async function handleCompare(
 
 // ── File Content API ──────────────────────────────────────────────────
 
+/** Resolve a user-supplied file path against the workspace root, preventing directory traversal outside `cwd`. Returns `null` when the path escapes the workspace. */
 function resolvePath(cwd: string, filePath: string): string | null {
   const resolved = resolvePathModule(cwd, filePath);
   const normalizedCwd = cwd.replace(/\\/g, "/");
@@ -274,11 +304,13 @@ function resolvePath(cwd: string, filePath: string): string | null {
 
 // ── Eval API ──────────────────────────────────────────────────────────
 
+/** List all available evaluation sessions for the given store. */
 async function handleEvalSessions(storePath: string): Promise<ApiResponse> {
   const sessions = listSessions(storePath);
   return { status: 200, body: { sessions } };
 }
 
+/** Return a single evaluation session by ID. Validates the ID format before lookup. */
 async function handleEvalSession(storePath: string, id: string): Promise<ApiResponse> {
   if (!validateSessionID(id)) {
     return { status: 400, body: { error: "Invalid session ID" } };
@@ -290,6 +322,7 @@ async function handleEvalSession(storePath: string, id: string): Promise<ApiResp
   return { status: 200, body: session };
 }
 
+/** Delete an evaluation session by ID. Validates the ID format before deletion. */
 async function handleEvalDeleteSession(storePath: string, id: string): Promise<ApiResponse> {
   if (!validateSessionID(id)) {
     return { status: 400, body: { error: "Invalid session ID" } };
@@ -298,6 +331,7 @@ async function handleEvalDeleteSession(storePath: string, id: string): Promise<A
   return { status: 200, body: { deleted: true } };
 }
 
+/** Compare two evaluation sessions side-by-side. Expects `a` and `b` query params containing session IDs. */
 async function handleEvalCompare(storePath: string, params: URLSearchParams): Promise<ApiResponse> {
   const idA = params.get("a") ?? "";
   const idB = params.get("b") ?? "";
@@ -320,6 +354,13 @@ async function handleEvalCompare(storePath: string, params: URLSearchParams): Pr
 
 // ── Token Analysis API ────────────────────────────────────────────────
 
+/**
+ * Perform token-usage analysis for a single evaluation session.
+ *
+ * @param storePath - Path to the store directory containing session data.
+ * @param id        - Validated evaluation session ID.
+ * @returns An {@link ApiResponse} wrapping the analysis result or an error.
+ */
 export async function handleEvalAnalysis(storePath: string, id: string): Promise<ApiResponse> {
   if (!validateSessionID(id)) {
     return { status: 400, body: { error: "Invalid session ID" } };
@@ -332,6 +373,12 @@ export async function handleEvalAnalysis(storePath: string, id: string): Promise
   return { status: 200, body: { analysis } };
 }
 
+/**
+ * Compare token-usage analysis between two evaluation sessions.
+ *
+ * Expects `a` and `b` query params containing session IDs. Returns analysis
+ * for each session together with a comparison object.
+ */
 export async function handleEvalTokenCompare(storePath: string, params: URLSearchParams): Promise<ApiResponse> {
   const idA = params.get("a") ?? "";
   const idB = params.get("b") ?? "";
@@ -356,6 +403,13 @@ export async function handleEvalTokenCompare(storePath: string, params: URLSearc
   return { status: 200, body: { ragOn: analysisA, ragOff: analysisB, comparison } };
 }
 
+/**
+ * Project token savings for a whole project based on per-query averages.
+ *
+ * Expects a JSON body with numeric fields:
+ * `avgChunkSize`, `avgChunksPerQuery`, `avgReadsPerQueryWithoutRAG`,
+ * `avgReadsPerQueryWithRAG`, `queryCount`.
+ */
 export function handleEvalProjectSavings(body: unknown): ApiResponse {
   if (!body || typeof body !== "object") {
     return { status: 400, body: { error: "Request body required" } };
@@ -382,6 +436,7 @@ export function handleEvalProjectSavings(body: unknown): ApiResponse {
   return { status: 200, body: { projection } };
 }
 
+/** Collect the full request body as a Buffer and parse it as JSON. Returns `{}` on empty or invalid input. */
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {

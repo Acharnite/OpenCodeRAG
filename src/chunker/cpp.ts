@@ -1,5 +1,10 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for C++ source files (.cpp, .cc, .cxx, .hpp, .hxx).
+ * Uses tree-sitter to parse and split by function definitions and
+ * struct/enum/union specifiers.
+ */
 export class CppChunker extends TreeSitterChunker {
   readonly language = "cpp";
   readonly fileExtensions = [".cpp", ".cc", ".cxx", ".hpp", ".hxx"];
@@ -12,4 +17,5 @@ export class CppChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link CppChunker}. */
 export const cppChunker = new CppChunker();

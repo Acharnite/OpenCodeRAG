@@ -1,5 +1,9 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for PHP source files (.php).
+ * Uses tree-sitter to parse and split by function definitions and method declarations.
+ */
 export class PhpChunker extends TreeSitterChunker {
   readonly language = "php";
   readonly fileExtensions = [".php"];
@@ -10,4 +14,5 @@ export class PhpChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link PhpChunker}. */
 export const phpChunker = new PhpChunker();

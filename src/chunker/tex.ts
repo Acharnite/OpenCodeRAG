@@ -3,10 +3,21 @@ import { uuid } from "./uuid.js";
 
 const SECTION_REGEX = /^\\(chapter|section|subsection|subsubsection)\*?\s*\{/gm;
 
+/**
+ * Chunker for LaTeX files (.tex).
+ * Splits content by sectioning commands (\chapter, \section, \subsection, \subsubsection),
+ * skipping content inside comment environments.
+ */
 export class TexChunker implements Chunker {
   readonly language = "latex";
   readonly fileExtensions = [".tex"];
 
+  /**
+   * Split LaTeX content into chunks by sectioning command boundaries.
+   * @param filePath - Original file path (for metadata).
+   * @param content - Full content of the .tex file.
+   * @returns A list of text chunks with file-path and line-range metadata.
+   */
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
 
@@ -104,4 +115,5 @@ export class TexChunker implements Chunker {
   }
 }
 
+/** Default singleton instance of {@link TexChunker}. */
 export const texChunker = new TexChunker();

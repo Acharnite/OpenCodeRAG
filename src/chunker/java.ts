@@ -1,5 +1,9 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for Java source files (.java).
+ * Uses tree-sitter to parse and split by method, interface, and enum declarations.
+ */
 export class JavaChunker extends TreeSitterChunker {
   readonly language = "java";
   readonly fileExtensions = [".java"];
@@ -11,4 +15,5 @@ export class JavaChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link JavaChunker}. */
 export const javaChunker = new JavaChunker();

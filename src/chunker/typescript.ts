@@ -1,5 +1,10 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for TypeScript/TSX files (.ts, .tsx).
+ * Uses tree-sitter to parse and split by function declarations, method definitions,
+ * arrow functions, interface declarations, and type alias declarations.
+ */
 export class TypeScriptChunker extends TreeSitterChunker {
   readonly language = "typescript";
   readonly fileExtensions = [".ts", ".tsx"];
@@ -13,4 +18,5 @@ export class TypeScriptChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link TypeScriptChunker}. */
 export const typescriptChunker = new TypeScriptChunker();

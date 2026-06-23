@@ -37,6 +37,7 @@ interface PartInfo {
   reason?: string;
 }
 
+/** Logger interface for capturing OpenCode session events and RAG context injections to disk. */
 export interface SessionLogger {
   onEvent(event: EventLike): void;
   onRagContext(sessionID: string, messageID: string | undefined, context: {
@@ -48,6 +49,10 @@ export interface SessionLogger {
   }): void;
 }
 
+/**
+ * Create a SessionLogger that writes events and RAG context metadata
+ * as JSONL into the given store path.
+ */
 export function createSessionLogger(storePath: string): SessionLogger {
   return {
     onEvent(event: EventLike): void {

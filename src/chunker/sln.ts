@@ -6,11 +6,21 @@ const GLOBAL_LINE = /^Global\s*$/;
 const END_GLOBAL_LINE = /^EndGlobal\s*$/;
 const END_PROJECT_LINE = /^EndProject\s*$/;
 
+/**
+ * Chunker for Visual Studio solution files (.sln).
+ * Splits content into chunks by project and global section boundaries.
+ */
 export class SlnChunker implements Chunker {
   readonly language = "sln";
   readonly fileExtensions = [".sln"];
   readonly name = "sln";
 
+  /**
+   * Split the .sln content into project and global section chunks.
+   * @param filePath - Original file path (for metadata).
+   * @param content - Full content of the .sln file.
+   * @returns A list of text chunks with file-path and line-range metadata.
+   */
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
 
@@ -75,4 +85,5 @@ export class SlnChunker implements Chunker {
   }
 }
 
+/** Default singleton instance of {@link SlnChunker}. */
 export const slnChunker = new SlnChunker();

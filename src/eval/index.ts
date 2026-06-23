@@ -1,3 +1,9 @@
+/**
+ * Evaluation framework — session logging, token counting, and analysis.
+ *
+ * Provides event capture via the OpenCode plugin hook, JSONL storage,
+ * session summarization, token usage analysis, and RAG-vs-no-RAG comparison.
+ */
 export type { SessionEvent, SessionSummary, ComparisonResult, TokenUsage } from "./types.js";
 export { RAG_TOOL_NAMES, isRagTool } from "./types.js";
 export {

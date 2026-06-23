@@ -1,5 +1,10 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for Dockerfiles (.dockerfile, Dockerfile, .containerfile, Containerfile).
+ * Uses tree-sitter to parse and split by each Dockerfile instruction type
+ * (FROM, RUN, CMD, ENV, COPY, etc.).
+ */
 export class DockerfileChunker extends TreeSitterChunker {
   readonly language = "dockerfile";
   readonly fileExtensions = [".dockerfile", "dockerfile", ".containerfile", "containerfile"];
@@ -27,4 +32,5 @@ export class DockerfileChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link DockerfileChunker}. */
 export const dockerfileChunker = new DockerfileChunker();

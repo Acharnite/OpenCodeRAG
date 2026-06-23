@@ -9,6 +9,10 @@ const MIN_GROUP_CHARS = 300;
 
 const PARAGRAPH_SPLIT = /\n\s*\n/;
 
+/**
+ * Resolve the file URL to the `standard_fonts` directory shipped with pdfjs-dist.
+ * Used to provide standard font data when rendering PDF pages.
+ */
 function getStandardFontsUrl(): string {
   const require = createRequire(import.meta.url);
   const pkgJson = require.resolve("pdfjs-dist/package.json");
@@ -17,6 +21,13 @@ function getStandardFontsUrl(): string {
   return url.endsWith("/") ? url : url + "/";
 }
 
+/**
+ * Create a pdfjs-dist PDF document from a buffer.
+ * Attempts to load the `canvas` native module for DOMMatrix; falls back to
+ * `@thednp/dommatrix` polyfill if unavailable.
+ * @param buffer - Raw buffer of the PDF file.
+ * @returns A promise resolving to a pdfjs-dist PDFDocumentProxy.
+ */
 async function createPdfDocument(buffer: Buffer) {
   try {
     const { DOMMatrix } = await import("canvas");
@@ -37,6 +48,13 @@ async function createPdfDocument(buffer: Buffer) {
   return loadingTask.promise;
 }
 
+/**
+ * Extract the full text content from a PDF file buffer.
+ * Iterates over every page, collects text items, and joins them with
+ * paragraph separators.
+ * @param buffer - Raw buffer of the PDF file.
+ * @returns The extracted text with double-newline page separators.
+ */
 export async function extractPdfText(buffer: Buffer): Promise<string> {
   const pdf = await createPdfDocument(buffer);
   const texts: string[] = [];
@@ -54,10 +72,21 @@ export async function extractPdfText(buffer: Buffer): Promise<string> {
   return texts.join("\n\n");
 }
 
+/**
+ * Chunker for PDF documents (.pdf).
+ * Splits extracted text by paragraph boundaries, grouping small paragraphs
+ * into chunks of up to 4000 characters.
+ */
 export class PdfChunker implements Chunker {
   readonly language = "pdf";
   readonly fileExtensions = [".pdf"];
 
+  /**
+   * Split the PDF text into chunks by paragraph grouping.
+   * @param filePath - Original file path (for metadata).
+   * @param content - Extracted plain-text content of the PDF.
+   * @returns A list of text chunks with file-path and line-range metadata.
+   */
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
 
@@ -130,4 +159,5 @@ export class PdfChunker implements Chunker {
   }
 }
 
+/** Default singleton instance of {@link PdfChunker}. */
 export const pdfChunker = new PdfChunker();

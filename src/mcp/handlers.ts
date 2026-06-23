@@ -155,18 +155,27 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Parameters for the search_semantic MCP tool. */
 export interface SearchSemanticParams {
+  /** Natural language search query. */
   query: string;
+  /** Optional directory/file path hints to narrow results. */
   pathHints?: string[];
+  /** Optional language hints to filter by language. */
   languageHints?: string[];
+  /** Maximum number of results (1-25). */
   topK?: number;
 }
 
+/** Result of a semantic search operation. */
 export interface SearchSemanticResult {
+  /** Raw search result chunks with scores. */
   chunks: SearchResult[];
+  /** Human-readable formatted search output. */
   formatted: string;
 }
 
+/** Execute a semantic search against the indexed codebase. */
 export async function handleSearchSemantic(
   params: SearchSemanticParams,
   embedder: EmbeddingProvider,
@@ -217,16 +226,23 @@ export async function handleSearchSemantic(
   return { chunks: results, formatted };
 }
 
+/** Parameters for the get_file_skeleton MCP tool. */
 export interface FileSkeletonParams {
+  /** Path to the file to skeletonize. */
   filePath: string;
 }
 
+/** Result of a file skeleton operation. */
 export interface FileSkeletonResult {
+  /** Extracted structural elements. */
   elements: { type: string; name: string; startLine: number; endLine: number }[];
+  /** Human-readable formatted skeleton output. */
   formatted: string;
+  /** Summary string (e.g. "3 function, 1 class"). */
   summary: string;
 }
 
+/** Extract the structural skeleton (functions, classes, interfaces) from a source file. */
 export async function handleFileSkeleton(
   params: FileSkeletonParams,
   worktree: string
@@ -251,28 +267,43 @@ export async function handleFileSkeleton(
   return { elements: skeleton, formatted, summary };
 }
 
+/** Parameters for the find_usages MCP tool. */
 export interface FindUsagesParams {
+  /** Symbol name to search for. */
   symbolName: string;
+  /** Optional file path hint to narrow results. */
   pathHint?: string;
+  /** Maximum number of results (1-50). */
   topK?: number;
 }
 
+/** Result of a find_usages operation. */
 export interface FindUsagesResult {
+  /** Individual usage matches with context. */
   matches: { filePath: string; language: string; line: number; content: string; context: string[] }[];
+  /** Total number of reference lines found. */
   totalMatches: number;
+  /** Number of distinct files containing references. */
   fileCount: number;
+  /** Human-readable formatted output. */
   formatted: string;
 }
 
+/** Parameters for the describe_image MCP tool. */
 export interface DescribeImageParams {
+  /** Path to the image file. */
   filePath: string;
 }
 
+/** Result of an image description operation. */
 export interface DescribeImageResult {
+  /** Raw description text from the vision provider. */
   description: string;
+  /** Human-readable formatted output with metadata. */
   formatted: string;
 }
 
+/** Describe an image file using the configured vision provider (Ollama, OpenAI, Anthropic, or Gemini). */
 export async function handleDescribeImage(
   params: DescribeImageParams,
   cfg: RagConfig,
@@ -322,6 +353,7 @@ export async function handleDescribeImage(
   return { description, formatted };
 }
 
+/** Find usages and references of a symbol across the indexed codebase using hybrid (keyword + vector) search. */
 export async function handleFindUsages(
   params: FindUsagesParams,
   embedder: EmbeddingProvider,

@@ -3,6 +3,13 @@ import { uuid } from "./uuid.js";
 
 const MAX_CHUNK_CHARS = 4000;
 
+/**
+ * Extract text content from an Excel workbook buffer (.xls / .xlsx).
+ * Reads all sheets, converting each to CSV, prefixed with a sheet header.
+ * Uses the `@e965/xlsx` library under the hood.
+ * @param buffer - Raw buffer of the Excel file.
+ * @returns A string with each sheet's CSV content separated by blank lines.
+ */
 export async function extractExcelText(buffer: Buffer): Promise<string> {
   const XLSX = await import("@e965/xlsx");
   const workbook = XLSX.read(buffer, { type: "buffer" });
@@ -21,10 +28,21 @@ export async function extractExcelText(buffer: Buffer): Promise<string> {
   return lines.join("\n\n");
 }
 
+/**
+ * Chunker for Excel spreadsheets (.xls, .xlsx).
+ * Splits the extracted CSV-per-sheet content into chunks, one per sheet,
+ * with large sheets further split into row-based batches of up to 4000 characters.
+ */
 export class ExcelChunker implements Chunker {
   readonly language = "excel";
   readonly fileExtensions = [".xls", ".xlsx"];
 
+  /**
+   * Split the spreadsheet text into chunks by sheet, breaking large sheets by row batches.
+   * @param filePath - Original file path (for metadata).
+   * @param content - Extracted CSV-per-sheet text of the Excel file.
+   * @returns A list of text chunks with file-path and line-range metadata.
+   */
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
 
@@ -87,4 +105,5 @@ export class ExcelChunker implements Chunker {
   }
 }
 
+/** Default singleton instance of {@link ExcelChunker}. */
 export const excelChunker = new ExcelChunker();

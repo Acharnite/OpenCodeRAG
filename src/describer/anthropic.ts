@@ -13,15 +13,26 @@ interface AnthropicResponse {
   content?: Array<{ type?: string; text?: string }>;
 }
 
+/** HTTP status codes that are safe to retry on. */
 const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
+/**
+ * Description provider that uses Anthropic's Messages API to generate natural-language descriptions of code chunks.
+ *
+ * Requires an API key set in the configuration. The system prompt is prepended to each user message within a single
+ * message payload. Supports retry with exponential backoff.
+ */
 export class AnthropicDescriptionProvider implements DescriptionProvider {
   private readonly config: DescriptionConfig;
 
+  /**
+   * @param config - Configuration for the Anthropic provider, including base URL, model, API key, and retry settings.
+   */
   constructor(config: DescriptionConfig) {
     this.config = config;
   }
 
+  /** @inheritdoc */
   async generateDescription(chunk: Chunk): Promise<string> {
     const messages: AnthropicMessage[] = [
       { role: "user", content: buildUserMessage(chunk) },
@@ -30,6 +41,7 @@ export class AnthropicDescriptionProvider implements DescriptionProvider {
     return this.chatRequest(messages, this.config.timeoutMs ?? 60000);
   }
 
+  /** @inheritdoc */
   async generateBatchDescriptions(chunks: Chunk[], logDebug?: (msg: string) => void): Promise<Map<string, string>> {
     const concurrency = this.config.batchConcurrency ?? 3;
     const total = chunks.length;
@@ -63,6 +75,16 @@ export class AnthropicDescriptionProvider implements DescriptionProvider {
     return result;
   }
 
+  /**
+   * Sends a request to the Anthropic Messages API with retry and exponential backoff.
+   * The system prompt is combined with all user messages into a single message payload, and
+   * the assistant placeholder is appended to elicit a completion.
+   *
+   * @param messages - The user messages to send.
+   * @param timeoutMs - Request timeout in milliseconds.
+   * @returns The trimmed response text from the model.
+   * @throws When all retry attempts are exhausted or the response is empty.
+   */
   private async chatRequest(
     messages: AnthropicMessage[],
     timeoutMs: number,

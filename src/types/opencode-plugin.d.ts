@@ -5,7 +5,7 @@ declare module "@opencode-ai/plugin" {
   export * from "@opencode-ai/plugin/tool";
   export type { ToolDefinition } from "@opencode-ai/plugin/tool";
 
-  // Re-declare minimal needed types
+  /** Input provided to every plugin factory function, containing client, project, and workspace context. */
   export type PluginInput = {
     client: ReturnType<typeof createOpencodeClient>;
     project: Project;
@@ -15,8 +15,10 @@ declare module "@opencode-ai/plugin" {
     $: unknown;
   };
 
+  /** Optional configuration map passed to the plugin factory. */
   export type PluginOptions = Record<string, unknown>;
 
+  /** Lifecycle hooks that a plugin can implement to intercept OpenCode events, messages, tool execution, and configuration. */
   export interface Hooks {
     event?: (input: { event: Event }) => Promise<void>;
     config?: (input: SDKConfig) => Promise<void>;
@@ -47,5 +49,6 @@ declare module "@opencode-ai/plugin" {
     ) => Promise<void>;
   }
 
+  /** Plugin factory signature — receives input and optional options, returns lifecycle hooks. */
   export type Plugin = (input: PluginInput, options?: PluginOptions) => Promise<Hooks>;
 }

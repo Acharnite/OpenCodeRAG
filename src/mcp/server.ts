@@ -17,17 +17,25 @@ import {
   type DescribeImageParams,
 } from "./handlers.js";
 
+/** Options for creating the MCP server. */
 export interface McpServerOptions {
+  /** Path to the RAG config file. */
   configPath?: string;
+  /** Working directory for resolving paths. */
   cwd?: string;
+  /** Custom transport (defaults to stdio). */
   transport?: Transport;
 }
 
+/** A running MCP server instance with a close method. */
 export interface RagMcpInstance {
+  /** The underlying MCP server. */
   server: McpServer;
+  /** Gracefully close the server and release resources. */
   close: () => Promise<void>;
 }
 
+/** Create and start an MCP server exposing search_semantic, get_file_skeleton, find_usages, and describe_image tools. */
 export async function createMcpServer(options?: McpServerOptions): Promise<RagMcpInstance> {
   const cwd = options?.cwd ?? process.cwd();
   const ctx = await resolveRagContext({

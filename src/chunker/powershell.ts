@@ -1,5 +1,9 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for PowerShell script files (.ps1, .psm1, .psd1).
+ * Uses tree-sitter to parse and split by function statement boundaries.
+ */
 export class PowerShellChunker extends TreeSitterChunker {
   readonly language = "powershell";
   readonly fileExtensions = [".ps1", ".psm1", ".psd1"];
@@ -9,4 +13,5 @@ export class PowerShellChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link PowerShellChunker}. */
 export const powershellChunker = new PowerShellChunker();

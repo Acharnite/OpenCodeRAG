@@ -24,11 +24,13 @@ const MIME_TYPES: Record<string, string> = {
   ".bmp": "image/bmp",
 };
 
+/** Serve an HTML string as the HTTP response with UTF-8 content type. */
 function serveStatic(res: ServerResponse, html: string): void {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end(html);
 }
 
+/** Read a UI asset file from disk and serve it with the correct MIME type. Falls back to 404 if the file is missing. */
 function serveUiAsset(res: ServerResponse, filePath: string): void {
   try {
     const data = readFileSync(filePath);
@@ -42,11 +44,26 @@ function serveUiAsset(res: ServerResponse, filePath: string): void {
   }
 }
 
+/** Describes a running OpenCodeRAG Web UI instance, providing the bound port and a graceful shutdown method. */
 export interface WebUiServer {
+  /** The port the HTTP server is listening on. */
   port: number;
+  /** Gracefully shut down the HTTP server. */
   close: () => Promise<void>;
 }
 
+/**
+ * Start the OpenCodeRAG Web UI HTTP server.
+ *
+ * Creates an embedded HTTP server that serves the static UI at `/` and `/ui/*`, and
+ * delegates `/api/*` requests to the REST API handler. The server binds to `127.0.0.1`.
+ *
+ * @param storePath       - Path to the LanceDB store directory.
+ * @param port            - TCP port to listen on.
+ * @param cwd             - Optional workspace root used to resolve file paths for the file API.
+ * @param vectorDimension - Embedding vector dimension (default 384).
+ * @returns A {@link WebUiServer} handle for the running server.
+ */
 export async function startWebUi(
   storePath: string,
   port: number,

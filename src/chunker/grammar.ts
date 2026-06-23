@@ -53,6 +53,12 @@ function resolveWasmPath(lang: string): string {
 let initialized = false;
 let initPromise: Promise<void> | null = null;
 
+/**
+ * Ensure the tree-sitter WASM runtime is initialised.
+ *
+ * Safe to call multiple times — the initialisation promise is cached so that
+ * concurrent callers share a single init sequence.
+ */
 export async function initParser(): Promise<void> {
   if (initialized) return;
   if (initPromise) return initPromise;
@@ -65,6 +71,16 @@ export async function initParser(): Promise<void> {
 
 const grammarCache = new Map<string, Language>();
 
+/**
+ * Load a tree-sitter grammar WASM by language name.
+ *
+ * The grammar is resolved from either the `@vscode/tree-sitter-wasm` package
+ * or the project's own `wasm/` directory (see {@link resolveWasmPath}).
+ * Results are cached so each grammar is loaded at most once.
+ *
+ * @param lang - Language identifier (e.g. `"typescript"`, `"python"`).
+ * @returns A promise that resolves to the loaded {@link Language}.
+ */
 export async function loadLanguage(lang: string): Promise<Language> {
   const cached = grammarCache.get(lang);
   if (cached) return cached;
@@ -77,6 +93,17 @@ export async function loadLanguage(lang: string): Promise<Language> {
   return language;
 }
 
+/**
+ * Load a tree-sitter grammar WASM from an arbitrary filesystem path.
+ *
+ * Useful when a custom chunker provides its own grammar file rather than
+ * relying on the bundled WASM directory.
+ *
+ * @param cacheKey - Key under which the loaded grammar is cached (typically
+ *   the chunker's {@link language} identifier).
+ * @param wasmPath - Absolute or relative path to the `.wasm` grammar file.
+ * @returns A promise that resolves to the loaded {@link Language}.
+ */
 export async function loadLanguageFromPath(
   cacheKey: string,
   wasmPath: string
@@ -92,13 +119,29 @@ export async function loadLanguageFromPath(
   return language;
 }
 
+/**
+ * Describes a single extracted AST node and its surrounding documentation.
+ *
+ * Produced by {@link walkTree} and consumed by chunkers to build
+ * {@link import("../core/interfaces.js").Chunk | Chunk} objects.
+ */
 export interface AstNode {
+  /** Source text spanned by this AST node. */
   text: string;
+  /** 1-based start line in the source file. */
   startLine: number;
+  /** 1-based end line in the source file. */
   endLine: number;
+  /** 0-based start byte offset in the source. */
   startIndex: number;
+  /** 0-based end byte offset (exclusive) in the source. */
   endIndex: number;
+  /** tree-sitter node type (e.g. `"function_definition"`). */
   type: string;
+  /**
+   * Doc comment or docstring text extracted from comments immediately
+   * preceding the node, if any.
+   */
   leadingDoc?: string;
 }
 
@@ -114,10 +157,10 @@ function cleanCommentText(text: string): string {
   const lines = text.split("\n");
 
   if (text.startsWith("/*")) {
-    let cleaned = lines.map((line, i) => {
+    let cleaned = lines.map((line) => {
       let l = line;
-      if (i === 0) l = l.replace(/^\/\*+\s?/, "");
-      if (i === lines.length - 1) l = l.replace(/\s?\*+\/$/, "");
+      l = l.replace(/^\/\*+\s?/, "");
+      l = l.replace(/\s?\*+\/$/, "");
       l = l.replace(/^\s*\*\s?/, "");
       return l;
     });
@@ -128,6 +171,17 @@ function cleanCommentText(text: string): string {
     let cleaned = lines.map((line) =>
       line.replace(/^<!--\s?/, "").replace(/\s?-->$/, ""),
     );
+    return cleaned.filter((l) => l.trim().length > 0).join("\n");
+  }
+
+  if (text.startsWith('"""') || text.startsWith("'''")) {
+    const quote = text.startsWith('"""') ? '"""' : "'''";
+    let cleaned = lines.map((line) => {
+      let l = line.trim();
+      if (l.startsWith(quote)) l = l.slice(quote.length);
+      if (l.endsWith(quote)) l = l.slice(0, -quote.length);
+      return l;
+    });
     return cleaned.filter((l) => l.trim().length > 0).join("\n");
   }
 
@@ -180,6 +234,24 @@ function extractDocstringFromBody(node: Node, source: string): string | undefine
   return cleanCommentText(source.slice(stringNode.startIndex, stringNode.endIndex));
 }
 
+/**
+ * Recursively walk a tree-sitter AST and collect nodes matching the given
+ * type set.
+ *
+ * For each matching node, leading comments and (for function/class
+ * definitions) body docstrings are extracted and joined into a single
+ * description.
+ *
+ * The root node is never returned as a chunk (depth must be > 0) so that
+ * the file itself is not treated as one large chunk.
+ *
+ * @param node - The current tree-sitter AST node.
+ * @param nodeTypes - Set of node type names to extract.
+ * @param source - Full source text (used to slice node text and comments).
+ * @param maxDepth - Maximum recursion depth (default: 10).
+ * @param depth - Current recursion depth (internal, start at 0).
+ * @returns An array of {@link AstNode} objects for matching declarations.
+ */
 export function walkTree(
   node: Node,
   nodeTypes: Set<string>,

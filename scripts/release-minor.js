@@ -1,3 +1,13 @@
+/**
+ * Create a minor release — pushes the main branch, bumps the npm
+ * version, tags the commit, and creates a GitHub release with
+ * auto-generated changelog notes.
+ *
+ * Usage: node scripts/release-minor.js [--dry]
+ *
+ * Environment: DRY_RUN=1 also enables dry-run mode.
+ */
+
 import { execSync } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -5,16 +15,33 @@ import { join } from 'node:path';
 
 const dry = process.env.DRY_RUN === '1' || process.argv.includes('--dry');
 
+/**
+ * Execute a shell command, logging it to the console first.
+ * In dry-run mode the command is logged but not executed.
+ *
+ * @param {string} cmd - The shell command to run.
+ */
 function run(cmd) {
   console.log('> ' + cmd);
   if (!dry) execSync(cmd, { stdio: 'inherit' });
   else console.log('(dry run) skipped');
 }
 
+/**
+ * Retrieve the most recent git tag.
+ *
+ * @returns {string} The latest tag name.
+ */
 function getLatestTag() {
   return execSync('git describe --tags --abbrev=0').toString().trim();
 }
 
+/**
+ * Generate changelog notes from commits since a given tag.
+ *
+ * @param {string} prevTag - The previous release tag.
+ * @returns {string|null} Markdown-formatted changelog, or null if no new commits.
+ */
 function getChangelog(prevTag) {
   try {
     const log = execSync(`git log --oneline ${prevTag}..HEAD`).toString().trim();

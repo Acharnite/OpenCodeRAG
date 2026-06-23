@@ -19,6 +19,7 @@ const dryRun = args.includes("--dry-run");
 const dbPathIdx = args.indexOf("--db-path");
 const dbPath = path.resolve(dbPathIdx !== -1 ? args[dbPathIdx + 1]! : ".opencode", "rag_db");
 
+/** Metadata for a single chunk used during deduplication. */
 interface ChunkInfo {
   id: string;
   filePath: string;
@@ -29,6 +30,15 @@ interface ChunkInfo {
   language: string;
 }
 
+/**
+ * Compute a deduplication key for a chunk.
+ *
+ * Image chunks are keyed by `image:<filePath>`; all other chunks use
+ * the full `filePath:startLine:endLine:content` string.
+ *
+ * @param c - The chunk info to derive a key for.
+ * @returns A string key used for grouping duplicates.
+ */
 function dedupKey(c: ChunkInfo): string {
   if (c.language === "image") {
     return `image:${c.filePath}`;
@@ -36,6 +46,11 @@ function dedupKey(c: ChunkInfo): string {
   return `${c.filePath}:${c.startLine}:${c.endLine}:${c.content}`;
 }
 
+/**
+ * Main entry point — reads all chunks from the vector store, groups
+ * them by deduplication key, keeps the best chunk per group, and
+ * rewrites the store with deduplicated data.
+ */
 async function main(): Promise<void> {
   console.log(`Deduplicating chunks in: ${dbPath}`);
   if (dryRun) console.log("(dry run — no changes will be made)\n");

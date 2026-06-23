@@ -1,5 +1,9 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for Go source files (.go).
+ * Uses tree-sitter to parse and split by function and method declarations.
+ */
 export class GoChunker extends TreeSitterChunker {
   readonly language = "go";
   readonly fileExtensions = [".go"];
@@ -10,4 +14,5 @@ export class GoChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link GoChunker}. */
 export const goChunker = new GoChunker();

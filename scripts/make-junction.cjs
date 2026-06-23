@@ -1,4 +1,13 @@
-﻿const fs = require("fs");
+﻿/**
+ * Create a NTFS junction point.
+ *
+ * Usage: node make-junction.cjs <target> <source>
+ *
+ * Creates `<target>` as a directory junction pointing to `<source>`.
+ * If `<target>` already exists it is removed first.
+ */
+
+const fs = require("fs");
 const p = require("path");
 const a = process.argv.slice(2);
 fs.mkdirSync(p.dirname(a[0]), { recursive: true });

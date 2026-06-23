@@ -14,10 +14,12 @@ function getSessionPath(storePath: string, sessionID: string): string {
   return path.join(getEvalDir(storePath), `${sessionID}.jsonl`);
 }
 
+/** Validate that a session ID contains only safe characters (alphanumeric, underscore, hyphen). */
 export function validateSessionID(sessionID: string): boolean {
   return SAFE_ID_REGEX.test(sessionID);
 }
 
+/** Append a single event to a session's JSONL log file. Creates the directory and file if needed. */
 export function appendSessionEvent(storePath: string, event: SessionEvent): void {
   try {
     const dir = getEvalDir(storePath);
@@ -29,6 +31,7 @@ export function appendSessionEvent(storePath: string, event: SessionEvent): void
   }
 }
 
+/** Read all events for a session from its JSONL log file. Returns an empty array if the file does not exist or cannot be read. */
 export function readSessionEvents(storePath: string, sessionID: string): SessionEvent[] {
   try {
     const filePath = getSessionPath(storePath, sessionID);
@@ -40,6 +43,7 @@ export function readSessionEvents(storePath: string, sessionID: string): Session
   }
 }
 
+/** List all available session IDs by scanning the sessions directory for JSONL files. */
 export function listSessionIDs(storePath: string): string[] {
   try {
     const dir = getEvalDir(storePath);
@@ -53,6 +57,7 @@ export function listSessionIDs(storePath: string): string[] {
   }
 }
 
+/** Delete a session's JSONL log file from disk. Silently succeeds if the file does not exist. */
 export function deleteSession(storePath: string, sessionID: string): void {
   try {
     const filePath = getSessionPath(storePath, sessionID);
@@ -64,6 +69,7 @@ export function deleteSession(storePath: string, sessionID: string): void {
   }
 }
 
+/** Aggregate session events into a summary with total token counts, costs, tool call tallies, and model list. */
 export function computeSummary(events: SessionEvent[]): SessionSummary {
   const summary: SessionSummary = {
     sessionID: events[0]?.sessionID ?? "",
@@ -152,6 +158,7 @@ export function computeSummary(events: SessionEvent[]): SessionSummary {
   return summary;
 }
 
+/** List all stored sessions with their summaries, sorted by most recent activity first. */
 export function listSessions(storePath: string): SessionSummary[] {
   const ids = listSessionIDs(storePath);
   const summaries: SessionSummary[] = [];
@@ -167,6 +174,7 @@ export function listSessions(storePath: string): SessionSummary[] {
   return summaries;
 }
 
+/** Retrieve a session's full event log and computed summary. Returns null if the session does not exist. */
 export function getSession(storePath: string, sessionID: string): { events: SessionEvent[]; summary: SessionSummary } | null {
   const events = readSessionEvents(storePath, sessionID);
   if (events.length === 0) return null;
@@ -178,6 +186,7 @@ function avgOrZero(values: number[]): number {
   return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
+/** Compare two sessions by computing the delta between their summaries. Returns null if either session does not exist. */
 export function compareSessions(storePath: string, idA: string, idB: string): ComparisonResult | null {
   const sessionA = getSession(storePath, idA);
   const sessionB = getSession(storePath, idB);

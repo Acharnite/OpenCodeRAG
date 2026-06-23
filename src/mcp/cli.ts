@@ -3,8 +3,11 @@ import { createMcpServer } from "./server.js";
 
 let closed = false;
 
+/** Run the MCP server as a standalone process, handling SIGINT/SIGTERM for graceful shutdown. */
 export async function runMcpServer(options?: {
+  /** Path to the RAG config file. */
   configPath?: string;
+  /** Working directory for resolving paths. */
   cwd?: string;
 }): Promise<void> {
   const instance = await createMcpServer(options);

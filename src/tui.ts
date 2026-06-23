@@ -1,4 +1,4 @@
-import type { TuiPluginModule } from "@opencode-ai/plugin/tui";
+import type { TuiPluginModule, TuiDialogSelectProps, TuiDialogPromptProps, TuiToast, TuiState } from "@opencode-ai/plugin/tui";
 import type { JSX } from "@opentui/solid";
 import { createElement, insert, setProp } from "@opentui/solid";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
@@ -626,12 +626,12 @@ function buildSettingCategories(
  */
 async function openSettingsDialog(api: {
   ui: {
-    dialog: { replace: (fn: () => JSX.Element, onClose?: () => void) => void; clear: () => void };
-    DialogSelect: (props: unknown) => JSX.Element;
-    DialogPrompt: (props: unknown) => JSX.Element;
-    toast: (input: unknown) => void;
+    dialog: { replace: (fn: () => JSX.Element, onClose?: () => void) => void; clear: () => void; };
+    DialogSelect: <Value>(props: TuiDialogSelectProps<Value>) => JSX.Element;
+    DialogPrompt: (props: TuiDialogPromptProps) => JSX.Element;
+    toast: (input: TuiToast) => void;
   };
-  state: { path: { worktree: string | undefined }; provider?: readonly Provider[] };
+  state: Pick<TuiState, "path" | "provider">;
 }): Promise<void> {
   const worktree = api.state.path.worktree;
   if (!worktree) return;

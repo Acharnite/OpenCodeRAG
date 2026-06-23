@@ -194,144 +194,93 @@ describe("walkTree", () => {
   });
 
   describe("leadingDoc extraction", () => {
+    function makeSiblingNodes(
+      commentText: string,
+      fnText: string,
+      fnType = "function_declaration",
+      commentType = "comment",
+      rootType = "program",
+    ) {
+      const src = commentText + fnText;
+      const comment = makeNode(commentType, 0, commentText.length, 0, 0);
+      const fn = makeNode(fnType, commentText.length, src.length, 1, 2);
+      const root = makeNode(rootType, 0, src.length, 0, 2, [comment, fn]);
+      return { src, comment, fn, root };
+    }
+
     it("extracts leading single-line // comment", () => {
-      const comment = makeNode("comment", 0, 20, 0, 0);
-      const fn = makeNode("function_declaration", 21, 41, 1, 2);
-      comment.previousSibling = null;
-      fn.previousSibling = comment;
-      const root = makeNode("program", 0, 41, 0, 2, [comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "// hello world\nfunction foo() {}"
-      );
+      const { src, root } = makeSiblingNodes("// hello world\n", "function foo() {}");
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "hello world");
     });
 
     it("extracts leading /* */ block comment", () => {
-      const comment = makeNode("comment", 0, 22, 0, 0);
-      const fn = makeNode("function_declaration", 23, 43, 1, 2);
-      comment.previousSibling = null;
-      fn.previousSibling = comment;
-      const root = makeNode("program", 0, 43, 0, 2, [comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "/* hello */\nfunction foo() {}"
-      );
+      const { src, root } = makeSiblingNodes("/* hello */\n", "function foo() {}");
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "hello");
     });
 
     it("extracts leading /** JSDoc */ block comment", () => {
-      const comment = makeNode("comment", 0, 28, 0, 2, [
-        makeNode("comment", 0, 28, 0, 2),
-      ]);
-      const fn = makeNode("function_declaration", 29, 49, 3, 4);
-      comment.previousSibling = null;
-      fn.previousSibling = comment;
-      const root = makeNode("program", 0, 49, 0, 4, [comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "/**\n * JSDoc\n */\nfunction foo() {}"
+      const { src, root } = makeSiblingNodes(
+        "/**\n * JSDoc\n */\n", "function foo() {}",
       );
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 1);
       assert.ok(result[0]!.leadingDoc!.includes("JSDoc"));
     });
 
     it("extracts leading # comment (Python style)", () => {
-      const comment = makeNode("comment", 0, 18, 0, 0);
-      const fn = makeNode("function_definition", 19, 36, 1, 2);
-      comment.previousSibling = null;
-      fn.previousSibling = comment;
-      const root = makeNode("module", 0, 36, 0, 2, [comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_definition"]),
-        "# helper function\ndef foo():\n    pass"
+      const { src, root } = makeSiblingNodes(
+        "# helper function\n", "def foo():\n    pass",
+        "function_definition", "comment", "module",
       );
+      const result = walkTree(root as never, new Set(["function_definition"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "helper function");
     });
 
     it("extracts leading -- comment (SQL style)", () => {
-      const comment = makeNode("comment", 0, 18, 0, 0);
-      const fn = makeNode("function_declaration", 19, 39, 1, 2);
-      comment.previousSibling = null;
-      fn.previousSibling = comment;
-      const root = makeNode("program", 0, 39, 0, 2, [comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "-- helper function\nCREATE OR REPLACE"
-      );
+      const { src, root } = makeSiblingNodes("-- helper function\n", "SELECT * FROM t");
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "helper function");
     });
 
     it("extracts leading ; comment (INI style)", () => {
-      const comment = makeNode("comment", 0, 18, 0, 0);
-      const node = makeNode("section", 19, 30, 1, 2);
-      comment.previousSibling = null;
-      node.previousSibling = comment;
-      const root = makeNode("program", 0, 30, 0, 2, [comment, node]);
-      const result = walkTree(
-        root as never,
-        new Set(["section"]),
-        "; server config\n[server]"
-      );
+      const { src, root } = makeSiblingNodes("; server config\n", "[server]", "section");
+      const result = walkTree(root as never, new Set(["section"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "server config");
     });
 
     it("extracts leading % comment (LaTeX style)", () => {
-      const comment = makeNode("comment", 0, 20, 0, 0);
-      const node = makeNode("section", 21, 40, 1, 2);
-      comment.previousSibling = null;
-      node.previousSibling = comment;
-      const root = makeNode("program", 0, 40, 0, 2, [comment, node]);
-      const result = walkTree(
-        root as never,
-        new Set(["section"]),
-        "% This is a section\n\\section{Intro}"
-      );
+      const { src, root } = makeSiblingNodes("% This is a section\n", "\\section{Intro}", "section");
+      const result = walkTree(root as never, new Set(["section"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "This is a section");
     });
 
     it("extracts multiple consecutive comments", () => {
-      const c1 = makeNode("comment", 0, 15, 0, 0);
-      const c2 = makeNode("comment", 16, 36, 1, 1);
-      const fn = makeNode("function_declaration", 37, 57, 2, 3);
-      c1.previousSibling = null;
-      c2.previousSibling = c1;
-      fn.previousSibling = c2;
-      const root = makeNode("program", 0, 57, 0, 3, [c1, c2, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "// copyright\n// description\nfunction foo() {}"
-      );
+      const src = "// copyright\n// description\nfunction foo() {}";
+      const c1 = makeNode("comment", 0, 14, 0, 0);
+      const c2 = makeNode("comment", 14, 30, 1, 1);
+      const fn = makeNode("function_declaration", 30, src.length, 2, 3);
+      const root = makeNode("program", 0, src.length, 0, 3, [c1, c2, fn]);
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 1);
       assert.ok(result[0]!.leadingDoc!.includes("copyright"));
       assert.ok(result[0]!.leadingDoc!.includes("description"));
     });
 
     it("does not extract unrelated comments (not directly preceding)", () => {
-      const otherFn = makeNode("function_declaration", 0, 20, 0, 1);
-      const comment = makeNode("comment", 21, 40, 2, 2);
-      const fn = makeNode("function_declaration", 41, 61, 3, 4);
-      otherFn.previousSibling = null;
-      comment.previousSibling = otherFn;
-      fn.previousSibling = comment;
-      const root = makeNode("program", 0, 61, 0, 4, [otherFn, comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "function bar() {}\n// for foo\nfunction foo() {}"
-      );
+      const src = "function bar() {}\n// for foo\nfunction foo() {}";
+      const otherFn = makeNode("function_declaration", 0, 17, 0, 1);
+      const comment = makeNode("comment", 18, 28, 2, 2);
+      const fn = makeNode("function_declaration", 29, src.length, 3, 4);
+      const root = makeNode("program", 0, src.length, 0, 4, [otherFn, comment, fn]);
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 2);
       const foo = result.find((n) => n.text.includes("foo"));
       assert.ok(foo);
@@ -342,140 +291,102 @@ describe("walkTree", () => {
     });
 
     it("extracts leading HTML/XML comment", () => {
-      const comment = makeNode("Comment", 0, 26, 0, 0);
-      const node = makeNode("element", 27, 50, 1, 2);
-      comment.previousSibling = null;
-      node.previousSibling = comment;
-      const root = makeNode("document", 0, 50, 0, 2, [comment, node]);
-      const result = walkTree(
-        root as never,
-        new Set(["element"]),
-        "<!-- main content -->\n<div>hello</div>"
+      const { src, root } = makeSiblingNodes(
+        "<!-- main content -->\n", "<div>hello</div>",
+        "element", "Comment", "document",
       );
+      const result = walkTree(root as never, new Set(["element"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "main content");
     });
 
     it("extracts Kotlin line_comment", () => {
-      const comment = makeNode("line_comment", 0, 18, 0, 0);
-      const fn = makeNode("function_declaration", 19, 39, 1, 2);
-      comment.previousSibling = null;
-      fn.previousSibling = comment;
-      const root = makeNode("program", 0, 39, 0, 2, [comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "// helper function\nfun foo() {}"
+      const { src, root } = makeSiblingNodes(
+        "// helper function\n", "fun foo() {}",
+        "function_declaration", "line_comment",
       );
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "helper function");
     });
 
     it("extracts Swift multiline_comment", () => {
-      const comment = makeNode("multiline_comment", 0, 22, 0, 0);
-      const fn = makeNode("function_declaration", 23, 43, 1, 2);
-      comment.previousSibling = null;
-      fn.previousSibling = comment;
-      const root = makeNode("program", 0, 43, 0, 2, [comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "/* helper */\nfunc foo() {}"
+      const { src, root } = makeSiblingNodes(
+        "/* helper */\n", "func foo() {}",
+        "function_declaration", "multiline_comment",
       );
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "helper");
     });
 
     it("extracts SQL marginalia (block comment)", () => {
-      const comment = makeNode("marginalia", 0, 22, 0, 0);
-      const fn = makeNode("function_declaration", 23, 43, 1, 2);
-      comment.previousSibling = null;
-      fn.previousSibling = comment;
-      const root = makeNode("program", 0, 43, 0, 2, [comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "/* helper */\nCREATE OR REPLACE"
+      const { src, root } = makeSiblingNodes(
+        "/* helper */\n", "SELECT",
+        "function_declaration", "marginalia",
       );
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "helper");
     });
 
     it("returns undefined when no preceding comment exists", () => {
-      const fn = makeNode("function_declaration", 0, 20, 1, 2);
-      fn.previousSibling = null;
-      const root = makeNode("program", 0, 20, 0, 2, [fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_declaration"]),
-        "function foo() {}"
-      );
+      const src = "function foo() {}";
+      const fn = makeNode("function_declaration", 0, src.length, 1, 2);
+      const root = makeNode("program", 0, src.length, 0, 2, [fn]);
+      const result = walkTree(root as never, new Set(["function_declaration"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, undefined);
     });
 
     it("extracts Python docstring from function body", () => {
-      const docString = makeNode("string", 19, 42, 0, 0);
-      const expr = makeNode("expression_statement", 19, 42, 0, 0, [docString]);
-      const block = makeNode("block", 14, 56, 0, 2, [expr]);
+      const src = "def foo():\n  \"\"\"Does something.\"\"\"\n  pass";
+      const quoteText = '"""Does something."""';
+      const quoteStart = src.indexOf(quoteText);
+      const docString = makeNode("string", quoteStart, quoteStart + quoteText.length, 1, 1);
+      const expr = makeNode("expression_statement", 10, src.length, 1, 2, [docString]);
+      const block = makeNode("block", 10, src.length, 1, 2, [expr]);
       const name = makeNode("identifier", 4, 7, 0, 0);
       const params = makeNode("parameters", 7, 9, 0, 0);
-      const fn = makeNode("function_definition", 0, 56, 0, 2, [name, params, block]);
-      fn.previousSibling = null;
-      const root = makeNode("module", 0, 56, 0, 2, [fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_definition"]),
-        'def foo():\n  """Does something."""\n  pass'
-      );
+      const colon = makeNode(":", 9, 10, 0, 0);
+      const fn = makeNode("function_definition", 0, src.length, 0, 2, [name, params, colon, block]);
+      const root = makeNode("module", 0, src.length, 0, 2, [fn]);
+      const result = walkTree(root as never, new Set(["function_definition"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "Does something.");
     });
 
     it("extracts Python class docstring from class body", () => {
-      const docString = makeNode("string", 14, 39, 0, 0);
-      const expr = makeNode("expression_statement", 14, 39, 0, 0, [docString]);
-      const block = makeNode("block", 13, 55, 0, 2, [expr]);
+      const src = "class Foo:\n  \"\"\"A class.\"\"\"\n  pass";
+      const quoteText = '"""A class."""';
+      const quoteStart = src.indexOf(quoteText);
+      const docString = makeNode("string", quoteStart, quoteStart + quoteText.length, 1, 1);
+      const expr = makeNode("expression_statement", 9, src.length, 1, 2, [docString]);
+      const block = makeNode("block", 9, src.length, 1, 2, [expr]);
       const name = makeNode("identifier", 6, 9, 0, 0);
-      const cls = makeNode("class_definition", 0, 55, 0, 2, [name, block]);
-      cls.previousSibling = null;
-      const root = makeNode("module", 0, 55, 0, 2, [cls]);
-      const result = walkTree(
-        root as never,
-        new Set(["class_definition"]),
-        'class Foo:\n  """A class."""\n  pass'
-      );
+      const colon = makeNode(":", 9, 10, 0, 0);
+      const cls = makeNode("class_definition", 0, src.length, 0, 2, [name, colon, block]);
+      const root = makeNode("module", 0, src.length, 0, 2, [cls]);
+      const result = walkTree(root as never, new Set(["class_definition"]), src);
       assert.equal(result.length, 1);
       assert.ok(result[0]!.leadingDoc!.includes("A class."));
     });
 
     it("extracts leading Python docstring (module-level expression_statement)", () => {
-      const docString = makeNode("string", 0, 25, 0, 0);
-      const expr = makeNode("expression_statement", 0, 25, 0, 0, [docString]);
-      const fn = makeNode("function_definition", 26, 45, 1, 2);
-      expr.previousSibling = null;
-      fn.previousSibling = expr;
-      const root = makeNode("module", 0, 45, 0, 2, [expr, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_definition"]),
-        '"""Module docstring."""\ndef foo():\n  pass'
-      );
+      const src = "\"\"\"Module docstring.\"\"\"\ndef foo():\n  pass";
+      const quoteText = '"""Module docstring."""';
+      const docString = makeNode("string", 0, quoteText.length, 0, 0);
+      const expr = makeNode("expression_statement", 0, quoteText.length, 0, 0, [docString]);
+      const fn = makeNode("function_definition", quoteText.length + 1, src.length, 1, 2);
+      const root = makeNode("module", 0, src.length, 0, 2, [expr, fn]);
+      const result = walkTree(root as never, new Set(["function_definition"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "Module docstring.");
     });
 
     it("extracts Rust triple-slash doc comment", () => {
-      const comment = makeNode("comment", 0, 23, 0, 0);
-      const fn = makeNode("function_item", 24, 44, 1, 2);
-      comment.previousSibling = null;
-      fn.previousSibling = comment;
-      const root = makeNode("source_file", 0, 44, 0, 2, [comment, fn]);
-      const result = walkTree(
-        root as never,
-        new Set(["function_item"]),
-        "/// Does something\nfn foo() {}"
-      );
+      const { src, root } = makeSiblingNodes("/// Does something\n", "fn foo() {}", "function_item");
+      const result = walkTree(root as never, new Set(["function_item"]), src);
       assert.equal(result.length, 1);
       assert.equal(result[0]!.leadingDoc, "Does something");
     });

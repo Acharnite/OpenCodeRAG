@@ -1,5 +1,9 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for Swift source files (.swift).
+ * Uses tree-sitter to parse and split by function, enum, protocol, and variable declarations.
+ */
 export class SwiftChunker extends TreeSitterChunker {
   readonly language = "swift";
   readonly fileExtensions = [".swift"];
@@ -12,4 +16,5 @@ export class SwiftChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link SwiftChunker}. */
 export const swiftChunker = new SwiftChunker();

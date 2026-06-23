@@ -5,6 +5,7 @@
  * via the plugin event hook and stores them as JSONL for analysis.
  */
 
+/** Token consumption breakdown for a single LLM response or step. */
 export interface TokenUsage {
   input: number;
   output: number;
@@ -15,6 +16,7 @@ export interface TokenUsage {
   };
 }
 
+/** A structured log entry captured from OpenCode plugin event hooks. */
 export interface SessionEvent {
   ts: number;
   event: "message" | "tool" | "rag.context" | "step" | "session.created" | "session.status";
@@ -59,6 +61,7 @@ export interface SessionEvent {
   sessionStatus?: string;
 }
 
+/** Aggregated statistics computed from a session's event log. */
 export interface SessionSummary {
   sessionID: string;
   title?: string;
@@ -86,6 +89,7 @@ export interface SessionSummary {
   models: string[];
 }
 
+/** Delta comparison between two session summaries. */
 export interface ComparisonResult {
   sessionA: SessionSummary;
   sessionB: SessionSummary;
@@ -106,6 +110,7 @@ export interface ComparisonResult {
   };
 }
 
+/** Set of tool names considered RAG-related for session analysis. */
 export const RAG_TOOL_NAMES = new Set([
   "search_semantic",
   "get_file_skeleton",
@@ -113,6 +118,7 @@ export const RAG_TOOL_NAMES = new Set([
   "read",
 ]);
 
+/** Check whether a tool name is a RAG-related tool. */
 export function isRagTool(toolName: string): boolean {
   return RAG_TOOL_NAMES.has(toolName);
 }

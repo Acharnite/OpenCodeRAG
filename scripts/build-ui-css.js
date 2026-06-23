@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/**
+ * Build CSS for the web UI — generates a Tailwind CSS bundle, copies
+ * the highlight.js theme, and downloads the highlight.min.js runtime.
+ */
+
 import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync, copyFileSync } from "node:fs";
 import { get } from "node:https";
@@ -65,6 +70,14 @@ const hljsDst = resolve(uiDir, "highlight.min.js");
 const HLJS_VERSION = "11.9.0";
 const hljsUrl = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/${HLJS_VERSION}/highlight.min.js`;
 
+/**
+ * Download a file from a URL to a local destination.
+ * Follows HTTP redirects (301/302) recursively.
+ *
+ * @param {string} url - The URL to download from.
+ * @param {string} dest - The local file path to write to.
+ * @returns {Promise<void>}
+ */
 function download(url, dest) {
   return new Promise((resolve, reject) => {
     if (existsSync(dest)) {

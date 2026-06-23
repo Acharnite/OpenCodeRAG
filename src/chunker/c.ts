@@ -1,5 +1,10 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for C source files (.c, .h).
+ * Uses tree-sitter to parse and split by function definitions, struct/enum/union
+ * specifiers, typedefs, and preprocessor defines.
+ */
 export class CChunker extends TreeSitterChunker {
   readonly language = "c";
   readonly fileExtensions = [".c", ".h"];
@@ -14,4 +19,5 @@ export class CChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link CChunker}. */
 export const cChunker = new CChunker();

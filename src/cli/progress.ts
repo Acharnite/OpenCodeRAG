@@ -2,6 +2,7 @@ import type { IndexProgress } from "../core/interfaces.js";
 
 const STAGE_LABELS = ["Chunking", "Description", "Embedding"] as const;
 
+/** Build a human-readable breadcrumb trail through the indexing pipeline stages. */
 function formatBreadcrumb(stageIdx: number, failed?: boolean): string {
   if (failed) {
     return "Failed!";
@@ -24,10 +25,18 @@ function formatBreadcrumb(stageIdx: number, failed?: boolean): string {
   return breadcrumb;
 }
 
+/** Format a single terminal progress line with padded label and breadcrumb. */
 function logLine(label: string, maxLabelLength: number, breadcrumb: string): string {
   return `  ${label.padEnd(maxLabelLength + 2)}${breadcrumb}`;
 }
 
+/**
+ * Terminal-based progress reporter that renders a live-updating table of
+ * indexing progress for each file through the chunking → description → embedding pipeline.
+ *
+ * When output is a TTY, the table is re-rendered in-place on a 100 ms interval.
+ * For non-TTY streams (piped output), each finished or failed file is logged as a single line.
+ */
 export class TerminalProgressTable implements IndexProgress {
   private entries = new Map<string, number>();
   private failed = new Set<string>();
@@ -40,6 +49,9 @@ export class TerminalProgressTable implements IndexProgress {
   private done_ = false;
   private isTTY: boolean;
 
+  /**
+   * @param stream - The write stream used for rendering (typically `process.stdout` or `process.stderr`).
+   */
   constructor(private stream: NodeJS.WriteStream) {
     this.isTTY = stream.isTTY;
     if (this.isTTY) {
@@ -47,11 +59,13 @@ export class TerminalProgressTable implements IndexProgress {
     }
   }
 
+  /** Set the total number of files to be processed (shown in the table header). */
   setFileCount(n: number): void {
     this.fileCount = n;
     this.dirty = true;
   }
 
+  /** Register a new file with the given label and reset its stage to 0. */
   startFile(label: string): void {
     if (!this.entries.has(label)) {
       this.fileLabels.push(label);
@@ -61,6 +75,7 @@ export class TerminalProgressTable implements IndexProgress {
     this.dirty = true;
   }
 
+  /** Advance the file to its next pipeline stage. */
   finishStage(label: string): void {
     const idx = this.entries.get(label);
     if (idx !== undefined && idx < STAGE_LABELS.length) {
@@ -69,6 +84,7 @@ export class TerminalProgressTable implements IndexProgress {
     }
   }
 
+  /** Mark the file as fully processed through all stages. */
   finishFile(label: string): void {
     const idx = this.entries.get(label);
     if (idx !== undefined) {
@@ -80,6 +96,7 @@ export class TerminalProgressTable implements IndexProgress {
     }
   }
 
+  /** Mark the file as failed and log the failure. */
   failFile(label: string): void {
     this.failed.add(label);
     this.dirty = true;
@@ -88,6 +105,7 @@ export class TerminalProgressTable implements IndexProgress {
     }
   }
 
+  /** Signal that indexing is complete — flush remaining output and clean up the interval timer. */
   done(): void {
     this.done_ = true;
     if (this.timer) {

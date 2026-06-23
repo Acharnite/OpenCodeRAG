@@ -6,16 +6,33 @@ const MIN_GROUP_CHARS = 300;
 
 const PARAGRAPH_SPLIT = /\n\s*\n/;
 
+/**
+ * Extract the raw text from a Word (.docx) file buffer.
+ * Uses the `mammoth` library under the hood.
+ * @param buffer - Raw buffer of the .docx file.
+ * @returns The extracted raw text as a string.
+ */
 export async function extractDocxText(buffer: Buffer): Promise<string> {
   const mammoth = await import("mammoth");
   const result = await mammoth.extractRawText({ buffer });
   return result.value;
 }
 
+/**
+ * Chunker for Word (.docx) documents.
+ * Splits the extracted plain text by paragraph boundaries, grouping small
+ * paragraphs into chunks of up to 4000 characters.
+ */
 export class DocxChunker implements Chunker {
   readonly language = "docx";
   readonly fileExtensions = [".docx"];
 
+  /**
+   * Split the document text into chunks by paragraph grouping.
+   * @param filePath - Original file path (for metadata).
+   * @param content - Extracted plain-text content of the .docx file.
+   * @returns A list of text chunks with file-path and line-range metadata.
+   */
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
 
@@ -88,4 +105,5 @@ export class DocxChunker implements Chunker {
   }
 }
 
+/** Default singleton instance of {@link DocxChunker}. */
 export const docxChunker = new DocxChunker();

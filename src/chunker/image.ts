@@ -14,6 +14,7 @@ function visionSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Set of image file extensions that can be processed by the vision providers. */
 export const SUPPORTED_IMAGE_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
 ]);
@@ -28,14 +29,30 @@ const MIME_TYPES: Record<string, string> = {
   svg: "image/svg+xml",
 };
 
+/**
+ * Map a file extension to its corresponding MIME type string.
+ * Defaults to `image/png` for unknown extensions.
+ * @param ext - The file extension (with or without leading dot).
+ * @returns The MIME type string.
+ */
 export function getMimeType(ext: string): string {
   return MIME_TYPES[ext.toLowerCase().replace(/^\./, "")] || "image/png";
 }
 
+/**
+ * Provider interface for describing images using a vision-language model.
+ * Each implementation communicates with a specific provider's API (Ollama,
+ * OpenAI, Anthropic, or Google Gemini).
+ */
 export interface ImageVisionProvider {
   describeImage(imageBase64: string, mimeType: string, prompt: string, abort?: AbortSignal): Promise<string>;
 }
 
+/**
+ * Image vision provider using Ollama's local API.
+ * Sends the image as a base64-encoded string in the chat messages array.
+ * Supports retries with exponential backoff for retryable HTTP status codes.
+ */
 class OllamaImageVisionProvider implements ImageVisionProvider {
   private baseUrl: string;
   private model: string;
@@ -107,6 +124,11 @@ class OllamaImageVisionProvider implements ImageVisionProvider {
   }
 }
 
+/**
+ * Image vision provider using the OpenAI-compatible Chat Completions API.
+ * Sends the image as a data URL in a multi-part user message.
+ * Supports retries with exponential backoff for retryable HTTP status codes.
+ */
 class OpenAIImageVisionProvider implements ImageVisionProvider {
   private baseUrl: string;
   private model: string;
@@ -182,6 +204,11 @@ class OpenAIImageVisionProvider implements ImageVisionProvider {
   }
 }
 
+/**
+ * Image vision provider using the Anthropic Messages API.
+ * Sends the image as a base64 source block in a multi-part user message.
+ * Requires an API key. Supports retries with exponential backoff.
+ */
 class AnthropicImageVisionProvider implements ImageVisionProvider {
   private baseUrl: string;
   private model: string;
@@ -260,6 +287,11 @@ class AnthropicImageVisionProvider implements ImageVisionProvider {
   }
 }
 
+/**
+ * Image vision provider using the Google Gemini API.
+ * Sends the image as inline_data in a parts array. Accepts an optional API key.
+ * Supports retries with exponential backoff for retryable HTTP status codes.
+ */
 class GeminiImageVisionProvider implements ImageVisionProvider {
   private baseUrl: string;
   private model: string;
@@ -336,6 +368,13 @@ class GeminiImageVisionProvider implements ImageVisionProvider {
   }
 }
 
+/**
+ * Factory function that creates the appropriate {@link ImageVisionProvider}
+ * implementation based on the `provider` field in the config.
+ * @param config - The image description configuration.
+ * @returns A provider instance for the configured vision backend.
+ * @throws If `provider` is `"openai"` or `"anthropic"` but no `apiKey` is provided.
+ */
 export function createImageVisionProvider(config: ImageDescriptionConfig): ImageVisionProvider {
   if (config.provider === "anthropic") {
     if (!config.apiKey) {
@@ -355,6 +394,12 @@ export function createImageVisionProvider(config: ImageDescriptionConfig): Image
   return new OllamaImageVisionProvider(config);
 }
 
+/**
+ * Chunker for image description text.
+ * This chunker is used after an image has been processed by a vision provider;
+ * it splits the resulting description text by paragraph boundaries, grouping
+ * small paragraphs into chunks of up to 4000 characters.
+ */
 export class ImageChunker implements Chunker {
   readonly language = "image";
   readonly fileExtensions: string[];
@@ -363,6 +408,12 @@ export class ImageChunker implements Chunker {
     this.fileExtensions = extensions;
   }
 
+  /**
+   * Split the image description text into chunks by paragraph grouping.
+   * @param filePath - Original file path (for metadata).
+   * @param content - The description text produced by a vision provider.
+   * @returns A list of text chunks with file-path and line-range metadata.
+   */
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
 

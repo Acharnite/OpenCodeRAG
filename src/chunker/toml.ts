@@ -1,5 +1,9 @@
 import { TreeSitterChunker } from "./base.js";
 
+/**
+ * Chunker for TOML configuration files (.toml).
+ * Uses tree-sitter to parse and split by tables, table array elements, and top-level pairs.
+ */
 export class TomlChunker extends TreeSitterChunker {
   readonly language = "toml";
   readonly fileExtensions = [".toml"];
@@ -11,4 +15,5 @@ export class TomlChunker extends TreeSitterChunker {
   ]);
 }
 
+/** Default singleton instance of {@link TomlChunker}. */
 export const tomlChunker = new TomlChunker();

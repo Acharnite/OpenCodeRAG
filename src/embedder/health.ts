@@ -2,11 +2,17 @@ import type { RagConfig } from "../core/config.js";
 import type { ProxyConfig } from "../core/config.js";
 import { postJson } from "./http.js";
 
+/** Result of a single provider health check. */
 export interface HealthCheckResult {
+  /** Provider name (e.g. "ollama", "openai", "cohere") */
   provider: string;
+  /** Model identifier that was tested */
   model: string;
+  /** Which capability was checked */
   type: "embedding" | "description" | "image_description";
+  /** Whether the provider is reachable and the model is available */
   status: "ok" | "missing" | "error";
+  /** Human-readable error message when status is not "ok" */
   error?: string;
 }
 
@@ -32,6 +38,7 @@ export async function checkProviderHealth(config: RagConfig): Promise<HealthChec
   return Promise.all(checks);
 }
 
+/** Dispatch the embedding-model check to the correct provider-specific handler. */
 async function checkEmbeddingModel(config: RagConfig, timeoutMs: number): Promise<HealthCheckResult> {
   const { provider, baseUrl, model, apiKey, proxy } = config.embedding;
 
@@ -50,6 +57,7 @@ async function checkEmbeddingModel(config: RagConfig, timeoutMs: number): Promis
   return { provider, model, type: "embedding", status: "error", error: `Unknown provider: ${provider}` };
 }
 
+/** Dispatch the description-model check to the correct provider-specific handler. */
 async function checkDescriptionModel(config: RagConfig, timeoutMs: number): Promise<HealthCheckResult> {
   const desc = config.description;
   if (!desc) {
@@ -74,6 +82,7 @@ async function checkDescriptionModel(config: RagConfig, timeoutMs: number): Prom
   return checkOpenAiChat(baseUrl, model, apiKey, descTimeout, desc.proxy);
 }
 
+/** Dispatch the image-description model check to the correct provider-specific handler. */
 async function checkImageDescriptionModel(config: RagConfig, timeoutMs: number): Promise<HealthCheckResult> {
   const img = config.imageDescription;
   if (!img) {
@@ -98,14 +107,15 @@ async function checkImageDescriptionModel(config: RagConfig, timeoutMs: number):
   return checkOpenAiChat(baseUrl, model, apiKey, imgTimeout, img.proxy, "image_description");
 }
 
+/** Check whether a provider name matches a known OpenAI-compatible provider. */
 function isOpenAiCompatible(provider: string): boolean {
-  // Known OpenAI-compatible providers from provider-defaults.ts
   const openaiCompatible = new Set(["openai", "nvidia", "azure", "mistral", "together", "fireworks"]);
   return openaiCompatible.has(provider);
 }
 
 // ── Ollama checks ──────────────────────────────────────────────
 
+/** Check Ollama embedding endpoint by sending a minimal health-check request. */
 async function checkOllamaEmbed(
   baseUrl: string,
   model: string,
@@ -141,6 +151,7 @@ async function checkOllamaEmbed(
   }
 }
 
+/** Check Ollama chat endpoint by sending a minimal conversation. */
 async function checkOllamaChat(
   baseUrl: string,
   model: string,
@@ -179,6 +190,10 @@ async function checkOllamaChat(
 
 // ── OpenAI-compatible checks ───────────────────────────────────
 
+/**
+ * Check OpenAI-compatible embedding endpoint via the /models endpoint
+ * to validate the API key without consuming embedding tokens.
+ */
 async function checkOpenAiEmbed(
   baseUrl: string,
   model: string,
@@ -190,7 +205,6 @@ async function checkOpenAiEmbed(
     return { provider: "openai", model, type: "embedding", status: "error", error: "No API key configured" };
   }
 
-  // Use the models endpoint to validate the API key without consuming embedding tokens
   const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
     const response = await fetch(url, {
@@ -214,6 +228,7 @@ async function checkOpenAiEmbed(
   }
 }
 
+/** Check OpenAI-compatible chat endpoint via the /models endpoint. */
 async function checkOpenAiChat(
   baseUrl: string,
   model: string,
@@ -251,6 +266,7 @@ async function checkOpenAiChat(
 
 // ── Cohere check ───────────────────────────────────────────────
 
+/** Check Cohere embedding endpoint by sending a minimal health-check request. */
 async function checkCohereEmbed(
   baseUrl: string,
   model: string,
@@ -286,6 +302,7 @@ async function checkCohereEmbed(
 
 // ── Anthropic check ────────────────────────────────────────────
 
+/** Check Anthropic chat endpoint by sending a minimal message. */
 async function checkAnthropicChat(
   baseUrl: string,
   model: string,
@@ -332,6 +349,7 @@ async function checkAnthropicChat(
 
 // ── Google Gemini check ────────────────────────────────────────
 
+/** Check Google Gemini chat endpoint by sending a minimal generateContent request. */
 async function checkGoogleChat(
   baseUrl: string,
   model: string,
@@ -372,9 +390,13 @@ async function checkGoogleChat(
 
 // ── Ollama model pull ──────────────────────────────────────────
 
+/** A model entry to pull from an Ollama server. */
 interface PullModelEntry {
+  /** Model name (e.g. "nomic-embed-text") */
   model: string;
+  /** Base URL of the Ollama server */
   baseUrl: string;
+  /** Optional proxy configuration */
   proxy?: ProxyConfig;
 }
 
@@ -470,6 +492,7 @@ export async function pullOllamaModels(
 
 // ── Helpers ────────────────────────────────────────────────────
 
+/** Check whether an error body indicates the model was not found. */
 function isModelNotFoundError(body: string): boolean {
   const lower = body.toLowerCase();
   return (
@@ -479,6 +502,7 @@ function isModelNotFoundError(body: string): boolean {
   );
 }
 
+/** Check whether an error message indicates a TCP-level connection failure. */
 function isConnectionError(msg: string): boolean {
   const lower = msg.toLowerCase();
   return (

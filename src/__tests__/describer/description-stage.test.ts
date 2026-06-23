@@ -96,19 +96,21 @@ describe("generateDescriptions", () => {
       id: "pre-doc",
       description: "Extracted docstring.",
     });
-    const undocChunk = makeChunk({ id: "undoc" });
+    const undoc1 = makeChunk({ id: "undoc1" });
+    const undoc2 = makeChunk({ id: "undoc2" });
 
     await generateDescriptions(
-      [preDocChunk, undocChunk],
+      [preDocChunk, undoc1, undoc2],
       provider,
       noopLogger,
     );
 
     assert.equal(
-      batchInputChunks.length, 1,
-      "Only 1 chunk should be sent to batch",
+      batchInputChunks.length, 2,
+      "Only undocumented chunks should be batched",
     );
-    assert.equal(batchInputChunks[0]!.id, "undoc");
+    assert.equal(batchInputChunks[0]!.id, "undoc1");
+    assert.equal(batchInputChunks[1]!.id, "undoc2");
   });
 
   it("handles mixed pre-documented and image chunks", async () => {
@@ -151,12 +153,7 @@ describe("generateDescriptions", () => {
       generateBatchDescriptions: async () => new Map(),
     };
 
-    const { descriptionMap } = await generateDescriptions(
-      [],
-      provider,
-      noopLogger,
-    );
-
+    const { descriptionMap } = await generateDescriptions([], provider, noopLogger);
     assert.equal(descriptionMap.size, 0);
   });
 

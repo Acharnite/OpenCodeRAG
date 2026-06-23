@@ -20,6 +20,7 @@ const AVG_SEARCH_TOOL_TOKENS = 800;
 /** Average tokens for system prompt guidance injected by RAG (~150 tokens). */
 const SYSTEM_GUIDANCE_TOKENS = 150;
 
+/** Per-message token and cost breakdown used in session analysis. */
 export interface PerQueryBreakdown {
   messageID: string;
   inputTokens: number;
@@ -36,6 +37,7 @@ export interface PerQueryBreakdown {
   responseTimeMs: number;
 }
 
+/** Complete token usage analysis for a session including per-query breakdowns and RAG savings estimates. */
 export interface TokenAnalysis {
   sessionID: string;
   queryCount: number;
@@ -63,6 +65,12 @@ export interface TokenAnalysis {
   };
 }
 
+/**
+ * Analyze token usage for a single session from its JSONL event log.
+ *
+ * Reads all events, groups them by message, and computes per-query breakdowns
+ * including RAG context injection, tool calls, and response times.
+ */
 /**
  * Analyze token usage for a single session from its JSONL event log.
  *

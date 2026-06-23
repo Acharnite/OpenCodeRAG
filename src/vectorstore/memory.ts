@@ -31,14 +31,25 @@ export class InMemoryVectorStore implements VectorStore {
     this.chunks = [];
   }
 
+  /**
+   * Remove all chunks associated with a given file path.
+   * @param filePath - The file path whose chunks should be removed.
+   */
   async deleteByFilePath(filePath: string): Promise<void> {
     this.chunks = this.chunks.filter((c) => c.metadata.filePath !== filePath);
   }
 
+  /** Release any held resources. No-op for the in-memory store. */
   async close(): Promise<void> {
   }
 }
 
+/**
+ * Compute the cosine similarity between two equal-length vectors.
+ * @param a - First vector.
+ * @param b - Second vector.
+ * @returns The cosine similarity (0 if either vector has zero magnitude).
+ */
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
   let normA = 0;

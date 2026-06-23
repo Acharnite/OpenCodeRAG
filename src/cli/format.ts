@@ -14,7 +14,13 @@ import type { CliOptions } from "./types.js";
 
 // ── Color palette ───────────────────────────────────────────────
 
-/** Semantic color helpers for consistent CLI output styling. */
+/**
+ * Semantic color helpers for consistent CLI output styling.
+ *
+ * Each property wraps a {@link picocolors} function to provide semantic naming
+ * (e.g. `c.file` for file paths, `c.error` for errors) so that color choices
+ * can be changed in one place without updating every call site.
+ */
 export const c = {
   /** Bold cyan — used for section headings. */
   heading: (s: string) => pc.bold(pc.cyan(s)),

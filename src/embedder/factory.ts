@@ -6,6 +6,17 @@ import { OpenAIProvider } from "./openai.js";
 import { CohereProvider } from "./cohere.js";
 import pLimit from "p-limit";
 
+/**
+ * Create an embedding provider instance based on the application configuration.
+ *
+ * Dispatches to the correct provider class (Ollama, Cohere, or OpenAI-compatible)
+ * depending on the `provider` field in `config.embedding`. Throws if the provider
+ * is unknown or if a required API key is missing.
+ *
+ * @param config - Full application configuration, including embedding settings
+ * @returns An initialized EmbeddingProvider instance
+ * @throws If the provider is unsupported or a required apiKey is not set
+ */
 export function createEmbedder(config: RagConfig): EmbeddingProvider {
   const { provider, baseUrl, model, apiKey, proxy, timeoutMs } = config.embedding;
   const effectiveTimeoutMs = timeoutMs ?? 30000;
@@ -31,6 +42,20 @@ export function createEmbedder(config: RagConfig): EmbeddingProvider {
   throw new Error(`Unknown embedding provider: ${provider}`);
 }
 
+/**
+ * Embed a list of texts in batches with optional concurrency control.
+ *
+ * Splits the input texts into chunks of `batchSize` and embeds them sequentially
+ * (or concurrently when `concurrency > 1`). When concurrency is limited, uses
+ * `p-limit` to cap the number of in-flight requests.
+ *
+ * @param embedder - The embedding provider to use
+ * @param texts - Array of text strings to embed
+ * @param batchSize - Number of texts per batch (default 10)
+ * @param purpose - Optional hint for query vs. document embedding
+ * @param concurrency - Maximum number of concurrent batch requests (default 1)
+ * @returns A promise resolving to a flat array of embedding vectors (one per input text)
+ */
 export async function embedBatch(
   embedder: EmbeddingProvider,
   texts: string[],

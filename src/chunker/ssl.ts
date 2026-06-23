@@ -24,10 +24,21 @@ const BLOCK_END: Record<string, string> = {
 const KEYWORD_RE = /^:(\w+)\b/i;
 const PROC_RE = /^:PROCEDURE\s+(\w+)/i;
 
+/**
+ * Chunker for STARLIMS SSL script files (.ssl).
+ * Splits content by procedure, class, and top-level block boundaries using
+ * keyword-based nesting analysis (PROCEDURE, CLASS, IF, FOR, WHILE, TRY, BEGINCASE).
+ */
 export class SslChunker implements Chunker {
   readonly language = "ssl";
   readonly fileExtensions = [".ssl"];
 
+  /**
+   * Split SSL content into procedure, class, and top-level chunks by block nesting.
+   * @param filePath - Original file path (for metadata).
+   * @param content - Full content of the SSL file.
+   * @returns A list of text chunks with file-path and line-range metadata.
+   */
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
 
@@ -127,6 +138,14 @@ export class SslChunker implements Chunker {
   }
 }
 
+/**
+ * Walk backward from a given line index to find the start line of the enclosing
+ * PROCEDURE block, accounting for nested block keywords.
+ * @param lines - All lines of the file.
+ * @param fromIndex - The line index to start searching backward from.
+ * @param filePath - Original file path (unused, for metadata consistency).
+ * @returns The 1-based start line of the PROCEDURE, or null if not found.
+ */
 function findProcedureStartLine(lines: string[], fromIndex: number, filePath: string): number | null {
   let depth = 0;
   for (let i = fromIndex - 1; i >= 0; i--) {
@@ -149,4 +168,5 @@ function findProcedureStartLine(lines: string[], fromIndex: number, filePath: st
   return null;
 }
 
+/** Default singleton instance of {@link SslChunker}. */
 export const sslChunker = new SslChunker();
