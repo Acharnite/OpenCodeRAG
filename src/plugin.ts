@@ -713,6 +713,12 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           `Run \`opencode-rag update\` to install.`,
         );
       }
+
+      // Inject documentation mode system prompt if enabled
+      const docMode = getEffectiveCfg().documentationMode;
+      if (docMode?.enabled && docMode.systemPrompt) {
+        output.system.unshift(docMode.systemPrompt);
+      }
     },
     async "chat.message"(input, output) {
       try {

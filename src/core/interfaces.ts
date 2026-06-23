@@ -63,3 +63,11 @@ export interface VectorStore {
   deleteByFilePath(filePath: string): Promise<void>;
   close(): Promise<void>;
 }
+
+export interface IndexProgress {
+  setFileCount(count: number): void;
+  startFile(label: string): void;
+  finishStage(label: string): void;
+  finishFile(label: string): void;
+  failFile(label: string): void;
+}

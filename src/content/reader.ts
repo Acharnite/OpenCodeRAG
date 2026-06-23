@@ -139,7 +139,7 @@ export async function scanWorkspaceFiles(
   }
 
   const totalFiles = files.length;
-  logger?.info(`Found ${totalFiles} files to scan`);
+  logger?.debug(`Found ${totalFiles} files to scan`);
 
   const minSize = config.indexing.minFileSizeBytes ?? 0;
   const scanConcurrency = Math.min(config.indexing.concurrency * 2, 16);
@@ -204,7 +204,7 @@ export async function scanWorkspaceFiles(
     }
 
     completed++;
-    logger?.info(`  ${filePath}`);
+    logger?.debug(`  ${filePath}`);
 
     return {
       filePath,

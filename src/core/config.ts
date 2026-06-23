@@ -70,6 +70,11 @@ export interface UiConfig {
   openBrowser: boolean;
 }
 
+export interface DocumentationModeConfig {
+  enabled: boolean;
+  systemPrompt: string;
+}
+
 export interface TuiConfig {
   fileListKeybinding: string;
   chunksKeybinding: string;
@@ -102,6 +107,7 @@ export interface RagConfig {
     concurrency: number;
     embedBatchSize: number;
     embedConcurrency?: number;
+    ollamaMaxBatchSize?: number;
     descriptionConcurrency?: number;
   };
   vectorStore: {
@@ -132,6 +138,7 @@ export interface RagConfig {
   };
   description?: DescriptionConfig;
   imageDescription?: ImageDescriptionConfig;
+  documentationMode?: DocumentationModeConfig;
   mcp?: McpConfig;
   autoUpdate?: AutoUpdateConfig;
   ui?: UiConfig;
@@ -241,6 +248,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     concurrency: 8,
     embedBatchSize: 100,
     embedConcurrency: 3,
+    ollamaMaxBatchSize: 4000,
     descriptionConcurrency: 4,
   },
   vectorStore: {
@@ -297,6 +305,24 @@ export const DEFAULT_CONFIG: RagConfig = {
     retryMax: 3,
     retryBaseDelayMs: 1000,
   },
+  documentationMode: {
+    enabled: false,
+    systemPrompt:
+      "You are a code documentation expert. Your task is to document any existing, undocumented codebase.\n\n" +
+      "## Instructions\n\n" +
+      "For each file in this codebase:\n\n" +
+      "1. **Read the full file** to understand its structure and logic.\n" +
+      "2. **Document every public symbol**: classes, interfaces, types, methods, functions, properties, and exported constants.\n" +
+      "3. **Use the codebase's existing style** — look at neighboring files for conventions (JSDoc, TSDoc, etc.).\n" +
+      "4. **Write descriptions that explain *what* and *why*, not *how*** — the code already shows *how*.\n" +
+      "5. **Include `@param`** (with types and descriptions), **`@returns`**, and **`@throws`** where applicable.\n" +
+      "6. **Do NOT change any implementation code** — only add/update doc comments.\n" +
+      "7. **Do NOT add comments that restate the obvious** (e.g., `// increment i` on `i++`).\n" +
+      "8. **For private/internal symbols**, add concise inline comments only when the logic is non-obvious.\n" +
+      "9. **Preserve any existing comments** — update them only if they are incorrect.\n\n" +
+      "## Output format\n\n" +
+      "Return your changes as a list of file paths with the full new content of the comment block for each modified symbol. Do NOT output the entire file unless asked.",
+  },
   mcp: {
     enabled: true,
   },
@@ -342,7 +368,7 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
   const KNOWN_TOP_KEYS = new Set([
     "embedding", "indexing", "vectorStore", "retrieval",
     "openCode", "chunkers", "chunking", "description",
-    "imageDescription", "mcp", "autoUpdate", "ui", "tui", "logging",
+    "imageDescription", "documentationMode", "mcp", "autoUpdate", "ui", "tui", "logging",
   ]);
   const topKeys = new Set(Object.keys(config as unknown as Record<string, unknown>));
   for (const key of topKeys) {
@@ -502,6 +528,10 @@ export function loadConfig(filePath: string, validate: boolean = true): RagConfi
       ...DEFAULT_CONFIG.imageDescription,
       ...(safeObj<ImageDescriptionConfig>((parsed as { imageDescription?: unknown }).imageDescription) ?? {}),
     } as ImageDescriptionConfig,
+    documentationMode: {
+      ...DEFAULT_CONFIG.documentationMode,
+      ...(safeObj<DocumentationModeConfig>((parsed as { documentationMode?: unknown }).documentationMode) ?? {}),
+    } as DocumentationModeConfig,
     mcp: {
       ...DEFAULT_CONFIG.mcp,
       ...(safeObj<McpConfig>((parsed as { mcp?: unknown }).mcp) ?? {}),

@@ -1,0 +1,128 @@
+import type { IndexProgress } from "../core/interfaces.js";
+
+const STAGE_LABELS = ["Chunking", "Description", "Embedding"] as const;
+
+function formatBreadcrumb(stageIdx: number, failed?: boolean): string {
+  if (failed) {
+    return "Failed!";
+  }
+  const parts: string[] = [];
+  for (let i = 0; i < STAGE_LABELS.length; i++) {
+    if (i < stageIdx) {
+      parts.push(STAGE_LABELS[i]!);
+    } else if (i === stageIdx) {
+      parts.push(STAGE_LABELS[i]! + "...");
+      break;
+    } else {
+      break;
+    }
+  }
+  const breadcrumb = parts.join(" -> ");
+  if (stageIdx >= STAGE_LABELS.length) {
+    return breadcrumb + " -> Finished!";
+  }
+  return breadcrumb;
+}
+
+function logLine(label: string, maxLabelLength: number, breadcrumb: string): string {
+  return `  ${label.padEnd(maxLabelLength + 2)}${breadcrumb}`;
+}
+
+export class TerminalProgressTable implements IndexProgress {
+  private entries = new Map<string, number>();
+  private failed = new Set<string>();
+  private fileLabels: string[] = [];
+  private fileCount = 0;
+  private maxLabelLength = 0;
+  private renderedLineCount = 0;
+  private dirty = false;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private done_ = false;
+  private isTTY: boolean;
+
+  constructor(private stream: NodeJS.WriteStream) {
+    this.isTTY = stream.isTTY;
+    if (this.isTTY) {
+      this.timer = setInterval(() => this.flush(), 100);
+    }
+  }
+
+  setFileCount(n: number): void {
+    this.fileCount = n;
+    this.dirty = true;
+  }
+
+  startFile(label: string): void {
+    if (!this.entries.has(label)) {
+      this.fileLabels.push(label);
+      this.maxLabelLength = Math.max(this.maxLabelLength, label.length);
+    }
+    this.entries.set(label, 0);
+    this.dirty = true;
+  }
+
+  finishStage(label: string): void {
+    const idx = this.entries.get(label);
+    if (idx !== undefined && idx < STAGE_LABELS.length) {
+      this.entries.set(label, idx + 1);
+      this.dirty = true;
+    }
+  }
+
+  finishFile(label: string): void {
+    const idx = this.entries.get(label);
+    if (idx !== undefined) {
+      this.entries.set(label, STAGE_LABELS.length);
+      this.dirty = true;
+      if (!this.isTTY) {
+        console.log(logLine(label, this.maxLabelLength, formatBreadcrumb(STAGE_LABELS.length)));
+      }
+    }
+  }
+
+  failFile(label: string): void {
+    this.failed.add(label);
+    this.dirty = true;
+    if (!this.isTTY) {
+      console.log(logLine(label, this.maxLabelLength, formatBreadcrumb(0, true)));
+    }
+  }
+
+  done(): void {
+    this.done_ = true;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    this.flush();
+    this.stream.write("\n");
+  }
+
+  private flush(): void {
+    if (!this.dirty || this.done_) return;
+    this.dirty = false;
+    this.render();
+  }
+
+  private render(): void {
+    if (!this.isTTY) return;
+
+    const lines: string[] = [];
+    if (this.fileCount > 0) {
+      lines.push(`Indexing ${this.fileCount} files:`);
+    }
+
+    for (const label of this.fileLabels) {
+      const stageIdx = this.entries.get(label);
+      if (stageIdx === undefined) continue;
+      lines.push(logLine(label, this.maxLabelLength, formatBreadcrumb(stageIdx, this.failed.has(label))));
+    }
+
+    const clearCount = this.renderedLineCount;
+    if (clearCount > 0) {
+      this.stream.write(`\x1b[${clearCount}A\x1b[J`);
+    }
+    this.stream.write(lines.join("\n"));
+    this.renderedLineCount = lines.length;
+  }
+}

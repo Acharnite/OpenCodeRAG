@@ -94,6 +94,43 @@ function remove_from_config {
     }
 }
 
+function ensure_global_package_json {
+    $pkgPath = Join-Path $RUNTIME_DIR "package.json"
+    $pkgDir = Split-Path -Parent $pkgPath
+    if (-not (Test-Path -LiteralPath $pkgDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
+    }
+    if (Test-Path -LiteralPath $pkgPath -PathType Leaf) {
+        $content = Get-Content -LiteralPath $pkgPath -Raw | ConvertFrom-Json
+    } else {
+        $content = [PSCustomObject]@{}
+    }
+    if (-not $content.dependencies) {
+        $content | Add-Member -Name "dependencies" -Value ([PSCustomObject]@{}) -MemberType NoteProperty -Force
+    }
+    $expectedValue = "file:$($REPO_ROOT.Replace('\', '/'))"
+    $needsUpdate = $false
+    $hasPlugin = $false
+    foreach ($prop in $content.dependencies.PSObject.Properties) {
+        if ($prop.Name -eq $PLUGIN_NAME) {
+            $hasPlugin = $true
+            if ($prop.Value -ne $expectedValue) {
+                $prop.Value = $expectedValue
+                $needsUpdate = $true
+            }
+            break
+        }
+    }
+    if (-not $hasPlugin) {
+        $content.dependencies | Add-Member -Name $PLUGIN_NAME -Value $expectedValue -MemberType NoteProperty -Force
+        $needsUpdate = $true
+    }
+    if ($needsUpdate) {
+        $content | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $pkgPath -NoNewline
+        Add-Content -LiteralPath $pkgPath -Value "`n"
+    }
+}
+
 # --- preflight checks ---
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { die "npm is required but was not found in PATH" }
@@ -146,6 +183,12 @@ step "Building $PLUGIN_NAME..."
 if ($LASTEXITCODE -ne 0) { die "npm run build failed" }
 
 step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
+
+ensure_global_package_json
+Push-Location $RUNTIME_DIR
+& cmd /c "npm install --silent 2>nul"
+Pop-Location
+
 $junctionScript = Join-Path $REPO_ROOT "scripts\make-junction.cjs"
 & node $junctionScript "$RUNTIME_DIR\node_modules\$PLUGIN_NAME" "$REPO_ROOT"
 if ($LASTEXITCODE -eq 0) { ok "Runtime node_modules (junction to repo)" } else { fail_msg "Runtime node_modules"; die "Failed to link runtime node_modules" }
@@ -177,7 +220,12 @@ if ($LASTEXITCODE -eq 0) { ok "Workspace config files" } else { Write-Host "  in
 
 $workspaceNodeModules = Join-Path $REPO_ROOT ".opencode\node_modules"
 & node $junctionScript "$workspaceNodeModules\$PLUGIN_NAME" $runtimeLink
-ok "Workspace node_modules (junction to runtime)"
+if ($LASTEXITCODE -eq 0) { ok "Workspace node_modules (junction to runtime)" } else { fail_msg "Workspace node_modules"; $verified = $false }
+
+# --- validate full junction chain ---
+
+$mcpEntry = Join-Path $workspaceNodeModules "$PLUGIN_NAME\dist\cli.js"
+if (Test-Path -LiteralPath $mcpEntry) { ok "MCP entry resolves through junction chain" } else { fail_msg "MCP entry path (broken junction chain — check global package.json)"; $verified = $false }
 
 # --- done ---
 

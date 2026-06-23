@@ -51,6 +51,25 @@ remove_from_config() {
   done
 }
 
+ensure_global_package_json() {
+  local pkg="$RUNTIME_DIR/package.json"
+  mkdir -p "$(dirname "$pkg")"
+  if [[ ! -f "$pkg" ]]; then
+    printf '{"dependencies":{"%s":"file:%s"}}\n' "$PLUGIN_NAME" "$REPO_ROOT" > "$pkg"
+    return
+  fi
+  node -e "
+    const fs=require('fs');
+    const p='$pkg';
+    const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
+    if(!pkg.dependencies)pkg.dependencies={};
+    if(!pkg.dependencies['$PLUGIN_NAME']||pkg.dependencies['$PLUGIN_NAME']!=='file:$REPO_ROOT'){
+      pkg.dependencies['$PLUGIN_NAME']='file:$REPO_ROOT';
+      fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\n');
+    }
+  " 2>/dev/null || true
+}
+
 # --- preflight ---
 
 command -v npm >/dev/null 2>&1 || die "npm is required but was not found in PATH"
@@ -84,6 +103,10 @@ step "Building $PLUGIN_NAME..."
 npm run build
 
 step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
+
+ensure_global_package_json
+(cd "$RUNTIME_DIR" && npm install --silent 2>/dev/null || true)
+
 mkdir -p "$(dirname "$RUNTIME_DIR/node_modules/$PLUGIN_NAME")"
 rm -rf "$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
 ln -sfn "$REPO_ROOT" "$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
@@ -129,7 +152,17 @@ ok "Workspace config files"
 mkdir -p "$(dirname "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME")"
 rm -rf "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME"
 ln -sfn "$RUNTIME_DIR/node_modules/$PLUGIN_NAME" "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME"
-ok "Workspace node_modules (symlink to runtime)"
+if [[ -d "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME/dist" ]]; then
+  ok "Workspace node_modules (symlink to runtime)"
+else
+  fail "Workspace node_modules"; verified=false
+fi
+
+if [[ -f "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME/dist/cli.js" ]]; then
+  ok "MCP entry resolves through symlink chain"
+else
+  fail "MCP entry path (check symlink chain)"; verified=false
+fi
 
 # --- done ---
 

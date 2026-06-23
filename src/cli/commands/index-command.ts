@@ -23,6 +23,7 @@ import {
   logIndexSummary,
   formatDuration,
 } from "../format.js";
+import { TerminalProgressTable } from "../progress.js";
 import type { CliOptions } from "../types.js";
 
 /**
@@ -59,6 +60,7 @@ export function registerIndexCommand(program: Command): void {
         }
 
         logCliInfo(logFilePath, "index", `${c.label("Scanning:")} ${c.file(cwd)}`);
+        const progress = new TerminalProgressTable(process.stdout);
         const runPass = async (watchTriggered: boolean = false): Promise<void> => {
           const passStarted = Date.now();
           const stats = await runIndexPass({
@@ -69,6 +71,7 @@ export function registerIndexCommand(program: Command): void {
             embedder,
             keywordIndex,
             descriptionProvider,
+            progress,
             force: Boolean(options.force && !watchTriggered),
             logger: {
               info: (message) => {
@@ -85,6 +88,7 @@ export function registerIndexCommand(program: Command): void {
             },
           });
 
+          progress.done();
           logIndexSummary(logFilePath, stats);
           logCliInfo(
             logFilePath,

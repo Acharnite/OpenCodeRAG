@@ -91,7 +91,7 @@ export async function prepareFile(
   logger: Logger,
   deferDescriptions?: boolean,
 ): Promise<PreparedFile> {
-  const fileLabel = path.relative(cwd, file.filePath);
+  const fileLabel = path.relative(cwd, file.filePath).replace(/\\/g, "/");
 
   if (file.isEmpty) {
     return {
@@ -263,8 +263,6 @@ export async function storeFileChunks(
   if (validChunks.length > 0) {
     await store.addChunks(validChunks);
   }
-
-  logger?.info(`  ${prep.fileLabel} (${prep.chunks.length} chunks${prep.isModified ? ", modified" : ", new"})`);
 
   return {
     normalizedPath: prep.normalizedPath,

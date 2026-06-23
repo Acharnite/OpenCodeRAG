@@ -35,8 +35,6 @@ export class LLMDescriptionProvider implements DescriptionProvider {
   async generateBatchDescriptions(chunks: Chunk[], logDebug?: (msg: string) => void): Promise<Map<string, string>> {
     const concurrency = this.config.batchConcurrency ?? 3;
     const total = chunks.length;
-    console.log(`[describer] Generating descriptions for ${total} chunks (concurrency: ${concurrency})`);
-
     const result = new Map<string, string>();
     const limit = pLimit(concurrency);
     let completed = 0;
@@ -55,13 +53,13 @@ export class LLMDescriptionProvider implements DescriptionProvider {
           }
           completed++;
           if (completed % 25 === 0 || completed === total) {
-            console.log(`[describer] Progress: ${completed}/${total}`);
+            (logDebug ?? console.debug)(`[describer] Progress: ${completed}/${total}`);
           }
         }),
       ),
     );
 
-    console.log(`[describer] Descriptions generated: ${result.size}/${total}`);
+    (logDebug ?? console.debug)(`[describer] Descriptions generated: ${result.size}/${total}`);
     return result;
   }
 

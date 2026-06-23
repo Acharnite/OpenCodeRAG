@@ -9,12 +9,13 @@ import type {
   Chunk,
   DescriptionProvider,
   EmbeddingProvider,
+  IndexProgress,
   KeywordIndex,
   VectorStore,
 } from "../core/interfaces.js";
 import { embedBatch } from "../embedder/factory.js";
 import { createIndexStats, type IndexRunStats, type IndexStatusSummary } from "./stats.js";
-import { prepareFile, buildTextsToEmbed, type WorkerResult, type PreparedFile } from "./worker.js";
+import { prepareFile, buildTextsToEmbed, storeFileChunks, type WorkerResult, type PreparedFile } from "./worker.js";
 import { getCurrentCommit, getChangedFilesSince, getUntrackedFiles, getRepoRoot } from "./git-diff.js";
 
 export type { WatchPassScheduler } from "./watch.js";
@@ -30,6 +31,7 @@ export interface RunIndexPassOptions {
   logger?: Partial<Logger>;
   keywordIndex?: KeywordIndex;
   descriptionProvider?: DescriptionProvider;
+  progress?: IndexProgress;
 }
 
 interface Logger {
@@ -249,23 +251,25 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     }
   }
   if (stats.deletedFiles > 0) {
-    logger.info(`Removed ${stats.deletedFiles} deleted files from index.`);
+    logger.debug(`Removed ${stats.deletedFiles} deleted files from index.`);
   }
-  logger.info(`Processing ${workspaceFiles.length} files (${newCount} new, ${modifiedCount} modified, ${unchangedCount} unchanged)...`);
+  logger.debug(`Processing ${workspaceFiles.length} files (${newCount} new, ${modifiedCount} modified, ${unchangedCount} unchanged)...`);
 
   // ── Phase 1: prepare all files (chunk + keyword, defer descriptions if provider present) ──
   const limit = pLimit(options.config.indexing.concurrency);
-  let completed = 0;
-  let started = 0;
-  const total = workspaceFiles.length;
   const deferDescriptions = !!options.descriptionProvider;
 
   const prepared = await Promise.all(
     workspaceFiles.map((file) =>
       limit(async () => {
-        const fileLabel = file.normalizedPath;
-        started++;
-        logger.info(`  Preparing file: ${started} - ${fileLabel}`);
+        const fileLabel = path.relative(options.cwd, file.normalizedPath).replace(/\\/g, "/");
+
+        const isActive = !file.isEmpty && !file.isTooSmall &&
+          (!manifest.files[file.normalizedPath] || manifest.files[file.normalizedPath]!.hash !== file.hash);
+        if (isActive) {
+          options.progress?.startFile(fileLabel);
+        }
+
         const prep = await prepareFile(
           file,
           options.cwd,
@@ -276,7 +280,11 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
           logger,
           deferDescriptions,
         );
-        completed++;
+
+        if (prep.earlyResult && isActive) {
+          options.progress?.finishFile(fileLabel);
+        }
+
         return prep;
       }),
     ),
@@ -295,8 +303,12 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
         }
       }
 
+      // Advance progress to Description stage before descriptions start
+      for (const prep of deferredPreps) {
+        options.progress?.finishStage(prep.fileLabel);
+      }
+
       if (allChunks.length > 0) {
-        logger.info(`  Generating descriptions for ${allChunks.length} chunks...`);
         try {
           const batchResult = await options.descriptionProvider!.generateBatchDescriptions(allChunks, (msg: string) => logger.debug(msg));
           for (const chunk of allChunks) {
@@ -305,7 +317,6 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
               chunk.description = desc;
             }
           }
-          logger.info(`  Descriptions generated for ${batchResult.size} chunks`);
         } catch (err) {
           logger.warn(`  Global description generation failed: ${(err as Error).message}`);
           for (const prep of deferredPreps) {
@@ -347,102 +358,63 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     ),
   );
 
-  // ── Phase 2: global embedding batch ──
-  const allTextToEmbed: string[] = [];
-  const textPrepIndex: number[] = [];
+  // ── Phase 2+3: per-file embed + store (in parallel) ──
+  const isOllama = options.embedder.name === "ollama";
+  const ollamaMaxBatch = options.config.indexing.ollamaMaxBatchSize ?? 4000;
+  const defaultBatchSize = options.config.indexing.embedBatchSize;
+  const defaultConcurrency = options.config.indexing.embedConcurrency ?? 1;
 
-  for (let i = 0; i < prepared.length; i++) {
-    const prep = prepared[i]!;
-    if (prep.chunks && prep.textToEmbed && prep.textToEmbed.length > 0) {
-      for (const text of prep.textToEmbed) {
-        allTextToEmbed.push(text);
-        textPrepIndex.push(i);
-      }
-    }
-  }
+  const embedStoreLimit = pLimit(options.config.indexing.concurrency);
+  const workerResults = await Promise.all(
+    prepared.map((prep) =>
+      embedStoreLimit(async () => {
+        if (prep.earlyResult) return prep.earlyResult;
+        if (!prep.chunks || !prep.textToEmbed || prep.textToEmbed.length === 0) {
+          options.progress?.finishFile(prep.fileLabel);
+          return {
+            normalizedPath: prep.normalizedPath, hash: prep.hash, chunkCount: 0,
+            fileLabel: prep.fileLabel,
+            isNew: false, isModified: false, isUnchanged: false, isEmpty: false,
+            isTooSmall: false, isRemoved: true, hadChunks: false,
+            descriptionFailed: prep.descriptionFailed,
+          };
+        }
 
-  let allEmbeddings: number[][] = [];
-  if (allTextToEmbed.length > 0) {
-    const embedConcurrency = options.config.indexing.embedConcurrency ?? 1;
-    logger.info(`  Embedding ${allTextToEmbed.length} chunks in global batch (concurrency: ${embedConcurrency})...`);
-    allEmbeddings = await embedBatch(
-      options.embedder,
-      allTextToEmbed,
-      options.config.indexing.embedBatchSize,
-      "document",
-      embedConcurrency,
-    );
-    logger.debug(`  Embedding batch complete: ${allEmbeddings.length} vectors`);
-  }
+        // Plan A: single batch for Ollama
+        const batchSize = isOllama
+          ? Math.min(prep.textToEmbed.length, ollamaMaxBatch)
+          : defaultBatchSize;
+        const concurrency = isOllama ? 1 : defaultConcurrency;
 
-  // ── Distribute embeddings back to prepared files ──
-  const embedByPrep = new Map<number, number[][]>();
-  for (let i = 0; i < textPrepIndex.length; i++) {
-    const prepIdx = textPrepIndex[i]!;
-    const emb = allEmbeddings[i];
-    if (!embedByPrep.has(prepIdx)) {
-      embedByPrep.set(prepIdx, []);
-    }
-    if (emb) {
-      embedByPrep.get(prepIdx)!.push(emb);
-    }
-  }
+        options.progress?.finishStage(prep.fileLabel);
 
-  // ── Phase 3: store all files with their embeddings (batched) ──
-  logger.debug(`Phase 3: storing chunks for ${prepared.length} files...`);
+        let embeddings: number[][];
+        try {
+          embeddings = await embedBatch(
+            options.embedder,
+            prep.textToEmbed,
+            batchSize,
+            "document",
+            concurrency,
+          );
+        } catch (err) {
+          logger.warn(`  ${prep.fileLabel} (embedding failed: ${(err as Error).message})`);
+          options.progress?.failFile(prep.fileLabel);
+          return {
+            normalizedPath: prep.normalizedPath, hash: prep.hash, chunkCount: 0,
+            fileLabel: prep.fileLabel,
+            isNew: false, isModified: false, isUnchanged: false, isEmpty: false,
+            isTooSmall: false, isRemoved: true, hadChunks: false,
+            descriptionFailed: prep.descriptionFailed,
+          };
+        }
 
-  const allValidChunks: Chunk[] = [];
-  const workerResults: WorkerResult[] = prepared.map((prep, idx) => {
-    if (prep.earlyResult) {
-      return prep.earlyResult;
-    }
-    if (!prep.chunks || !prep.textToEmbed) {
-      return {
-        normalizedPath: prep.normalizedPath, hash: prep.hash, chunkCount: 0, fileLabel: prep.fileLabel,
-        isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: false, isRemoved: true, hadChunks: false,
-        descriptionFailed: prep.descriptionFailed,
-      };
-    }
-
-    const embeddings = embedByPrep.get(idx) ?? [];
-    for (let i = 0; i < prep.chunks.length; i++) {
-      const emb = embeddings[i];
-      if (Array.isArray(emb) && emb.length > 0 && typeof emb[0] === "number") {
-        prep.chunks[i]!.embedding = emb as number[];
-      } else {
-        prep.chunks[i]!.embedding = undefined;
-      }
-    }
-
-    const validChunks = prep.chunks.filter((c) => c.embedding && c.embedding.length > 0);
-    allValidChunks.push(...validChunks);
-
-    logger.info(`  ${prep.fileLabel} (${prep.chunks.length} chunks${prep.isModified ? ", modified" : ", new"})`);
-
-    return {
-      normalizedPath: prep.normalizedPath,
-      hash: prep.hash,
-      chunkCount: prep.chunks.length,
-      fileLabel: prep.fileLabel,
-      isNew: !prep.isModified,
-      isModified: prep.isModified,
-      isUnchanged: false,
-      isEmpty: false,
-      isTooSmall: false,
-      isRemoved: false,
-      hadChunks: prep.chunks.length > 0,
-      descriptionFailed: prep.descriptionFailed,
-    };
-  });
-
-  if (allValidChunks.length > 0) {
-    const STORE_BATCH = 1000;
-    for (let i = 0; i < allValidChunks.length; i += STORE_BATCH) {
-      const batch = allValidChunks.slice(i, i + STORE_BATCH);
-      await options.store.addChunks(batch);
-    }
-    logger.debug(`  Stored ${allValidChunks.length} chunks in batched writes`);
-  }
+        const result = await storeFileChunks(prep, embeddings, options.store, logger);
+        options.progress?.finishFile(prep.fileLabel);
+        return result;
+      }),
+    ),
+  );
 
   // ── Aggregate stats and update manifest ──
   aggregateStats(stats, workerResults, manifest, workspaceFiles);
