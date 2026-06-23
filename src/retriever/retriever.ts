@@ -97,9 +97,16 @@ export async function retrieve(
     const kw = options.keywordWeight ?? 0.4;
     const combinedResults: SearchResult[] = [...combined.values()]
       .map((entry) => {
+        const hasVector = entry.vScore > 0;
+        const hasKeyword = entry.kScore > 0;
+        const score = hasVector && hasKeyword
+          ? (1 - kw) * entry.vScore + kw * entry.kScore
+          : hasVector
+            ? entry.vScore
+            : entry.kScore;
         const result: SearchResult = {
           chunk: entry.chunk,
-          score: (1 - kw) * entry.vScore + kw * entry.kScore,
+          score,
         };
 
         if (options.explain) {

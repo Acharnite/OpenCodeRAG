@@ -181,8 +181,9 @@ describe("retrieve", () => {
       ]);
       const results = await retrieve("apple banana", embedder, store, { keywordIndex: ki, keywordWeight: 0.4, minScore: 0 });
       assert.equal(results.length, 2);
-      // Vector-only chunk (a) ranks highest because it has vScore 0.8, keyword-only (b) has kScore only
-      assert.equal(results[0]!.chunk.id, "a");
+      // Keyword-only chunk (b) ranks highest because its exact keyword match gives kScore 1.0
+      // vs vector-only (a) at vScore 0.8 (fix: single-source results are no longer artificially capped)
+      assert.equal(results[0]!.chunk.id, "b");
     });
 
     it("respects keywordWeight parameter", async () => {
