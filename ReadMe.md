@@ -38,20 +38,19 @@ opencode-rag query "authentication middleware"
 | **MCP server** | `opencode-rag mcp` - stdio-based MCP server exposing `search_semantic`, `get_file_skeleton`, `find_usages`, and `describe_image` tools for any MCP-compatible client |
 | **AST chunking** | 26 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, Bash, PHP, PowerShell, SQL, JSON, HTML, CSS, XML (including SVG), YAML, TOML, INI, Dockerfile, Markdown, LaTeX, Razor) |
 | **Document support** | Markdown, LaTeX, PDF, DOCX, DOC, Excel |
-| **Image indexing** | Describe images via vision LLMs (Ollama, OpenAI, Anthropic, Gemini) and store descriptions as searchable vector chunks |
+| **Image indexing** | Describe images via vision LLM and store descriptions as searchable vector chunks |
 | **Hybrid search** | Vector similarity + TF×IDF keyword fusion |
 | **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings, Ctrl+Enter to add RAG context, MCP registration on `init` |
 | **Incremental indexing** | File-hash manifest, background watcher, auto-rebuild on corruption |
 | **Privacy-first** | All processing stays local (when using Ollama) |
-| **CLI** | `index`, `query`, `status`, `list`, `show`, `dump`, `clear`, `init`, `ui`, `mcp` |
-| **Programmatic API** | TypeScript `search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()`, `createBackgroundIndexer()`, `getIndexStatusSummary()` |
+| **CLI Tools** | `index`, `query`, `status`, `list`, `show`, `dump`, `clear`, `init`, `ui`, `mcp` |
 | **Proxy-aware** | Corporate proxy support with raw-socket localhost bypass |
-| **OpenAI / Cohere** | Alternate embedding providers with API key auto-resolution |
+| **OpenAI / Anthropic / Cohere** | Use alternate embedding providers with API key auto-resolution |
 | **Evaluation** | Session-level token tracking, RAG-on vs RAG-off comparison, tiktoken BPE counting |
 
 ## Web UI
 
-A browser-based dashboard for exploring the indexed vector database - browse and inspect chunks and evaluate the OpenCode sessions in terms of retrieved chunks, relevance scores, and more.
+A browser-based dashboard for exploring the indexed vector database - browse and inspect chunks and evaluate the OpenCode sessions in terms of retrieved chunks, consumed tokens and more.
 
 ![OpenCodeRAG Web UI](doc/assets/eval.png)
 
@@ -80,7 +79,7 @@ Launch with `opencode-rag ui`. See [Web UI documentation](doc/webui.md) for deta
 OpenCodeRAG can index image files (PNG, JPEG, WebP, etc.) by sending them to a vision-capable LLM and storing the generated text descriptions as searchable vector chunks. This makes visual assets discoverable via natural language queries (e.g., "login screen screenshot", "architecture diagram").
 
 **Supported providers:** Ollama, OpenAI, Anthropic, Google Gemini compatible providers.
-**Disabled by default** — enable in `opencode-rag.json` to opt in.
+**Disabled by default** — enable in `opencode-rag.json` to opt in (recommended for dedicated GPUs).
 
 ## MCP Server
 
