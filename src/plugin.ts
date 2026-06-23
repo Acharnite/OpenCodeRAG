@@ -29,21 +29,36 @@ import { fileURLToPath } from "node:url";
 import { spawn, execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
+/** Cache of loaded RAG configurations keyed by workspace directory. */
 const configCache = new Map<string, RagConfig>();
+/** Active background indexer instances keyed by workspace directory. */
 const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
+/** Active MCP server instances keyed by workspace directory. */
 const mcpServers = new Map<string, { close: () => Promise<void> }>();
+/** Pending update notifications keyed by workspace directory. */
 const pendingUpdateInfo = new Map<string, UpdateInfo>();
 
+/** Name of the semantic search tool as exposed to the LLM. */
 const CONTEXT_TOOL_NAME = "search_semantic";
+/** Marker string injected into context output to identify RAG-sourced content. */
 const CONTEXT_MARKER = "search_semantic retrieved context";
 
+/** Hints that refine a semantic retrieval query. */
 type RetrievalQueryHints = {
+  /** The natural language search query. */
   query: string;
+  /** Optional directory/file path patterns to narrow results. */
   pathHints?: string[];
+  /** Optional language identifiers to filter results. */
   languageHints?: string[];
+  /** Maximum number of results to return. */
   topK?: number;
 };
 
+/**
+ * Append a verbose log entry with an optional structured payload.
+ * The payload is serialised using formatLogPayload for readability.
+ */
 function appendVerboseLog(
   logFilePath: string,
   scope: string,
@@ -59,6 +74,10 @@ function appendVerboseLog(
   }, logLevel);
 }
 
+/**
+ * Format an arbitrary value as a human-readable indented string
+ * for debug logging. Handles null, primitives, arrays, and nested objects.
+ */
 function formatLogPayload(value: unknown, indent = 0): string {
   const prefix = "  ".repeat(indent);
 
@@ -130,6 +149,10 @@ function formatLogPayload(value: unknown, indent = 0): string {
   return `${prefix}${String(value)}`;
 }
 
+/**
+ * Indent every line of a multi-line string by the given number of
+ * two-space indentation levels.
+ */
 function indentMultiline(text: string, indent: number): string {
   const prefix = "  ".repeat(indent);
   return text
@@ -138,6 +161,11 @@ function indentMultiline(text: string, indent: number): string {
     .join("\n");
 }
 
+/**
+ * Load the RAG configuration for a directory, searching in order:
+ * opencode-rag.json, .opencode/opencode-rag.json, .opencode/rag.json.
+ * Caches the result per directory.
+ */
 async function getConfig(directory: string): Promise<RagConfig> {
   const cached = configCache.get(directory);
   if (cached) return cached;
@@ -166,6 +194,10 @@ async function getConfig(directory: string): Promise<RagConfig> {
   return DEFAULT_CONFIG;
 }
 
+/**
+ * Format retrieval results into a Markdown context block for LLM injection.
+ * Includes per-chunk file paths, line numbers, relevance scores, and descriptions.
+ */
 function formatContext(
   results: Awaited<ReturnType<typeof retrieve>>
 ): string {
@@ -194,6 +226,10 @@ function formatContext(
   return parts.join("\n");
 }
 
+/**
+ * Format auto-injected context results, trimming to a token budget.
+ * Results are sorted by relevance and included up to maxChunks.
+ */
 function formatAutoInjectContext(
   results: SearchResult[],
   worktree: string,
@@ -241,6 +277,10 @@ function formatAutoInjectContext(
   return formatted;
 }
 
+/**
+ * Build the effective query string from a RetrievalQueryHints object,
+ * appending path and language hints as additional context.
+ */
 function buildRetrievalQuery(hints: RetrievalQueryHints): string {
   const parts: string[] = [hints.query.trim()];
 
@@ -257,6 +297,10 @@ function buildRetrievalQuery(hints: RetrievalQueryHints): string {
   return parts.join("\n").trim();
 }
 
+/**
+ * Remove duplicate results based on file path + line range + content.
+ * Keeps the first occurrence of each unique result.
+ */
 function dedupeResults(results: SearchResult[]): SearchResult[] {
   const seen = new Set<string>();
   const deduped: SearchResult[] = [];
@@ -278,6 +322,10 @@ function dedupeResults(results: SearchResult[]): SearchResult[] {
   return deduped;
 }
 
+/**
+ * Perform a retrieval query against the vector store with the given parameters.
+ * Returns an empty array for blank queries.
+ */
 async function retrieveContext(
   query: string,
   embedder: EmbeddingProvider,
@@ -294,6 +342,10 @@ async function retrieveContext(
   return retrieveFn(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight, queryPrefix, explain });
 }
 
+/**
+ * Load results from one or two queries (primary + optional extra), deduplicate,
+ * sort by descending score, and limit to maxContextChunks from config.
+ */
 async function loadRetrievedResults(
   query: string,
   embedder: EmbeddingProvider,
@@ -318,31 +370,49 @@ async function loadRetrievedResults(
     .slice(0, cfg.openCode.maxContextChunks);
 }
 
+/** Internal dependencies that can be overridden for testing. */
 type RagPluginDependencies = {
   createEmbedder: typeof createEmbedder;
   createStore: (storePath: string, dimension: number, config: RagConfig) => VectorStore;
   retrieve: typeof retrieve;
 };
 
+/** Default set of plugin dependencies using the real implementations. */
 const defaultDependencies: RagPluginDependencies = {
   createEmbedder,
   createStore: (storePath, dimension, config) => createVectorStore(config, storePath, dimension),
   retrieve,
 };
 
+/** Options for constructing the RAG hooks object. */
 type CreateRagHooksOptions = {
+  /** Loaded RAG configuration. */
   cfg: RagConfig;
+  /** Absolute path to the vector store directory. */
   storePath: string;
+  /** Path to the debug log file. */
   logFilePath: string;
+  /** Log level for controlling verbosity. */
   logLevel?: string;
+  /** The workspace root directory. */
   worktree: string;
+  /** Optional dependency overrides (for testing). */
   dependencies?: Partial<RagPluginDependencies>;
+  /** Pre-created vector store instance. */
   store?: VectorStore;
+  /** Pre-created embedding provider instance. */
   embedder?: EmbeddingProvider;
+  /** Pre-loaded keyword index for hybrid search. */
   keywordIndex?: KeywordIndex;
+  /** Pre-created description provider for chunk descriptions. */
   descriptionProvider?: DescriptionProvider;
 };
 
+/**
+ * Format a list of relevant files (aggregated from chunks) for display.
+ * Groups chunks by file path and sorts by maximum relevance score.
+ * Includes an AGENTS.md-style tool usage reminder at the end.
+ */
 function formatFileList(results: SearchResult[], worktree: string, maxFiles = 10): string {
   const fileMap = new Map<string, { lines: number[]; scores: number[] }>();
 
@@ -386,6 +456,10 @@ function formatFileList(results: SearchResult[], worktree: string, maxFiles = 10
  *
  * Attempts to find the user's message content from output.message first
  * (via parts/text), then falls back to input fields.
+ *
+ * @param input - The incoming hook input containing session and message metadata.
+ * @param output - The output object potentially containing the user's message parts.
+ * @returns The extracted user message text, or an empty string if not found.
  */
 function extractUserMessageText(
   input: { sessionID: string; agent?: string; model?: { providerID: string; modelID: string }; messageID?: string; variant?: string },
@@ -413,6 +487,19 @@ function extractUserMessageText(
   return "";
 }
 
+/**
+ * Create the RAG plugin hook implementations for an OpenCode workspace.
+ *
+ * Wires together the vector store, embedder, keyword index, and description
+ * provider into OpenCode's hook system. Handles:
+ * - Automatic context injection on chat messages
+ * - Documentation mode auto-kickoff
+ * - Tool registration (semantic search, file skeleton, find usages, describe image)
+ * - Session-level caching and evaluation logging
+ *
+ * @param options - Configuration and dependencies for building the hooks.
+ * @returns A complete set of OpenCode hooks for RAG functionality.
+ */
 export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   const dependencies: RagPluginDependencies = {
     ...defaultDependencies,
@@ -974,6 +1061,10 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   };
 }
 
+/**
+ * Load the persistent keyword index from disk, falling back to an empty
+ * index if loading fails.
+ */
 async function loadKeywordIndex(storePath: string, logFilePath: string, logLevel?: string): Promise<KeywordIndex> {
   const { KeywordIndex } = await import("./retriever/keyword-index.js");
   try {
@@ -997,6 +1088,10 @@ async function loadKeywordIndex(storePath: string, logFilePath: string, logLevel
 
 let _cachedNodeExecutable: string | null | undefined;
 
+/**
+ * Resolve the path to the Node.js executable, caching the result.
+ * Checks `process.execPath` first, then falls back to `where`/`which`.
+ */
 function resolveNodeExecutable(): string | null {
   if (_cachedNodeExecutable !== undefined) return _cachedNodeExecutable;
 
@@ -1025,6 +1120,10 @@ function resolveNodeExecutable(): string | null {
   return _cachedNodeExecutable;
 }
 
+/**
+ * Resolve the MCP CLI entry point script path.
+ * Checks `dist/cli.js` first, then falls back to `src/cli.ts`.
+ */
 function resolveMcpCliEntry(): string | null {
   const selfDir = path.dirname(fileURLToPath(import.meta.url));
   const packageRoot = path.resolve(selfDir, "..");
@@ -1038,6 +1137,11 @@ function resolveMcpCliEntry(): string | null {
   return null;
 }
 
+/**
+ * Start an MCP server process for the given workspace directory.
+ * Spawns the CLI in MCP mode as a child process and wires stdout/stderr
+ * to the debug log. Returns a handle for graceful shutdown.
+ */
 function startMcpServerProcess(
   cwd: string,
   logFilePath: string,
@@ -1118,6 +1222,18 @@ function startMcpServerProcess(
   };
 }
 
+/**
+ * OpenCodeRAG plugin factory — invoked by OpenCode's plugin system for each workspace.
+ *
+ * Bootstraps the full RAG pipeline: loads config, probes vector dimensions,
+ * creates embedder/store, starts the background auto-indexer (if enabled),
+ * launches the MCP server (if enabled), checks for updates, and returns
+ * the RAG hooks that power tools and automatic context injection.
+ *
+ * @param input - Plugin input containing the workspace directory and runtime context.
+ * @param _options - Optional additional plugin options (unused).
+ * @returns A complete set of OpenCode hooks for RAG functionality.
+ */
 export const ragPlugin: Plugin = async (
   input: PluginInput,
   _options?: Record<string, unknown>

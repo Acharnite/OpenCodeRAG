@@ -1,8 +1,11 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+/** Tracks which files have been documented during a documentation mode session. */
 export interface DocProgress {
+  /** List of file paths that have been documented. */
   documented: string[];
+  /** Unix timestamp of the last progress update. */
   lastUpdated: number;
 }
 
@@ -12,6 +15,7 @@ function progressPath(storePath: string): string {
   return join(storePath, PROGRESS_FILE);
 }
 
+/** Load documentation progress from the store directory. Returns empty progress if none exists. */
 export function loadDocProgress(storePath: string): DocProgress {
   const filePath = progressPath(storePath);
   try {
@@ -23,6 +27,7 @@ export function loadDocProgress(storePath: string): DocProgress {
   }
 }
 
+/** Persist documentation progress to disk. Silently ignores write errors. */
 export function saveDocProgress(storePath: string, progress: DocProgress): void {
   const filePath = progressPath(storePath);
   try {
@@ -34,6 +39,7 @@ export function saveDocProgress(storePath: string, progress: DocProgress): void 
   }
 }
 
+/** Record a file as documented in the progress tracker. No-op if already recorded. */
 export function markFileDocumented(storePath: string, filePath: string): void {
   const progress = loadDocProgress(storePath);
   if (!progress.documented.includes(filePath)) {

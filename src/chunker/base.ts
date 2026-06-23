@@ -28,6 +28,7 @@ export abstract class TreeSitterChunker implements Chunker {
         return nodes.map((node: AstNode) => ({
           id: uuid(),
           content: node.text,
+          description: node.leadingDoc,
           metadata: {
             filePath,
             startLine: node.startLine,
@@ -68,6 +69,7 @@ export abstract class TreeSitterChunker implements Chunker {
     return nodes.map((node: AstNode) => ({
       id: uuid(),
       content: node.text,
+      description: node.leadingDoc,
       metadata: {
         filePath,
         startLine: node.startLine,

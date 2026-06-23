@@ -3,155 +3,271 @@ import path from "node:path";
 import { env } from "node:process";
 import type { EmbeddingProvider, Chunker, VectorStore } from "./interfaces.js";
 
+/** Registration of a custom chunker module for a set of file extensions. */
 export interface ChunkerConfig {
+  /** Module path or name exporting a Chunker implementation. */
   module: string;
+  /** File extensions this chunker should handle. */
   extensions: string[];
 }
 
+/** HTTP proxy configuration for outbound API calls. */
 export interface ProxyConfig {
+  /** Proxy URL (e.g. "http://proxy:8080"). */
   url?: string;
+  /** Optional proxy authentication username. */
   username?: string;
+  /** Optional proxy authentication password. */
   password?: string;
+  /** Comma-separated list of hosts that bypass the proxy. */
   noProxy?: string;
 }
 
+/** Configuration for automatic background re-indexing on file changes. */
 export interface AutoIndexConfig {
+  /** Whether auto-indexing is enabled. */
   enabled: boolean;
+  /** Debounce delay in ms after a file change before triggering an index pass. */
   debounceMs: number;
+  /** Periodic full index interval in ms. */
   intervalMs: number;
 }
 
+/** Behavior when a read tool query returns no results. */
 export type ReadNoResultsBehavior = "hint" | "empty" | "error";
 
+/** Format for auto-injected context content. */
 export type AutoInjectContentType = "chunks" | "file_paths";
 
+/** Configuration for automatically injecting relevant context into OpenCode chat messages. */
 export interface AutoInjectConfig {
+  /** Whether auto-injection is enabled. */
   enabled: boolean;
+  /** Minimum relevance score for a chunk to be auto-injected. */
   minScore: number;
+  /** Maximum number of chunks to inject per message. */
   maxChunks: number;
+  /** Maximum total tokens for auto-injected content. */
   maxTokens: number;
+  /** Whether to inject full chunk content or just file paths. */
   contentType: AutoInjectContentType;
 }
 
+/** Configuration for LLM-powered chunk description generation. */
 export interface DescriptionConfig {
+  /** Whether description generation is enabled. */
   enabled: boolean;
+  /** LLM provider name ("ollama" or "openai"). */
   provider: string;
+  /** Base URL of the LLM API. */
   baseUrl: string;
+  /** Model name for descriptions. */
   model: string;
+  /** API key for providers that require authentication. */
   apiKey?: string;
+  /** Request timeout in milliseconds. */
   timeoutMs?: number;
+  /** Proxy configuration for API calls. */
   proxy?: ProxyConfig;
+  /** System prompt instructing the LLM how to describe code. */
   systemPrompt: string;
+  /** Maximum chunks per batch request. */
   batchMaxChunks?: number;
+  /** Timeout per batch request in milliseconds. */
   batchTimeoutMs?: number;
+  /** Number of concurrent batch requests. */
   batchConcurrency?: number;
+  /** Maximum retry attempts on failure. */
   retryMax?: number;
+  /** Base delay in ms between retries (exponential backoff). */
   retryBaseDelayMs?: number;
+  /** Whether to include chain-of-thought tokens in the response. */
   think?: boolean;
+  /** Context window size for the LLM. */
   numCtx?: number;
 }
 
+/** Configuration for vision-model-based image description generation. */
 export interface ImageDescriptionConfig {
+  /** Whether image description is enabled. */
   enabled: boolean;
+  /** Vision provider name. */
   provider: string;
+  /** Vision model name. */
   model: string;
+  /** Base URL of the vision API. */
   baseUrl: string;
+  /** API key for providers that require authentication. */
   apiKey?: string;
+  /** Request timeout in milliseconds. */
   timeoutMs: number;
+  /** Prompt template sent to the vision model. */
   prompt: string;
+  /** Whether to include chain-of-thought tokens. */
   think?: boolean;
+  /** Context window size. */
   numCtx?: number;
+  /** Proxy configuration. */
   proxy?: ProxyConfig;
+  /** Maximum image dimension (pixels) — larger images are resized before sending. */
   resizeMaxDimension?: number;
 }
 
+/** Configuration for the built-in web dashboard UI. */
 export interface UiConfig {
+  /** HTTP port for the UI server. */
   port: number;
+  /** Whether to automatically open the browser on startup. */
   openBrowser: boolean;
 }
 
+/** Configuration for the automated documentation mode that adds JSDoc/TSDoc to source files. */
 export interface DocumentationModeConfig {
+  /** Whether documentation mode is available. */
   enabled: boolean;
+  /** Whether to start documentation mode automatically on launch. */
   autoStart: boolean;
+  /** Number of files to process per batch. */
   batchSize: number;
+  /** System prompt for the documentation agent. */
   systemPrompt: string;
 }
 
+/** Configuration for the terminal UI (TUI) keybindings. */
 export interface TuiConfig {
+  /** Keybinding to toggle the file list panel. */
   fileListKeybinding: string;
+  /** Keybinding to toggle the chunk viewer panel. */
   chunksKeybinding: string;
 }
 
+/** Configuration for MCP (Model Context Protocol) server integration. */
 export interface McpConfig {
+  /** Whether the MCP server is enabled. */
   enabled: boolean;
 }
 
+/** Configuration for automatic self-updates. */
 export interface AutoUpdateConfig {
+  /** Whether auto-update checking is enabled. */
   enabled: boolean;
 }
 
+/** Complete configuration for the OpenCodeRAG pipeline. */
 export interface RagConfig {
+  /** Embedding provider settings (model, endpoint, prefixes). */
   embedding: {
+    /** Provider name: "ollama", "openai", or "cohere". */
     provider: string;
+    /** Base URL of the embedding API. */
     baseUrl: string;
+    /** API key for authenticated providers. */
     apiKey?: string;
+    /** Model name for embeddings. */
     model: string;
+    /** Request timeout in milliseconds. */
     timeoutMs?: number;
+    /** Proxy configuration. */
     proxy?: ProxyConfig;
+    /** Prefix prepended to documents before embedding (e.g. "search_document:"). */
     documentPrefix?: string;
+    /** Prefix prepended to queries before embedding (e.g. "search_query:"). */
     queryPrefix?: string;
   };
+  /** Indexing pipeline controls: what to index, concurrency, batch sizes. */
   indexing: {
+    /** File extensions to include in indexing. */
     includeExtensions: string[];
+    /** Directory name patterns to exclude. */
     excludeDirs: string[];
+    /** Number of overlapping lines between adjacent chunks. */
     chunkOverlap: number;
+    /** Minimum file size in bytes to index (0 = no minimum). */
     minFileSizeBytes?: number;
+    /** Maximum concurrent file processing tasks. */
     concurrency: number;
+    /** Number of texts sent per embedding batch. */
     embedBatchSize: number;
+    /** Maximum concurrent embedding batch requests. */
     embedConcurrency?: number;
+    /** Maximum batch size for Ollama's /embed endpoint. */
     ollamaMaxBatchSize?: number;
+    /** Maximum concurrent description generation requests. */
     descriptionConcurrency?: number;
   };
+  /** Vector storage backend configuration. */
   vectorStore: {
+    /** Filesystem path or memory:// URI for the vector database. */
     path: string;
+    /** Backend provider ("lancedb" or "memory"). */
     provider?: "lancedb" | "memory";
   };
+  /** Retrieval settings for query-time search. */
   retrieval: {
+    /** Default number of results to return. */
     topK: number;
+    /** Minimum relevance score threshold (0-1). */
     minScore: number;
+    /** Hybrid search (vector + keyword) configuration. */
     hybridSearch?: {
+      /** Whether hybrid search is enabled. */
       enabled: boolean;
+      /** Weight for keyword scores in fusion (0 = vector only, 1 = keyword only). */
       keywordWeight: number;
     };
   };
+  /** OpenCode plugin integration settings. */
   openCode: {
+    /** Whether the OpenCode plugin is active. */
     enabled: boolean;
+    /** Maximum chunks to include in context tool responses. */
     maxContextChunks: number;
+    /** Auto-indexing behavior on file changes. */
     autoIndex?: AutoIndexConfig;
+    /** Auto-injection of relevant chunks into chat messages. */
     autoInject?: AutoInjectConfig;
+    /** Whether to override the built-in read tool with RAG-enhanced version. */
     readOverride?: boolean;
+    /** Maximum characters returned by the overridden read tool. */
     maxReadOutputChars?: number;
+    /** Behavior when read returns no results. */
     readNoResultsBehavior?: ReadNoResultsBehavior;
+    /** Maximum related files shown when read results are empty. */
     readRelatedFilesMax?: number;
   };
+  /** Custom chunker module registrations. */
   chunkers?: ChunkerConfig[];
+  /** Per-language chunking overrides (e.g. node type filters). */
   chunking?: {
+    /** Map of language to allowed/blocked AST node type patterns. */
     nodeTypes?: Record<string, string[]>;
   };
+  /** LLM-based chunk description generation config. */
   description?: DescriptionConfig;
+  /** Vision-model-based image description config. */
   imageDescription?: ImageDescriptionConfig;
+  /** Automated documentation mode config. */
   documentationMode?: DocumentationModeConfig;
+  /** MCP server integration config. */
   mcp?: McpConfig;
+  /** Auto-update checking config. */
   autoUpdate?: AutoUpdateConfig;
+  /** Web dashboard UI config. */
   ui?: UiConfig;
+  /** Terminal UI keybinding config. */
   tui: TuiConfig;
+  /** Logging config. */
   logging: LoggingConfig;
 }
 
+/** Severity levels for logging output. */
 export type LogLevel = "debug" | "info" | "error" | "none";
 
+/** Configuration for structured file logging. */
 export interface LoggingConfig {
+  /** Minimum severity level to record. */
   level: LogLevel;
+  /** Path to the log file. */
   logFilePath: string;
 }
 
@@ -347,6 +463,7 @@ export const DEFAULT_CONFIG: RagConfig = {
   },
 };
 
+/** Resolve effective logging config from a config object, falling back to defaults and env vars. */
 export function resolveLogConfig(config: RagConfig): LoggingConfig {
   return {
     level: config.logging?.level ?? DEFAULT_CONFIG.logging.level,
@@ -354,18 +471,27 @@ export function resolveLogConfig(config: RagConfig): LoggingConfig {
   };
 }
 
+/** Runtime context passed through the indexing and retrieval pipeline. */
 export interface RagContext {
+  /** Resolved pipeline configuration. */
   config: RagConfig;
+  /** Configured embedding provider instance. */
   embedder: EmbeddingProvider;
+  /** Configured chunker instance. */
   chunker: Chunker;
+  /** Configured vector store instance. */
   vectorStore: VectorStore;
 }
 
+/** Result of a configuration validation pass. */
 export interface ConfigValidationResult {
+  /** Whether the configuration is fully valid. */
   valid: boolean;
+  /** Warning messages for suspicious or invalid settings. */
   warnings: string[];
 }
 
+/** Validate a configuration object and return any warnings. */
 export function validateConfig(config: RagConfig): ConfigValidationResult {
   const warnings: string[] = [];
 
@@ -457,6 +583,7 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
   return { valid: warnings.length === 0, warnings };
 }
 
+/** Load and parse a JSON config file, deep-merge with defaults, optionally validate. */
 export function loadConfig(filePath: string, validate: boolean = true): RagConfig {
   let raw: string;
   let parsed: Partial<RagConfig>;

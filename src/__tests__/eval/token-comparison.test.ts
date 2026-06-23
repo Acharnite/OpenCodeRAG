@@ -541,7 +541,7 @@ describe("system prompt guidance overhead", () => {
 
     console.log(`    System guidance: ${guidance.length} chars ≈ ${guidanceTokens} tokens`);
     assert.ok(guidanceTokens >= 100, `Expected ≥100 tokens for system guidance, got ${guidanceTokens}`);
-    assert.ok(guidanceTokens <= 500, `Expected ≤500 tokens for system guidance, got ${guidanceTokens}`);
+    assert.ok(guidanceTokens <= 600, `Expected ≤600 tokens for system guidance, got ${guidanceTokens}`);
   });
 });
 

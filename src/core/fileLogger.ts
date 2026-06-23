@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
+/** Severity levels for individual log entries. */
 export type LogSeverity = "debug" | "info" | "warn";
 
 const SEVERITY_RANK: Record<LogSeverity, number> = {
@@ -16,13 +17,19 @@ const LEVEL_RANK: Record<string, number | undefined> = {
   none: -1,
 };
 
+/** A single structured log entry with scope, message, and optional error context. */
 export interface DebugLogEntry {
+  /** Module or component that produced the entry. */
   scope: string;
+  /** Log message text. */
   message: string;
+  /** Optional error object to serialize into the log. */
   error?: unknown;
+  /** Severity level (defaults to "info"). */
   severity?: LogSeverity;
 }
 
+/** Format an unknown error value into a human-readable string (handles Error, string, and objects). */
 function formatError(error: unknown): string {
   if (error instanceof Error) {
     return error.stack ?? `${error.name}: ${error.message}`;
@@ -39,6 +46,7 @@ function formatError(error: unknown): string {
   }
 }
 
+/** Append a structured log entry to the debug log file. Silently ignores writes when logging is disabled or on error. */
 export function appendDebugLog(
   logFilePath: string,
   entry: DebugLogEntry,

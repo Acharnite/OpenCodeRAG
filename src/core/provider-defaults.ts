@@ -1,10 +1,16 @@
+/** Default configuration parameters for a supported LLM/embedding provider. */
 export interface ProviderDefaults {
+  /** Default base URL for API requests. */
   defaultBaseUrl: string;
+  /** Environment variable name to read the API key from. */
   apiKeyEnvVar: string;
+  /** Whether this provider supports embedding endpoints. */
   supportsEmbedding: boolean;
+  /** Whether this provider supports chat/completion endpoints. */
   supportsChat: boolean;
 }
 
+/** Registry of known provider default configurations (base URLs, env vars, capability flags). */
 export const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
   ollama: {
     defaultBaseUrl: "http://127.0.0.1:11434",
@@ -80,10 +86,12 @@ export const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
   },
 };
 
+/** Look up default configuration for a named provider. Returns undefined for unknown providers. */
 export function getProviderDefault(provider: string): ProviderDefaults | undefined {
   return PROVIDER_DEFAULTS[provider];
 }
 
+/** Check whether a given provider uses an OpenAI-compatible API format. */
 export function isOpenAiCompatible(provider: string): boolean {
   if (provider === "ollama" || provider === "anthropic" || provider === "google" || provider === "cohere") {
     return false;

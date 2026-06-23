@@ -23,8 +23,13 @@ export async function generateDescriptions(
   }
 
   const nonImageChunks = chunks.filter(
-    (c) => c.metadata.contentType !== "image",
+    (c) => c.metadata.contentType !== "image" && !c.description,
   );
+
+  const preDocumentedCount = chunks.filter((c) => c.description).length;
+  if (preDocumentedCount > 0) {
+    logger?.debug(`  Skipping LLM descriptions for ${preDocumentedCount} already-documented chunks`);
+  }
 
   let batchMap: Map<string, string> | null = null;
   if (nonImageChunks.length > 1) {
@@ -43,6 +48,12 @@ export async function generateDescriptions(
   }
 
   for (const chunk of chunks) {
+    if (chunk.description) {
+      descriptionMap.set(chunk.id, chunk.description);
+      logger?.debug(`  description [${chunk.id}] (docstring): ${chunk.description.substring(0, 100)}...`);
+      continue;
+    }
+
     if (chunk.metadata.contentType === "image") {
       chunk.description = chunk.content;
       descriptionMap.set(chunk.id, chunk.description);

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import type { RagConfig, AutoInjectContentType } from "./config.js";
 import { DEFAULT_CONFIG } from "./config.js";
 
+/** Live-configuration overrides that take precedence over the on-disk config file. */
 export interface RuntimeOverrides {
   retrieval?: {
     topK?: number;
@@ -46,6 +47,7 @@ export interface RuntimeOverrides {
   };
 }
 
+/** Load runtime overrides from the store directory. Returns empty object if none exist. */
 export function loadRuntimeOverrides(storePath: string): RuntimeOverrides {
   const overridePath = join(storePath, "runtime-overrides.json");
   if (!existsSync(overridePath)) return {};
@@ -56,6 +58,7 @@ export function loadRuntimeOverrides(storePath: string): RuntimeOverrides {
   }
 }
 
+/** Save a single runtime override value at a dotted path. Creates intermediate objects as needed. */
 export function saveRuntimeOverride(
   storePath: string,
   path: string[],
@@ -83,6 +86,7 @@ export function saveRuntimeOverride(
   }
 }
 
+/** Deep-merge runtime overrides into a config object. Returns a new object without mutating the original. */
 export function applyRuntimeOverrides(
   cfg: RagConfig,
   overrides: RuntimeOverrides

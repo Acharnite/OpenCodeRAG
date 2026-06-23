@@ -3,6 +3,7 @@ import path from "node:path";
 import type { RagConfig } from "./config.js";
 import { getProviderDefault } from "./provider-defaults.js";
 
+/** Resolve API keys for embedding, description, and image description providers. Checks config, env vars, and OpenCode provider config. */
 export function resolveApiKey(
   cfg: RagConfig,
   worktree?: string

@@ -11,27 +11,43 @@ import {
   runIndexPass,
 } from "./indexer.js";
 
+/** A background indexer that can be shut down gracefully. */
 export interface BackgroundIndexer {
+  /** Stop the watcher, cancel pending index passes, and clean up status files. */
   close(): Promise<void>;
 }
 
+/** Options for creating a background indexer instance. */
 export interface CreateBackgroundIndexerOptions {
+  /** The workspace root directory to watch for changes. */
   cwd: string;
+  /** Absolute path to the vector store directory. */
   storePath: string;
+  /** Loaded RAG configuration. */
   config: RagConfig;
+  /** Vector store instance for writing indexed chunks. */
   store: VectorStore;
+  /** Embedding provider for converting chunks to vectors. */
   embedder: EmbeddingProvider;
+  /** Path to the debug log file. */
   logFilePath: string;
+  /** Log level controlling verbosity. */
   logLevel?: string;
+  /** Optional keyword index for hybrid search support. */
   keywordIndex?: KeywordIndex;
+  /** Optional provider for generating LLM-based chunk descriptions. */
   descriptionProvider?: DescriptionProvider;
 }
 
+/** The current operational status of the background indexer watcher. */
 export type WatcherStatus = {
+  /** Whether an index pass is currently running. */
   running: boolean;
+  /** Timestamp (ms since epoch) of the last completed run, or undefined. */
   lastRunAt: number | undefined;
 };
 
+/** Persist the current watcher status to disk as JSON. */
 function writeWatcherStatus(storePath: string, status: WatcherStatus): void {
   try {
     writeFileSync(
@@ -44,6 +60,15 @@ function writeWatcherStatus(storePath: string, status: WatcherStatus): void {
   }
 }
 
+/**
+ * Create a background file watcher that automatically re-indexes the
+ * workspace when files change. Uses chokidar for file system events and
+ * debounces rapid changes. Detects vector store corruption and performs
+ * an automatic rebuild.
+ *
+ * @param options - Configuration for the background indexer.
+ * @returns A BackgroundIndexer handle with a close() method for shutdown.
+ */
 export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions): BackgroundIndexer {
   const { cwd, storePath, config, store, embedder, logFilePath, logLevel, keywordIndex, descriptionProvider } = options;
 

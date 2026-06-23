@@ -6,28 +6,41 @@ import { fileURLToPath } from "node:url";
 const GITHUB_REPO = "MrDoe/OpenCodeRAG";
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
+/** Information about an available update. */
 export interface UpdateInfo {
+  /** The currently installed version string. */
   currentVersion: string;
+  /** The latest available version on GitHub. */
   latestVersion: string;
+  /** Whether a newer version than the current one exists. */
   updateAvailable: boolean;
+  /** URL to the GitHub release page. */
   releaseUrl: string;
+  /** ISO date string of when the release was published. */
   publishedAt: string;
 }
 
+/** Resolve the absolute path to the package root directory. */
 function getPackageRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 }
 
+/** Read the current version from package.json. */
 export function getCurrentVersion(): string {
   const packageJsonPath = path.join(getPackageRoot(), "package.json");
   const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { version: string };
   return pkg.version;
 }
 
+/** Strip a leading 'v' or 'V' prefix from a version tag. */
 function normalizeVersion(tag: string): string {
   return tag.replace(/^v/i, "");
 }
 
+/**
+ * Compare two semver strings.
+ * @returns 1 if a > b, -1 if a < b, 0 if equal.
+ */
 function compareVersions(a: string, b: string): number {
   const pa = a.split(".").map(Number);
   const pb = b.split(".").map(Number);
@@ -40,6 +53,14 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/**
+ * Check the GitHub releases API for a newer version of OpenCodeRAG.
+ * Uses a 10-second timeout; failures are silently caught.
+ *
+ * @param currentVersion - The version string to compare against.
+ * @param proxy - Optional proxy configuration for the HTTP request.
+ * @returns UpdateInfo indicating whether an update is available.
+ */
 export async function checkForUpdate(
   currentVersion: string,
   proxy?: { url?: string; noProxy?: string[] },
@@ -108,6 +129,13 @@ export async function checkForUpdate(
   }
 }
 
+/**
+ * Apply a software update by pulling the latest source from git,
+ * rebuilding, and re-creating the runtime junction link.
+ *
+ * @param options - Update options including the repo root and verbosity flag.
+ * @returns Object with success status and a human-readable message.
+ */
 export function applyUpdate(options: {
   repoRoot: string;
   verbose: boolean;

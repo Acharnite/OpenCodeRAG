@@ -2,48 +2,71 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+/** Metadata entry for a single indexed file. */
 export interface ManifestEntry {
+  /** SHA-256 hash of the file content. */
   hash: string;
+  /** Number of chunks produced for this file. */
   chunkCount: number;
+  /** Unix timestamp of when this file was last indexed. */
   indexedAt: number;
+  /** Filesystem modification time at time of indexing. */
   mtime?: number;
+  /** File size in bytes. */
   size?: number;
+  /** Whether the description generation step failed for this file. */
   descriptionFailed?: boolean;
 }
 
+/** Current schema version for manifest files. */
 export const SCHEMA_VERSION = 1;
 
+/** Persistent manifest tracking indexing state across sessions. */
 export interface FileManifest {
+  /** Unix timestamp of the last full index pass. */
   lastIndexedAt?: number;
+  /** Schema version for forward-compatibility checks. */
   schemaVersion?: number;
+  /** Map of normalized file path to its manifest entry. */
   files: Record<string, ManifestEntry>;
+  /** Git commit hash at last index, used for incremental re-indexing. */
   lastGitCommit?: string;
 }
 
+/** Health status of a loaded manifest file. */
 export type ManifestStatus = "ok" | "missing" | "corrupt";
 
+/** Result of loading a manifest from disk. */
 export interface LoadedManifest {
+  /** The parsed manifest data (empty if missing/corrupt). */
   manifest: FileManifest;
+  /** Filesystem path the manifest was loaded from. */
   path: string;
+  /** Load status indicating health. */
   status: ManifestStatus;
 }
 
+/** Create a new empty manifest with the current schema version. */
 export function createEmptyManifest(): FileManifest {
   return { files: {}, schemaVersion: SCHEMA_VERSION };
 }
 
+/** Resolve the manifest file path within a vector store directory. */
 export function manifestPathFor(dbPath: string): string {
   return path.join(dbPath, "manifest.json");
 }
 
+/** Normalize a file path to use forward slashes for cross-platform consistency. */
 export function normalizeFilePath(filePath: string): string {
   return path.resolve(filePath).replace(/\\/g, "/");
 }
 
+/** Compute the SHA-256 hex hash of a string. */
 export function computeFileHash(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
+/** Load a manifest from disk, handling missing or corrupt files gracefully. */
 export async function loadManifest(dbPath: string): Promise<LoadedManifest> {
   const filePath = manifestPathFor(dbPath);
 
@@ -72,6 +95,7 @@ export async function loadManifest(dbPath: string): Promise<LoadedManifest> {
   }
 }
 
+/** Persist a manifest to disk with atomic write (temp file + rename). */
 export async function saveManifest(dbPath: string, manifest: FileManifest): Promise<void> {
   const filePath = manifestPathFor(dbPath);
   const tempPath = `${filePath}.tmp`;

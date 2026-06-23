@@ -14,23 +14,37 @@ import type {
   DescriptionProvider,
 } from "./interfaces.js";
 
+/** Options for bootstrapping the RAG pipeline context. */
 export interface BootstrapOptions {
+  /** Working directory for resolving config and store paths. Defaults to process.cwd(). */
   cwd?: string;
+  /** Explicit path to the config file. Auto-detected if omitted. */
   configPath?: string;
+  /** If true, throw if no description provider is available. */
   requireDescriptionProvider?: boolean;
 }
 
+/** Resolved runtime context with all pipeline components wired together. */
 export interface RagContext {
+  /** Fully resolved pipeline configuration. */
   config: RagConfig;
+  /** Configured embedding provider. */
   embedder: EmbeddingProvider;
+  /** Configured vector store. */
   store: VectorStore;
+  /** Resolved path to the vector store directory. */
   storePath: string;
+  /** Loaded keyword index for hybrid search. */
   keywordIndex: IKeywordIndex;
+  /** Optional LLM-based description provider. */
   descriptionProvider?: DescriptionProvider;
+  /** Detected embedding dimension. */
   dimension: number;
+  /** Resolved path to the debug log file. */
   logFilePath: string;
 }
 
+/** Probe the embedding provider to determine the vector dimension. Falls back to 384 on failure. */
 async function probeDimension(embedder: EmbeddingProvider): Promise<number> {
   try {
     const probe = await embedder.embed(["dimension-probe"], "query");
@@ -43,6 +57,7 @@ async function probeDimension(embedder: EmbeddingProvider): Promise<number> {
   return 384;
 }
 
+/** Load the keyword index from disk, or create a new empty one if loading fails. */
 async function loadKeywordIndex(storePath: string): Promise<IKeywordIndex> {
   try {
     const idx = await KeywordIndex.load(storePath);
@@ -52,6 +67,7 @@ async function loadKeywordIndex(storePath: string): Promise<IKeywordIndex> {
   }
 }
 
+/** Bootstrap the full RAG pipeline context: load config, resolve API keys, create embedder, vector store, keyword index, and description provider. */
 export async function resolveRagContext(
   opts: BootstrapOptions = {}
 ): Promise<RagContext> {

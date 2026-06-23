@@ -21,16 +21,27 @@ import { getCurrentCommit, getChangedFilesSince, getUntrackedFiles, getRepoRoot 
 export type { WatchPassScheduler } from "./watch.js";
 export { createWatchPassScheduler, createWatchIgnore } from "./watch.js";
 
+/** Options for configuring a single index pass. */
 export interface RunIndexPassOptions {
+  /** Workspace root directory. */
   cwd: string;
+  /** Path to the vector store data directory. */
   storePath: string;
+  /** Full RAG configuration for the workspace. */
   config: RagConfig;
+  /** Vector store instance for persisting chunks. */
   store: VectorStore;
+  /** Embedding provider for generating vector representations. */
   embedder: EmbeddingProvider;
+  /** When true, ignore the existing manifest and re-index everything. */
   force?: boolean;
+  /** Optional partial logger (missing methods default to no-ops). */
   logger?: Partial<Logger>;
+  /** Optional keyword index to populate during the pass. */
   keywordIndex?: KeywordIndex;
+  /** Optional provider for AI-generated chunk descriptions. */
   descriptionProvider?: DescriptionProvider;
+  /** Optional progress tracker for reporting file-level progress. */
   progress?: IndexProgress;
 }
 
@@ -73,6 +84,14 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
+/**
+ * Execute a full index pass: scan workspace, prepare files, generate embeddings
+ * (and optionally AI descriptions), and store results into the vector store.
+ * Uses a lock file to prevent concurrent passes.
+ *
+ * @param options - Configuration for the index pass.
+ * @returns Aggregate statistics for the pass.
+ */
 export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexRunStats> {
   const logger = createLogger(options.logger);
   const lockPath = path.join(options.storePath, LOCK_FILE);

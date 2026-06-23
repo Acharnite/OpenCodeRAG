@@ -10,7 +10,10 @@ import { PROVIDER_DEFAULTS } from "./core/provider-defaults.js";
 import { loadConfig } from "./core/config.js";
 import { setPendingRagInjection } from "./core/rag-injection-flag.js";
 
+/** Cached plugin version string from package.json. */
 let _version: string | undefined;
+
+/** Read the plugin version from package.json, caching the result. */
 function getVersion(): string {
   if (_version !== undefined) return _version;
   try {
@@ -23,20 +26,31 @@ function getVersion(): string {
   return _version!;
 }
 
+/** The running state of the background file watcher. */
 type WatcherState = {
+  /** Whether the watcher is currently performing an index pass. */
   running: boolean;
+  /** Timestamp of the last completed watcher run, or undefined. */
   lastRunAt: number | undefined;
 };
 
+/** Aggregate status of the RAG index displayed in the sidebar. */
 type RagStatus = {
+  /** Total number of indexed chunks across all files. */
   chunkCount: number;
+  /** Name of the embedding provider (e.g. "ollama", "openai"). */
   provider: string;
+  /** Name of the embedding model. */
   model: string;
+  /** Timestamp of the last indexing operation, or undefined. */
   lastIndexedAt: number | undefined;
+  /** Whether the workspace has been indexed (chunkCount > 0). */
   indexed: boolean;
+  /** Status of the background file watcher. */
   watcher: WatcherState;
 };
 
+/** Default status shown when no RAG index exists yet. */
 const DEFAULT_STATUS: RagStatus = {
   chunkCount: 0,
   provider: "ollama",
@@ -46,6 +60,7 @@ const DEFAULT_STATUS: RagStatus = {
   watcher: { running: false, lastRunAt: undefined },
 };
 
+/** Load the watcher running state from the persisted status file. */
 function loadWatcherStatus(storePath: string): WatcherState {
   const statusPath = join(storePath, "watcher-status.json");
   if (!existsSync(statusPath)) return { running: false, lastRunAt: undefined };
@@ -60,6 +75,10 @@ function loadWatcherStatus(storePath: string): WatcherState {
   }
 }
 
+/**
+ * Load the full RAG status for a workspace by reading its config and
+ * vector store manifest.
+ */
 function loadRagStatus(worktree: string): RagStatus {
   const status = { ...DEFAULT_STATUS };
 
@@ -101,6 +120,10 @@ function loadRagStatus(worktree: string): RagStatus {
   return status;
 }
 
+/**
+ * Format a timestamp as a human-friendly relative time string
+ * (e.g. "just now", "5m ago", "2h ago", "3d ago").
+ */
 function formatRelativeTime(timestamp: number | undefined): string {
   if (timestamp === undefined) return "never";
   const diff = Date.now() - timestamp;
@@ -114,6 +137,9 @@ function formatRelativeTime(timestamp: number | undefined): string {
   return `${days}d ago`;
 }
 
+/**
+ * Format a keybinding string for display (e.g. "ctrl+enter" → "Ctrl+Enter").
+ */
 function formatKeybinding(key: string): string {
   return key
     .split("+")
@@ -121,10 +147,15 @@ function formatKeybinding(key: string): string {
     .join("+");
 }
 
+/** A valid child node for the TUI element tree. */
 type Child = JSX.Element | string | number | null | undefined | false;
 
 const PLUGIN_NAME = "opencode-rag-plugin";
 
+/**
+ * Create a TUI element node with the given tag, props, and children.
+ * Wraps the low-level @opentui/solid createElement/insert/setProp functions.
+ */
 function element(
   tag: string,
   props: Record<string, unknown>,
@@ -141,14 +172,20 @@ function element(
   return node as unknown as JSX.Element;
 }
 
+/** Shorthand to create a `<text>` TUI element. */
 function text(props: Record<string, unknown>, children: Child[] = []): JSX.Element {
   return element("text", props, children);
 }
 
+/** Shorthand to create a `<box>` TUI element. */
 function box(props: Record<string, unknown>, children: Child[] = []): JSX.Element {
   return element("box", props, children);
 }
 
+/**
+ * Render the RAG sidebar showing index status, watcher state, keybindings,
+ * and optional token usage statistics.
+ */
 function renderSidebar(
   theme: { accent: unknown; text: unknown; textMuted: unknown },
   version: string,
@@ -215,6 +252,7 @@ function renderSidebar(
 
 // ── Settings dialog ────────────────────────────────────────────────
 
+/** Resolve the path to the first existing RAG config file in the worktree. */
 function getConfigPath(worktree: string): string | undefined {
   for (const loc of ["opencode-rag.json", ".opencode/opencode-rag.json", ".opencode/rag.json"]) {
     const p = join(worktree, loc);
@@ -223,6 +261,7 @@ function getConfigPath(worktree: string): string | undefined {
   return undefined;
 }
 
+/** Read and parse a JSON file, returning undefined on failure. */
 function readJsonFile<T = Record<string, unknown>>(filePath: string): T | undefined {
   try {
     return JSON.parse(readFileSync(filePath, "utf-8")) as T;
@@ -231,21 +270,37 @@ function readJsonFile<T = Record<string, unknown>>(filePath: string): T | undefi
   }
 }
 
+/** A single editable setting entry in the TUI settings dialog. */
 type SettingEntry = {
+  /** Dot-delimited config path (e.g. ["retrieval", "topK"]). */
   path: string[];
+  /** Human-readable label for the setting. */
   label: string;
+  /** Data type of the setting value. */
   type: "boolean" | "number" | "string";
+  /** Current effective value (merged from runtime overrides and file config). */
   currentValue: boolean | number | string;
+  /** Optional list of selectable options (used for model pickers). */
   options?: { title: string; value: string; description?: string; category?: string }[];
 };
 
+/** A named category grouping related settings entries. */
 type SettingCategory = {
+  /** Unique category identifier. */
   id: string;
+  /** Human-readable category name. */
   label: string;
+  /** Short description of what this category controls. */
   description: string;
+  /** Settings entries belonging to this category. */
   entries: SettingEntry[];
 };
 
+/**
+ * Build a list of model selection options from the available OpenCode providers.
+ * Each entry includes the provider name as a category for grouped display.
+ * Appends a "Custom…" option at the end.
+ */
 function buildModelOptions(providers: readonly Provider[]): { title: string; value: string; description?: string; category?: string }[] {
   const options: { title: string; value: string; description?: string; category?: string }[] = [];
   for (const provider of providers) {
@@ -268,6 +323,7 @@ function buildModelOptions(providers: readonly Provider[]): { title: string; val
   return options;
 }
 
+/** Map an OpenCode provider ID to the corresponding RAG provider name. */
 function providerIdToRagProvider(providerId: string): string {
   if (providerId === "ollama") return "ollama";
   const defaults = PROVIDER_DEFAULTS[providerId];
@@ -275,6 +331,10 @@ function providerIdToRagProvider(providerId: string): string {
   return "openai";
 }
 
+/**
+ * Resolve the API base URL for a provider, appending the "/api" suffix
+ * for Ollama and using known defaults for other providers.
+ */
 function resolveProviderBaseUrl(provider: Provider): string {
   const baseUrl = (provider.options?.baseURL as string) ?? "";
   if (provider.id === "ollama") {
@@ -285,6 +345,10 @@ function resolveProviderBaseUrl(provider: Provider): string {
   return baseUrl || (defaults?.defaultBaseUrl ?? "https://api.openai.com/v1");
 }
 
+/**
+ * Write a single config value at a dotted path into the opencode-rag.json file.
+ * Creates intermediate objects as needed.
+ */
 function saveConfigValue(configPath: string, path: string[], value: unknown): void {
   try {
     const data: Record<string, unknown> = JSON.parse(readFileSync(configPath, "utf-8"));
@@ -303,6 +367,12 @@ function saveConfigValue(configPath: string, path: string[], value: unknown): vo
   }
 }
 
+/**
+ * Save a model selection to both runtime overrides and the config file.
+ * Resolves the RAG provider name and API base URL automatically.
+ *
+ * @returns The composite "provider/model" string if saved, or undefined for custom.
+ */
 function saveModelSelection(
   storePath: string,
   configPath: string,
@@ -341,6 +411,11 @@ function saveModelSelection(
   return selectionValue;
 }
 
+/**
+ * Build the full list of setting categories from config, runtime overrides,
+ * and available providers. Each category contains editable entries used by
+ * the TUI settings dialog.
+ */
 function buildSettingCategories(
   cfg: Record<string, unknown>,
   ro: Record<string, unknown>,
@@ -545,15 +620,16 @@ function buildSettingCategories(
   ];
 }
 
+/**
+ * Open the interactive settings dialog for OpenCodeRAG configuration.
+ * Displays a cascading menu of categories → settings → value editors.
+ */
 async function openSettingsDialog(api: {
   ui: {
     dialog: { replace: (fn: () => JSX.Element, onClose?: () => void) => void; clear: () => void };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    DialogSelect: (props: any) => JSX.Element;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    DialogPrompt: (props: any) => JSX.Element;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    toast: (input: any) => void;
+    DialogSelect: (props: unknown) => JSX.Element;
+    DialogPrompt: (props: unknown) => JSX.Element;
+    toast: (input: unknown) => void;
   };
   state: { path: { worktree: string | undefined }; provider?: readonly Provider[] };
 }): Promise<void> {
@@ -763,6 +839,11 @@ async function openSettingsDialog(api: {
 
 // ── Plugin export ──────────────────────────────────────────────────
 
+/**
+ * The OpenCodeRAG TUI plugin module.
+ * Registers sidebar panels, keybindings, and the settings dialog with OpenCode's
+ * terminal UI framework.
+ */
 const plugin: TuiPluginModule & { id: string } = {
   id: `${PLUGIN_NAME}:tui`,
   tui: async (api, _options, meta) => {
@@ -786,6 +867,7 @@ const plugin: TuiPluginModule & { id: string } = {
       }
     }
 
+    /** Refresh the cached RAG status from disk. */
     function refreshStatus() {
       const wt = api.state.path.worktree;
       if (wt) {
@@ -796,7 +878,7 @@ const plugin: TuiPluginModule & { id: string } = {
 
     refreshStatus();
 
-    // Load token stats from eval session logs
+    /** Load token usage statistics from eval session logs. */
     function loadTokenStats(): { inputTokens: number; ragCtxTokens: number; reads: number; ragTools: number; queries: number } | undefined {
       try {
         const wt = api.state.path.worktree;
@@ -838,9 +920,6 @@ const plugin: TuiPluginModule & { id: string } = {
     });
 
     // Register prompt slots — return null to let host render its default prompt.
-    // The host's api.ui.Prompt() wrapper drops ref/right/sessionID props, so
-    // replacing the prompt doesn't work. Instead, keybinding handlers set a
-    // global flag consumed by the chat.message hook in the server plugin.
     api.slots.register({
       order: 901,
       slots: {

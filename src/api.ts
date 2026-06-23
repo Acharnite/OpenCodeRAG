@@ -4,28 +4,48 @@ import type { RetrieveOptions } from "./retriever/retriever.js";
 import { runIndexPass, getIndexStatusSummary, scanWorkspace, type IndexRunStats, type WorkspaceFile } from "./indexer.js";
 import type { SearchResult } from "./core/interfaces.js";
 
+/** Options controlling a semantic search query. */
 export interface SearchOptions {
+  /** Working directory to resolve relative paths against. */
   cwd?: string;
+  /** Path to the opencode-rag.json config file. */
   configPath?: string;
+  /** Maximum number of results to return (1-25). */
   topK?: number;
+  /** Minimum relevance score threshold (0-1). */
   minScore?: number;
+  /** Weight for hybrid keyword search (0-1). */
   keywordWeight?: number;
+  /** Filter results to files matching these path patterns. */
   pathHints?: string[];
+  /** Filter results to files matching these language identifiers. */
   languageHints?: string[];
+  /** Include explanation metadata in results. */
   explain?: boolean;
 }
 
+/** Options controlling workspace indexing. */
 export interface IndexOptions {
+  /** Path to the opencode-rag.json config file. */
   configPath?: string;
+  /** Force re-indexing even if already up to date. */
   force?: boolean;
+  /** Callback invoked with progress messages during indexing. */
   onProgress?: (message: string) => void;
 }
 
+/** The result of a context retrieval — matched chunks plus formatted text. */
 export interface ContextResult {
+  /** Individual search results with chunk and score data. */
   chunks: SearchResult[];
+  /** Formatted markdown text combining all results. */
   text: string;
 }
 
+/**
+ * Format a list of search results into a human-readable markdown block.
+ * Each result is rendered as a code block with metadata header.
+ */
 function formatContextResults(results: SearchResult[]): string {
   if (results.length === 0) return "No matching chunks found.";
 
@@ -44,6 +64,14 @@ function formatContextResults(results: SearchResult[]): string {
   return lines.join("\n");
 }
 
+/**
+ * Perform a semantic search against the indexed workspace.
+ * Bootstraps the RAG context (config, embedder, store) automatically.
+ *
+ * @param query - Natural language search query describing what to find.
+ * @param options - Optional search parameters (topK, filters, etc.).
+ * @returns An ordered array of search results with relevance scores.
+ */
 export async function search(
   query: string,
   options: SearchOptions = {}
@@ -63,6 +91,14 @@ export async function search(
   } satisfies RetrieveOptions);
 }
 
+/**
+ * Index (or re-index) the workspace files into the vector store.
+ * Reads the config, chunks all source files, embeds them, and writes to the store.
+ *
+ * @param cwd - Working directory to index (defaults to process.cwd()).
+ * @param options - Optional indexing parameters.
+ * @returns Statistics about the indexing run (files, chunks, etc.).
+ */
 export async function indexWorkspace(
   cwd?: string,
   options: IndexOptions = {}
@@ -91,6 +127,14 @@ export async function indexWorkspace(
   return stats;
 }
 
+/**
+ * Retrieve and format context chunks for a query in one call.
+ * Combines `search()` with automatic formatting into a markdown block.
+ *
+ * @param query - Natural language query to search for.
+ * @param options - Optional search parameters.
+ * @returns A ContextResult with both raw chunks and formatted text.
+ */
 export async function getContext(
   query: string,
   options: SearchOptions = {}
@@ -102,7 +146,9 @@ export async function getContext(
   };
 }
 
+/** Validate an opencode-rag.json configuration file. */
 export { validateConfig } from "./core/config.js";
 export type { ConfigValidationResult } from "./core/config.js";
+/** Scan workspace files and return a summary of indexing status. */
 export { scanWorkspace, getIndexStatusSummary } from "./indexer.js";
 export type { WorkspaceFile, IndexRunStats } from "./indexer.js";
