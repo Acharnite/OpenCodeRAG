@@ -14,6 +14,7 @@ export interface IndexRunStats {
   batchesFlushed: number;
   extractionFailures: number;
   extractionErrors: Array<{ filePath: string; error: string }>;
+  descriptionFailedFiles: number;
 }
 
 export interface IndexStatusSummary {
@@ -47,5 +48,6 @@ export function createIndexStats(
     batchesFlushed: 0,
     extractionFailures: 0,
     extractionErrors: [],
+    descriptionFailedFiles: 0,
   };
 }

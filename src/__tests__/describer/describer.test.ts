@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { Chunk } from "../../core/interfaces.js";
 import type { DescriptionConfig } from "../../core/config.js";
-import { LLMDescriptionProvider, buildBatchUserMessage, parseBatchResponse } from "../../describer/describer.js";
+import { LLMDescriptionProvider } from "../../describer/describer.js";
+import { buildBatchUserMessage, parseBatchResponse } from "../../describer/shared.js";
 import { createDescriptionProvider } from "../../describer/factory.js";
 
 function makeChunk(overrides: Partial<Chunk> = {}): Chunk {

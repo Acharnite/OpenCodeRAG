@@ -514,5 +514,95 @@ describe("indexer", () => {
         return t.includes("src/e.ts\n\n") && t.includes("An epsilon function.") && t.includes("function epsilon()");
       }));
     });
+
+    it("flags files with description failures in the manifest", async () => {
+      await writeFile(path.join(workspaceDir, "src", "fail.ts"), "function fail() { return 1; }\n");
+
+      const failingProvider: DescriptionProvider = {
+        async generateDescription(): Promise<string> {
+          throw new Error("LLM unavailable");
+        },
+        async generateBatchDescriptions(): Promise<Map<string, string>> {
+          throw new Error("LLM unavailable");
+        },
+      };
+
+      const stats = await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder,
+        descriptionProvider: failingProvider,
+      });
+
+      assert.equal(stats.newFiles, 1);
+      assert.equal(stats.descriptionFailedFiles, 1);
+
+      const manifest = await loadManifest(storeDir);
+      const entry = manifest.manifest.files[normalizeFilePath(path.join(workspaceDir, "src", "fail.ts"))];
+      assert.ok(entry);
+      assert.equal(entry.descriptionFailed, true);
+    });
+
+    it("reindexes description-failed files on the next run", async () => {
+      const filePath = path.join(workspaceDir, "src", "retry.ts");
+      await writeFile(filePath, "function retry() { return 1; }\n");
+
+      // First run: description fails
+      const failingProvider: DescriptionProvider = {
+        async generateDescription(): Promise<string> {
+          throw new Error("LLM unavailable");
+        },
+        async generateBatchDescriptions(): Promise<Map<string, string>> {
+          throw new Error("LLM unavailable");
+        },
+      };
+
+      await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder,
+        descriptionProvider: failingProvider,
+      });
+
+      const manifestAfterFail = await loadManifest(storeDir);
+      assert.equal(manifestAfterFail.manifest.files[normalizeFilePath(filePath)]?.descriptionFailed, true);
+
+      // Second run: description succeeds — file should be reindexed
+      const successProvider: DescriptionProvider = {
+        async generateDescription(): Promise<string> {
+          return "A retry function.";
+        },
+        async generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>> {
+          const result = new Map<string, string>();
+          for (const chunk of chunks) {
+            result.set(chunk.id, "A retry function.");
+          }
+          return result;
+        },
+      };
+
+      const stats = await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder,
+        descriptionProvider: successProvider,
+      });
+
+      // The file should have been treated as new (not unchanged) because it was cleared from manifest
+      assert.equal(stats.newFiles, 1);
+      assert.equal(stats.unchangedFiles, 0);
+      assert.equal(stats.descriptionFailedFiles, 0);
+
+      const manifestAfterSuccess = await loadManifest(storeDir);
+      const entry = manifestAfterSuccess.manifest.files[normalizeFilePath(filePath)];
+      assert.ok(entry);
+      assert.notEqual(entry.descriptionFailed, true);
+    });
   });
 });

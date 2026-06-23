@@ -62,6 +62,7 @@ function makeEmptyStore(): VectorStore {
     count: async () => 0,
     clear: async () => {},
     deleteByFilePath: async () => {},
+    close: async () => {},
   };
 }
 
@@ -72,6 +73,7 @@ function makeStore(count: number, searchResults: SearchResult[]): VectorStore {
     count: async () => count,
     clear: async () => {},
     deleteByFilePath: async () => {},
+    close: async () => {},
   };
 }
 

@@ -29,6 +29,7 @@ function makeStore(options: {
     count: async () => count,
     clear: async () => {},
     deleteByFilePath: async () => {},
+    close: async () => {},
   };
 }
 
@@ -263,6 +264,7 @@ describe("createRagReadTool", () => {
       count: async () => { throw new Error("DB connection failed"); },
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const tool = createRagReadTool({
@@ -475,6 +477,7 @@ describe("createRagReadTool", () => {
       count: async () => 5,
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const embedder = makeEmbedder();
@@ -524,6 +527,7 @@ describe("createRagReadTool", () => {
       count: async () => 5,
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const sessionLastMessage = new Map<string, string>();

@@ -25,6 +25,7 @@ export interface WorkerResult {
   isTooSmall: boolean;
   isRemoved: boolean;
   hadChunks: boolean;
+  descriptionFailed?: boolean;
 }
 
 export interface PreparedFile {
@@ -35,6 +36,34 @@ export interface PreparedFile {
   earlyResult?: WorkerResult;
   chunks?: Chunk[];
   textToEmbed?: string[];
+  descriptionFailed?: boolean;
+  relPath?: string;
+  metaHeader?: string;
+  docPrefix?: string;
+  isImageFile?: boolean;
+}
+
+export function buildTextsToEmbed(
+  chunks: Chunk[],
+  relPath: string,
+  metaHeader: string,
+  docPrefix: string,
+  isImage: boolean,
+): string[] {
+  const textToEmbed: string[] = [];
+  for (const chunk of chunks) {
+    if (isImage) {
+      textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description);
+    } else {
+      const desc = chunk.description ?? "";
+      if (desc.trim().length > 0) {
+        textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + desc + "\n\n" + chunk.content);
+      } else {
+        textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.content);
+      }
+    }
+  }
+  return textToEmbed;
 }
 
 interface Logger {
@@ -60,6 +89,7 @@ export async function prepareFile(
   keywordIndex: KeywordIndex | undefined,
   descriptionProvider: DescriptionProvider | undefined,
   logger: Logger,
+  deferDescriptions?: boolean,
 ): Promise<PreparedFile> {
   const fileLabel = path.relative(cwd, file.filePath);
 
@@ -147,37 +177,52 @@ export async function prepareFile(
   const relPath = path.relative(cwd, file.filePath).replace(/\\/g, "/");
   const isImage = isImageFile(file.filePath);
   const metaHeader = isImage ? "" : buildFileMetadataHeader(file.filePath, cwd, file.content);
-  const textToEmbed: string[] = [];
 
-  if (descriptionProvider) {
-    const { descriptionMap } = await generateDescriptions(chunks, descriptionProvider, logger);
-
+  if (deferDescriptions) {
     for (const chunk of chunks) {
       if (isImage) {
-        textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description);
+        chunk.description = chunk.content;
       } else {
-        const batchDesc = descriptionMap.get(chunk.id);
-        if (batchDesc && batchDesc.trim().length > 0) {
-          textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + batchDesc + "\n\n" + chunk.content);
-        } else if (chunk.description) {
-          textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.description + "\n\n" + chunk.content);
-        } else {
-          textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.content);
-        }
+        chunk.description = buildFallbackDescription(chunk);
+      }
+    }
+    return {
+      normalizedPath: file.normalizedPath,
+      hash: file.hash,
+      fileLabel,
+      isModified,
+      chunks,
+      relPath,
+      metaHeader,
+      docPrefix,
+      isImageFile: isImage,
+    };
+  }
+
+  let descriptionFailed = false;
+
+  if (descriptionProvider) {
+    const { descriptionMap, failures } = await generateDescriptions(chunks, descriptionProvider, logger);
+    descriptionFailed = failures.length > 0;
+    for (const chunk of chunks) {
+      const batchDesc = descriptionMap.get(chunk.id);
+      if (batchDesc && batchDesc.trim().length > 0) {
+        chunk.description = batchDesc;
+      } else if (!chunk.description) {
+        chunk.description = buildFallbackDescription(chunk);
       }
     }
   } else {
     for (const chunk of chunks) {
       if (isImage) {
         chunk.description = chunk.content;
-        textToEmbed.push(docPrefix + relPath + "\n\n" + chunk.description);
       } else {
         chunk.description = buildFallbackDescription(chunk);
-        textToEmbed.push(docPrefix + relPath + "\n\n" + metaHeader + "\n\n" + chunk.description + "\n\n" + chunk.content);
       }
     }
   }
 
+  const textToEmbed = buildTextsToEmbed(chunks, relPath, metaHeader, docPrefix, isImage);
   logger.debug(`  ${fileLabel}: textToEmbed ${textToEmbed.length} entries (descProvider: ${descriptionProvider ? "yes" : "no"})`);
 
   return {
@@ -187,6 +232,7 @@ export async function prepareFile(
     isModified,
     chunks,
     textToEmbed,
+    descriptionFailed,
   };
 }
 
@@ -232,6 +278,7 @@ export async function storeFileChunks(
     isTooSmall: false,
     isRemoved: false,
     hadChunks: prep.chunks.length > 0,
+    descriptionFailed: prep.descriptionFailed,
   };
 }
 
@@ -269,6 +316,7 @@ export async function processFile(
     return {
       normalizedPath: prep.normalizedPath, hash: prep.hash, chunkCount: 0, fileLabel: prep.fileLabel,
       isNew: false, isModified: false, isUnchanged: true, isEmpty: false, isTooSmall: false, isRemoved: false, hadChunks: false,
+      descriptionFailed: prep.descriptionFailed,
     };
   }
 
@@ -282,6 +330,7 @@ export async function processFile(
     return {
       normalizedPath: prep.normalizedPath, hash: prep.hash, chunkCount: 0, fileLabel: prep.fileLabel,
       isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: false, isRemoved: true, hadChunks: false,
+      descriptionFailed: prep.descriptionFailed,
     };
   }
 }

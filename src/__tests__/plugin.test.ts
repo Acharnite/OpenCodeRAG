@@ -70,6 +70,7 @@ const dummyStore: VectorStore = {
   count: async () => 0,
   clear: async () => {},
   deleteByFilePath: async () => {},
+  close: async () => {},
 };
 
 const populatedStore: VectorStore = {
@@ -78,6 +79,7 @@ const populatedStore: VectorStore = {
   count: async () => 5,
   clear: async () => {},
   deleteByFilePath: async () => {},
+  close: async () => {},
 };
 
 type SeenRetrieveCall = {
@@ -463,6 +465,7 @@ describe("ragPlugin", () => {
       count: async () => 5,
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const { dependencies } = makeDependencies(results, 1);
@@ -610,6 +613,7 @@ describe("ragPlugin", () => {
       count: async () => 5,
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const { dependencies } = makeDependencies(results, 2);
@@ -682,6 +686,7 @@ describe("ragPlugin", () => {
       count: async () => 5,
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const { dependencies } = makeDependencies(results, 1);
@@ -746,6 +751,7 @@ describe("ragPlugin", () => {
       count: async () => 3,
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const { dependencies } = makeDependencies(results, 3);
@@ -817,6 +823,7 @@ describe("ragPlugin", () => {
       count: async () => 5,
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const { dependencies } = makeDependencies(results, 1);
@@ -887,6 +894,7 @@ describe("ragPlugin", () => {
       count: async () => 5,
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const { dependencies } = makeDependencies(results, 1);
@@ -956,6 +964,7 @@ describe("ragPlugin", () => {
       count: async () => 5,
       clear: async () => {},
       deleteByFilePath: async () => {},
+      close: async () => {},
     };
 
     const { dependencies } = makeDependencies(results, 1);

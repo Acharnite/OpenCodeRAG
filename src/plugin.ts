@@ -1114,7 +1114,7 @@ export const ragPlugin: Plugin = async (
   });
 
   // Start background auto-indexer if enabled
-  const autoIndexCfg = effectiveCfg.openCode.autoIndex ?? { enabled: true, debounceMs: 5000, intervalMs: 300000 };
+  const autoIndexCfg = effectiveCfg.openCode.autoIndex ?? { enabled: false, debounceMs: 5000, intervalMs: 300000 };
   if (autoIndexCfg.enabled) {
     const indexer = createBackgroundIndexer({
       cwd: input.directory,

@@ -30,6 +30,7 @@ function makeStore(results: SearchResult[]): VectorStore {
     },
     async clear(): Promise<void> {},
     async deleteByFilePath(_filePath: string): Promise<void> {},
+    async close(): Promise<void> {},
   };
 }
 
@@ -88,6 +89,7 @@ describe("retrieve", () => {
       },
       async clear(): Promise<void> {},
       async deleteByFilePath(_filePath: string): Promise<void> {},
+      async close(): Promise<void> {},
     };
 
     await retrieve("query", embedder, store, { topK: 5 });
@@ -109,6 +111,7 @@ describe("retrieve", () => {
       },
       async clear(): Promise<void> {},
       async deleteByFilePath(_filePath: string): Promise<void> {},
+      async close(): Promise<void> {},
     };
 
     await retrieve("query", embedder, store);

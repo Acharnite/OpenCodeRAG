@@ -7,7 +7,6 @@ The CLI interface (`opencode-rag`) provides full access to build, manage, and se
 | Flag | Description |
 |---|---|
 | `-c, --config <path>` | Path to config file |
-| `-V, --version` | Show version number |
 | `-h, --help` | Show help |
 
 ## Commands
@@ -59,12 +58,13 @@ opencode-rag index [options]
 **How it works:**
 1. Scans workspace files matching `indexing.includeExtensions`
 2. Compares file hashes against the manifest
-3. Chunks changed/new files via the appropriate chunker
-4. Generates descriptions (if enabled) and embeddings
-5. Stores vectors in LanceDB and tokens in KeywordIndex
-6. Serializes manifest and keyword index
+3. Clears any files previously flagged with `descriptionFailed` so they are fully re-indexed
+4. Chunks changed/new files via the appropriate chunker
+5. Generates descriptions (if enabled) and embeddings
+6. Stores vectors in LanceDB and tokens in KeywordIndex
+7. Serializes manifest and keyword index
 
-**Incremental:** Only changed files are reprocessed. Unchanged files are skipped.
+**Incremental:** Only changed files are reprocessed. Unchanged files are skipped. Files with `descriptionFailed` in the manifest are automatically retried.
 
 **Full rebuild (`--force`):** Clears the store, clears keyword index, and re-indexes everything.
 

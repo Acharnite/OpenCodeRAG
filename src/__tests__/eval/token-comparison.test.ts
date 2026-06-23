@@ -88,6 +88,7 @@ const dummyStore: VectorStore = {
   count: async () => 10,
   clear: async () => {},
   deleteByFilePath: async () => {},
+  close: async () => {},
 };
 
 const dummyProvider: EmbeddingProvider = {

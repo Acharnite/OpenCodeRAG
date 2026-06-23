@@ -416,7 +416,7 @@ function buildSettingCategories(
           path: ["openCode", "autoIndex", "enabled"],
           label: "Auto-index watcher",
           type: "boolean",
-          currentValue: (aiRo.enabled as boolean) ?? (aiCfg.enabled as boolean) ?? true,
+          currentValue: (aiRo.enabled as boolean) ?? (aiCfg.enabled as boolean) ?? false,
         },
         {
           path: ["openCode", "autoIndex", "debounceMs"],

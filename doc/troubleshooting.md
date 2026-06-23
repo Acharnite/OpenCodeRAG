@@ -111,6 +111,19 @@ To manually force a rebuild:
 opencode-rag index --force
 ```
 
+## Description Generation Failures
+
+If the LLM description provider is unavailable or times out, affected files are automatically flagged in the manifest with `descriptionFailed: true`. On the next `opencode-rag index` run, these files are fully re-indexed (re-chunked and re-described) without requiring `--force`.
+
+**Symptoms:**
+- Logs show `Description generation failed for <chunkId>` warnings
+- `opencode-rag status` shows `descriptionFailedFiles > 0`
+
+**Fix:**
+1. Ensure the description provider is running (e.g., `ollama serve`)
+2. Run `opencode-rag index` — flagged files will be retried automatically
+3. If the issue persists, check `description.timeoutMs` and `description.retryMax` in your config
+
 ## Debugging Plugin Loading
 
 ```bash

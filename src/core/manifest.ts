@@ -8,6 +8,7 @@ export interface ManifestEntry {
   indexedAt: number;
   mtime?: number;
   size?: number;
+  descriptionFailed?: boolean;
 }
 
 export const SCHEMA_VERSION = 1;

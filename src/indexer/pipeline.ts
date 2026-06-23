@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import { unlinkSync } from "node:fs";
 import path from "node:path";
 import pLimit from "p-limit";
 import { scanWorkspaceFiles } from "../content/reader.js";
@@ -12,7 +14,7 @@ import type {
 } from "../core/interfaces.js";
 import { embedBatch } from "../embedder/factory.js";
 import { createIndexStats, type IndexRunStats, type IndexStatusSummary } from "./stats.js";
-import { prepareFile, type WorkerResult, type PreparedFile } from "./worker.js";
+import { prepareFile, buildTextsToEmbed, type WorkerResult, type PreparedFile } from "./worker.js";
 import { getCurrentCommit, getChangedFilesSince, getUntrackedFiles, getRepoRoot } from "./git-diff.js";
 
 export type { WatchPassScheduler } from "./watch.js";
@@ -57,8 +59,59 @@ function tryUpdateLastGitCommit(cwd: string, manifest: { lastGitCommit?: string 
   }
 }
 
+const LOCK_FILE = "index.lock";
+const LOCK_MAX_AGE_MS = 5 * 60 * 1000;
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexRunStats> {
   const logger = createLogger(options.logger);
+  const lockPath = path.join(options.storePath, LOCK_FILE);
+
+  try {
+    const raw = await fs.readFile(lockPath, "utf-8");
+    const lock = JSON.parse(raw) as { pid?: number; startedAt?: number };
+    const age = lock.startedAt ? Date.now() - lock.startedAt : Infinity;
+    if (lock.pid && !isPidAlive(lock.pid)) {
+      logger.debug(`Stale lock from dead process ${lock.pid} — continuing`);
+    } else if (lock.startedAt && age < LOCK_MAX_AGE_MS) {
+      logger.warn(`Another index pass is running (PID ${lock.pid ?? "unknown"}). Skipping.`);
+      return createIndexStats(0, "missing");
+    }
+  } catch {
+    // No lock file — proceed
+  }
+
+  try {
+    await fs.writeFile(lockPath, JSON.stringify({ pid: process.pid, startedAt: Date.now() }), "utf-8");
+  } catch {
+    // Best-effort lock
+  }
+
+  const cleanupLock = () => {
+    try { unlinkSync(lockPath); } catch {}
+  };
+
+  process.once("SIGINT", cleanupLock);
+  process.once("SIGTERM", cleanupLock);
+
+  try {
+    return await runIndexPassInner(options, logger);
+  } finally {
+    process.off("SIGINT", cleanupLock);
+    process.off("SIGTERM", cleanupLock);
+    try { await fs.unlink(lockPath); } catch {}
+  }
+}
+
+async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): Promise<IndexRunStats> {
   const loadResult = await loadManifest(options.storePath);
   const manifest = loadResult.manifest;
   let manifestStatus = loadResult.status;
@@ -69,6 +122,17 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   if (options.force) {
     manifestStatus = "missing";
     logger.debug("Force mode: ignoring manifest");
+  }
+
+  // Clear files that had description failures so they are fully re-indexed
+  const descFailedPaths = Object.keys(manifest.files).filter(
+    (p) => manifest.files[p]?.descriptionFailed,
+  );
+  if (descFailedPaths.length > 0) {
+    logger.info(`  ${descFailedPaths.length} file(s) marked as description-failed — re-indexing`);
+    for (const p of descFailedPaths) {
+      delete manifest.files[p];
+    }
   }
 
   let filterPaths: string[] | undefined;
@@ -189,11 +253,12 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   }
   logger.info(`Processing ${workspaceFiles.length} files (${newCount} new, ${modifiedCount} modified, ${unchangedCount} unchanged)...`);
 
-  // ── Phase 1: prepare all files (chunk + description + keyword + textToEmbed) ──
+  // ── Phase 1: prepare all files (chunk + keyword, defer descriptions if provider present) ──
   const limit = pLimit(options.config.indexing.concurrency);
   let completed = 0;
   let started = 0;
   const total = workspaceFiles.length;
+  const deferDescriptions = !!options.descriptionProvider;
 
   const prepared = await Promise.all(
     workspaceFiles.map((file) =>
@@ -209,15 +274,60 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
           options.keywordIndex,
           options.descriptionProvider,
           logger,
+          deferDescriptions,
         );
         completed++;
-        if (total > 20 && completed % 50 === 0) {
-          logger.info(`  Preparing file ${completed}/${total}...`);
-        }
         return prep;
       }),
     ),
   );
+
+  // ── Phase 1.5: global description generation (single pool, no nested concurrency) ──
+  if (deferDescriptions) {
+    const deferredPreps = prepared.filter((p) => p.chunks && p.chunks.length > 0 && p.relPath !== undefined);
+    if (deferredPreps.length > 0) {
+      const allChunks: Chunk[] = [];
+      for (const prep of deferredPreps) {
+        for (const chunk of prep.chunks!) {
+          if (chunk.metadata.contentType !== "image") {
+            allChunks.push(chunk);
+          }
+        }
+      }
+
+      if (allChunks.length > 0) {
+        logger.info(`  Generating descriptions for ${allChunks.length} chunks...`);
+        try {
+          const batchResult = await options.descriptionProvider!.generateBatchDescriptions(allChunks);
+          for (const chunk of allChunks) {
+            const desc = batchResult.get(chunk.id);
+            if (desc && desc.trim().length > 0) {
+              chunk.description = desc;
+            }
+          }
+          logger.info(`  Descriptions generated for ${batchResult.size} chunks`);
+        } catch (err) {
+          logger.warn(`  Global description generation failed: ${(err as Error).message}`);
+          for (const prep of deferredPreps) {
+            if (prep.chunks!.some((c) => c.metadata.contentType !== "image")) {
+              prep.descriptionFailed = true;
+            }
+          }
+        }
+      }
+
+      // Phase 1.6: build textToEmbed with descriptions injected
+      for (const prep of deferredPreps) {
+        prep.textToEmbed = buildTextsToEmbed(
+          prep.chunks!,
+          prep.relPath!,
+          prep.metaHeader ?? "",
+          prep.docPrefix ?? "",
+          prep.isImageFile ?? false,
+        );
+      }
+    }
+  }
 
   // ── Handle deletions from store for files being re-processed ──
   const deletionLimit = pLimit(options.config.indexing.concurrency);
@@ -290,6 +400,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
       return {
         normalizedPath: prep.normalizedPath, hash: prep.hash, chunkCount: 0, fileLabel: prep.fileLabel,
         isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: false, isRemoved: true, hadChunks: false,
+        descriptionFailed: prep.descriptionFailed,
       };
     }
 
@@ -320,6 +431,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
       isTooSmall: false,
       isRemoved: false,
       hadChunks: prep.chunks.length > 0,
+      descriptionFailed: prep.descriptionFailed,
     };
   });
 
@@ -347,7 +459,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
 function aggregateStats(
   stats: IndexRunStats,
   results: WorkerResult[],
-  manifest: { files: Record<string, { hash: string; chunkCount: number; indexedAt?: number; mtime?: number; size?: number }> },
+  manifest: { files: Record<string, { hash: string; chunkCount: number; indexedAt?: number; mtime?: number; size?: number; descriptionFailed?: boolean }> },
   workspaceFiles: { normalizedPath: string; mtime?: number; size?: number }[],
 ): void {
   const fileMeta = new Map(workspaceFiles.map((f) => [f.normalizedPath, { mtime: f.mtime, size: f.size }]));
@@ -391,7 +503,11 @@ function aggregateStats(
         indexedAt: Date.now(),
         mtime: meta?.mtime,
         size: meta?.size,
+        descriptionFailed: result.descriptionFailed,
       };
+      if (result.descriptionFailed) {
+        stats.descriptionFailedFiles++;
+      }
       stats.totalChunks += result.chunkCount;
       stats.batchesFlushed++;
     }

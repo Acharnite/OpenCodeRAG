@@ -15,23 +15,21 @@ export interface HealthCheckResult {
  * Returns one result per configured model (embedding + description + image_description if enabled).
  */
 export async function checkProviderHealth(config: RagConfig): Promise<HealthCheckResult[]> {
-  const results: HealthCheckResult[] = [];
   const timeoutMs = config.embedding.timeoutMs ?? 30000;
 
-  // Check embedding provider
-  results.push(await checkEmbeddingModel(config, timeoutMs));
+  const checks: Promise<HealthCheckResult>[] = [
+    checkEmbeddingModel(config, timeoutMs),
+  ];
 
-  // Check description provider if enabled
   if (config.description?.enabled) {
-    results.push(await checkDescriptionModel(config, timeoutMs));
+    checks.push(checkDescriptionModel(config, timeoutMs));
   }
 
-  // Check image description provider if enabled
   if (config.imageDescription?.enabled) {
-    results.push(await checkImageDescriptionModel(config, timeoutMs));
+    checks.push(checkImageDescriptionModel(config, timeoutMs));
   }
 
-  return results;
+  return Promise.all(checks);
 }
 
 async function checkEmbeddingModel(config: RagConfig, timeoutMs: number): Promise<HealthCheckResult> {

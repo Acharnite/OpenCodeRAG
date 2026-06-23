@@ -261,10 +261,12 @@ info "Packed: $GLOBAL_CONFIG\$PACKED"
 function install_plugin {
     param([string]$targetDir, [string]$packPath)
     $output = & cmd /c "npm install --prefix `"$targetDir`" --silent `"$packPath`" 2>nul"
-    if ($LASTEXITCODE -eq 0) { 
+    if ($LASTEXITCODE -eq 0) {
+        return $true 
+    } 
+    else {
         # Output error
         Write-Host $output -ForegroundColor Red
-        return $true 
     }
     # Retry with --ignore-scripts for native modules (e.g. canvas has a pure-JS fallback)
     Write-Host "  Retrying without native module compilation..." -ForegroundColor Yellow
@@ -334,7 +336,7 @@ if ($pathUpdated) {
 # Clean up old workspace-local wrappers (legacy)
 Remove-Item -Path "$REPO_ROOT\.opencode\plugins\rag-plugin.js" -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "$REPO_ROOT\.opencode\plugins\package.json" -Force -ErrorAction SilentlyContinue
-Remove-Item -Path "$REPO_ROOT\.opencode\plugins" -Force -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Path "$REPO_ROOT\.opencode\plugins" -Force -ErrorAction SilentlyContinue
 
 # --- verification ------------------------------------------------------------
 
@@ -382,6 +384,15 @@ else {
     fail_msg "Node resolution (config)"; $verified = $false
 }
 
+step "Initializing workspace for OpenCodeRAG..."
+& node "$RUNTIME_DIR\node_modules\$PLUGIN_NAME\dist\cli.js" init --skip-health-check
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  init command completed with warnings, continuing..." -ForegroundColor Yellow
+}
+else {
+    ok "Workspace initialized"
+}
+
 step ""
 if ($verified) {
     Write-Host "Installation complete!" -ForegroundColor Green
@@ -392,11 +403,10 @@ else {
 
 Write-Host "`nWhat to do next:"
 Write-Host "  1. Restart OpenCode if it is running."
-Write-Host "  2. In any workspace where you want RAG context, run 'opencode-rag init'."
-Write-Host "     This bootstraps opencode-rag.json and the workspace-local .opencode files."
-Write-Host "  3. Run 'opencode-rag index' from that workspace to index its files."
-Write-Host "  4. OpenCode will automatically use the indexed data for context-aware queries."
+Write-Host "  2. Run 'opencode-rag index' in this workspace to index its files."
+Write-Host "  3. OpenCode will automatically use the indexed data for context-aware queries."
+Write-Host "  (The workspace was already initialized by the install script.)"
 if ($pathUpdated) {
-    Write-Host "  5. In your current PowerShell session run: `$env:Path += ';$CLI_BIN_DIR'"
+    Write-Host "  4. In your current PowerShell session run: `$env:Path += ';$CLI_BIN_DIR'"
 }
 Write-Host "`nRun '$PSCommandPath uninstall' to remove."

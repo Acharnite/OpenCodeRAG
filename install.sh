@@ -272,6 +272,9 @@ else
   fail "Node resolution (config)"; verified=false
 fi
 
+step "Initializing workspace for OpenCodeRAG..."
+node "$RUNTIME_DIR/node_modules/$PLUGIN_NAME/dist/cli.js" init --skip-health-check || true
+
 step ""
 if $verified; then
   printf 'Installation complete!\n'
@@ -282,9 +285,8 @@ fi
 printf '\n'
 printf 'What to do next:\n'
 printf '  1. Restart OpenCode if it is running.\n'
-printf '  2. In any workspace where you want RAG context, run "opencode-rag init".\n'
-printf '     This bootstraps opencode-rag.json and the workspace-local .opencode files.\n'
-printf '  3. Run "opencode-rag index" from that workspace to index its files.\n'
-printf '  4. OpenCode will automatically use the indexed data for context-aware queries.\n'
+printf '  2. Run "opencode-rag index" in this workspace to index its files.\n'
+printf '  3. OpenCode will automatically use the indexed data for context-aware queries.\n'
+printf '  (The workspace was already initialized by the install script.)\n'
 printf '\n'
 printf 'Run "%s uninstall" to remove.\n' "$0"

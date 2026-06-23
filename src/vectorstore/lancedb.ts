@@ -151,6 +151,23 @@ export class LanceDBStore implements VectorStore {
 
     if (rows.length === 0) return;
 
+    const fileLinesMap = new Map<string, Set<number>>();
+    for (const row of rows) {
+      const existing = fileLinesMap.get(row.filePath);
+      if (existing) {
+        existing.add(row.startLine);
+      } else {
+        fileLinesMap.set(row.filePath, new Set([row.startLine]));
+      }
+    }
+
+    for (const [filePath, startLines] of fileLinesMap) {
+      const escaped = filePath.replace(/'/g, "''");
+      for (const line of startLines) {
+        await table.delete(`filePath = '${escaped}' AND startLine = ${line}`);
+      }
+    }
+
     await table.add(rows as unknown as Record<string, unknown>[]);
   }
 
@@ -190,7 +207,7 @@ export class LanceDBStore implements VectorStore {
     const count = await table.countRows();
     if (count === 0) return [];
 
-    const rows = await table.query().select(["filePath", "language"]).toArray();
+    const rows = await table.query().select(["filePath", "language"]).limit(count).toArray();
     const fileMap = new Map<string, { language: string; chunkCount: number }>();
     for (const row of rows) {
       const filePath = row.filePath as string;

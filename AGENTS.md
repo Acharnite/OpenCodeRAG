@@ -55,3 +55,10 @@ This workspace has OpenCodeRAG indexed for semantic code and image search. Use t
 - `find_usages` is essential before refactoring — it shows every reference
 - If no results appear, the workspace may not be indexed yet — run `opencode-rag index`
 - Image descriptions are generated at index time using the configured vision provider; ensure `imageDescription` is configured in `opencode-rag.json` if your project includes images
+
+## Testing
+
+- `npm test` — runs all tests except integration tests (~5s)
+- `npm run test:integration` — runs integration tests (30s+, spawns opencode)
+- `npm run typecheck` — type-checks all source files
+- `npm run build` — compiles TypeScript

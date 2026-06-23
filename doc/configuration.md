@@ -169,7 +169,7 @@ Controls LLM-based description generation for code chunks.
 | `retryMax` | `3` | Retry attempts on failure |
 | `retryBaseDelayMs` | `1000` | Base delay for exponential backoff |
 
-When enabled, the embedded text is `filePath + "\n\n" + description + "\n\n" + code content`. Even when disabled, descriptions include the line range and language (e.g., `lines 10-42, typescript`). On LLM failure, falls back to embedding filePath + raw content.
+When enabled, the embedded text is `filePath + "\n\n" + description + "\n\n" + code content`. Even when disabled, descriptions include the line range and language (e.g., `lines 10-42, typescript`). On LLM failure, falls back to embedding filePath + raw content. Files where description generation failed are flagged in the manifest (`descriptionFailed: true`) and automatically retried on the next `opencode-rag index` run.
 
 > **Recommendation:** Disable (`description.enabled: false`) if you don't have a dedicated GPU or want faster indexing.
 
@@ -253,7 +253,7 @@ Controls the OpenCode plugin integration.
 | `readOverride` | `true` | Override OpenCode's built-in read to append RAG context |
 | `maxReadOutputChars` | `50000` | Max characters for read output |
 | `readRelatedFilesMax` | `5` | Max related file suggestions per read |
-| `autoIndex.enabled` | `true` | Auto-index changed files in background |
+| `autoIndex.enabled` | `false` | Auto-index changed files in background |
 | `autoIndex.debounceMs` | `2000` | Debounce delay for file change events |
 | `autoIndex.intervalMs` | `300000` | Periodic full-index interval (5 min) |
 | `autoInject.enabled` | `true` | Auto-inject context on chat messages |
