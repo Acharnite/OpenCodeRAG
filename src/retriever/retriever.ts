@@ -107,7 +107,7 @@ export async function retrieve(
           ? (1 - kw) * entry.vScore + kw * entry.kScore
           : hasVector
             ? entry.vScore
-            : entry.kScore;
+            : entry.kScore * 0.9;
         const result: SearchResult = {
           chunk: entry.chunk,
           score,

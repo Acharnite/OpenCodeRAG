@@ -1,7 +1,8 @@
-import { describe, it } from "node:test";
+import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { OllamaProvider } from "../../embedder/ollama.js";
+import { destroyAllPooledConnections } from "../../embedder/http.js";
 
 describe("OllamaProvider", () => {
   it("name is 'ollama'", () => {
@@ -218,5 +219,9 @@ describe("OllamaProvider", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       globalThis.fetch = originalFetch;
     }
+  });
+
+  after(() => {
+    destroyAllPooledConnections();
   });
 });

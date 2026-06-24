@@ -13,6 +13,8 @@ import type {
   VectorStore,
 } from "../core/interfaces.js";
 import { embedBatch } from "../embedder/factory.js";
+import { createVectorStore } from "../vectorstore/factory.js";
+import { swapStoreDirectories } from "../vectorstore/lancedb.js";
 import { createIndexStats, type IndexRunStats, type IndexStatusSummary } from "./stats.js";
 import { prepareFile, buildTextsToEmbed, storeFileChunks, type WorkerResult, type PreparedFile } from "./worker.js";
 import { getCurrentCommit, getChangedFilesSince, getUntrackedFiles, getRepoRoot } from "./git-diff.js";
@@ -42,6 +44,10 @@ export interface RunIndexPassOptions {
   descriptionProvider?: DescriptionProvider;
   /** Optional progress tracker for reporting file-level progress. */
   progress?: IndexProgress;
+  /** Optional abort signal – when fired, the pass finishes the current file then stops. */
+  abortSignal?: AbortSignal;
+  /** Embedding vector dimension — needed when creating a temporary store for atomic rebuilds. */
+  dimension?: number;
 }
 
 export interface Logger {
@@ -128,7 +134,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
   let manifestStatus = loadResult.status;
   let rebuildPerformed = false;
 
-  logger.debug(`Manifest loaded: ${manifestStatus}, ${Object.keys(manifest.files).length} entries`);
+  logger.info(`Manifest loaded: ${manifestStatus}, ${Object.keys(manifest.files).length} entries`);
 
   if (options.force) {
     manifestStatus = "missing";
@@ -165,6 +171,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     }
   }
 
+  const scanStart = Date.now();
   const workspaceFiles = await scanWorkspaceFiles(
     options.cwd,
     options.config,
@@ -173,7 +180,8 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     filterPaths,
   );
 
-  logger.debug(`Workspace scan complete: ${workspaceFiles.length} files`);
+  const scanSec = ((Date.now() - scanStart) / 1000).toFixed(1);
+  logger.info(`Workspace scan complete: ${workspaceFiles.length} files in ${scanSec}s`);
 
   const existingCount = await options.store.count();
 
@@ -196,8 +204,11 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     }
   }
 
+  // Effective store used throughout the pass — may be a temp store for atomic rebuild.
+  let effectiveStore: VectorStore = options.store;
+  let tempStorePath: string | undefined;
+
   if (options.force || (manifestStatus !== "ok" && existingCount > 0)) {
-    await options.store.clear();
     options.keywordIndex?.clear();
     for (const key of Object.keys(manifest.files)) {
       delete manifest.files[key];
@@ -208,6 +219,20 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
       logger.warn("Manifest missing or corrupt; rebuilding full index.");
     }
     manifestStatus = options.force ? "missing" : manifestStatus;
+
+    // Build the new index into a temporary store first, then atomically
+    // swap on completion.  Original data stays untouched if the process
+    // is aborted (Ctrl+C, crash) before the swap completes.
+    if (options.dimension) {
+      tempStorePath = options.storePath + "_tmp";
+      try { await fs.rm(tempStorePath, { recursive: true, force: true }); } catch { /* may not exist */ }
+      effectiveStore = createVectorStore(options.config, tempStorePath, options.dimension);
+      logger.debug(`Rebuilding index in temporary store at ${tempStorePath}`);
+    } else {
+      // Fallback — in-memory store or no dimension: clear in place.
+      logger.warn("No embedding dimension available; falling back to in-place clear.");
+      await options.store.clear();
+    }
   }
 
   const stats = createIndexStats(workspaceFiles.length, manifestStatus);
@@ -237,7 +262,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     await Promise.all(
       stalePaths.map((p) =>
         deleteLimit(async () => {
-          await options.store.deleteByFilePath(p);
+          await effectiveStore.deleteByFilePath(p);
           options.keywordIndex?.removeByFilePath(p);
           delete manifest.files[p];
           stats.deletedFiles++;
@@ -350,35 +375,50 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     }
   }
 
-  // ── Handle deletions from store for files being re-processed ──
-  const deletionLimit = pLimit(options.config.indexing.concurrency);
-  await Promise.all(
-    prepared.map((prep) =>
-      deletionLimit(async () => {
-        if (prep.earlyResult?.isRemoved) {
-          await options.store.deleteByFilePath(prep.normalizedPath);
-          options.keywordIndex?.removeByFilePath(prep.normalizedPath);
-          return;
-        }
-        if (prep.isModified && prep.chunks && prep.chunks.length > 0) {
-          await options.store.deleteByFilePath(prep.normalizedPath);
-          options.keywordIndex?.removeByFilePath(prep.normalizedPath);
-        }
-      }),
-    ),
-  );
-
-  // ── Phase 2+3: per-file embed + store (in parallel) ──
+  // ── Phase 2+3: per-file delete, embed + store (in parallel) ──
+  // Deletions for modified/re-removed files happen per-worker, right before
+  // embedding, so that an abort mid-embed doesn't orphan old entries.
   const isOllama = options.embedder.name === "ollama";
   const ollamaMaxBatch = options.config.indexing.ollamaMaxBatchSize ?? 4000;
   const defaultBatchSize = options.config.indexing.embedBatchSize;
   const defaultConcurrency = options.config.indexing.embedConcurrency ?? 1;
 
+  // File metadata look-up for manifest entries
+  const fileMeta = new Map(workspaceFiles.map((f) => [f.normalizedPath, { mtime: f.mtime, size: f.size }]));
+
+  // Serialised manifest-save queue — prevents concurrent write races and acts
+  // as a checkpoint for Ctrl+C resilience.  Each worker appends to this chain
+  // after a successful store, so previously completed files are never lost.
+  let manifestSaveChain = Promise.resolve<void>(undefined);
+  function enqueueManifestSave(): void {
+    manifestSaveChain = manifestSaveChain.then(() =>
+      saveManifest(options.storePath, manifest),
+    );
+  }
+
+  const aborted = (): boolean => options.abortSignal?.aborted ?? false;
+
   const embedStoreLimit = pLimit(options.config.indexing.concurrency);
   const workerResults = await Promise.all(
     prepared.map((prep) =>
       embedStoreLimit(async () => {
-        if (prep.earlyResult) return prep.earlyResult;
+        // ── Check abort signal before any work ──
+        if (aborted()) {
+          return { normalizedPath: prep.normalizedPath, skipped: true as const } as const;
+        }
+
+        // ── Early results (empty / too-small / unchanged / chunking failure) ──
+        if (prep.earlyResult) {
+          // Remove stale manifest/store entries for files that no longer produce chunks
+          if (prep.earlyResult.isRemoved) {
+            await effectiveStore.deleteByFilePath(prep.normalizedPath);
+            options.keywordIndex?.removeByFilePath(prep.normalizedPath);
+            delete manifest.files[prep.normalizedPath];
+            enqueueManifestSave();
+          }
+          return prep.earlyResult;
+        }
+
         if (!prep.chunks || !prep.textToEmbed || prep.textToEmbed.length === 0) {
           options.progress?.finishFile(prep.fileLabel);
           return {
@@ -390,7 +430,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
           };
         }
 
-        // Plan A: single batch for Ollama
+        // ── Embed ──
         const batchSize = isOllama
           ? Math.min(prep.textToEmbed.length, ollamaMaxBatch)
           : defaultBatchSize;
@@ -419,48 +459,123 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
           };
         }
 
-        const result = await storeFileChunks(prep, embeddings, options.store, logger);
+        // ── Store (new data first, then cleanup old) ──
+        const result = await storeFileChunks(prep, embeddings, effectiveStore, logger);
+
+        // ── Clean up old store/keyword entries for modified files ──
+        // Done *after* storing the new chunks so an abort never orphans data.
+        if (prep.isModified && !result.isRemoved && result.chunkCount > 0) {
+          await effectiveStore.deleteByFilePath(prep.normalizedPath).catch(() => {});
+          options.keywordIndex?.removeByFilePath(prep.normalizedPath);
+        }
+
+        // ── Update manifest in-memory and enqueue an atomic save ──
+        if (result.chunkCount > 0 && !result.isRemoved) {
+          const meta = fileMeta.get(result.normalizedPath);
+          manifest.files[result.normalizedPath] = {
+            hash: result.hash,
+            chunkCount: result.chunkCount,
+            indexedAt: Date.now(),
+            mtime: meta?.mtime,
+            size: meta?.size,
+            descriptionFailed: result.descriptionFailed,
+          };
+          enqueueManifestSave();
+        } else if (result.isRemoved) {
+          delete manifest.files[result.normalizedPath];
+          enqueueManifestSave();
+        }
+
         options.progress?.finishFile(prep.fileLabel);
         return result;
       }),
     ),
   );
 
-  // ── Aggregate stats and update manifest ──
-  aggregateStats(stats, workerResults, manifest, workspaceFiles);
+  // Strip skipped sentinels
+  const finalResults: WorkerResult[] = [];
+  for (const r of workerResults) {
+    if ((r as { skipped?: boolean }).skipped) break;
+    finalResults.push(r as WorkerResult);
+  }
 
+  // Drain any in-flight manifest saves so all file entries are durable
+  await manifestSaveChain;
+
+  // Update mtime/size for unchanged files (speeds up the next scan)
+  for (const { normalizedPath, mtime, size } of workspaceFiles) {
+    const entry = manifest.files[normalizedPath];
+    if (entry && (mtime !== undefined || size !== undefined)) {
+      entry.mtime = mtime;
+      entry.size = size;
+    }
+  }
+
+  // ── Aggregate stats ──
+  aggregateStats(stats, finalResults);
+
+  // Update timestamps; advance lastGitCommit ONLY on a complete pass
   manifest.lastIndexedAt = Date.now();
-  tryUpdateLastGitCommit(options.cwd, manifest);
+  if (!aborted()) {
+    tryUpdateLastGitCommit(options.cwd, manifest);
+  }
 
+  // ── Atomically promote temp store if a full rebuild was performed ──
+  if (tempStorePath) {
+    if (!aborted()) {
+      try {
+        await effectiveStore.close();
+        await options.store.close();
+        // Swap the newly-built temp directory into the real path
+        await swapStoreDirectories(tempStorePath, options.storePath);
+        // Re-open the original store handle so callers can search the new data
+        if (typeof (options.store as any).reopen === "function") {
+          await (options.store as any).reopen(options.storePath);
+        }
+        logger.debug(`Promoted temporary store ${tempStorePath} → ${options.storePath}`);
+      } catch (err) {
+        logger.warn(
+          `Could not promote temporary store: ${(err as Error).message}. ` +
+          `Original data preserved at ${options.storePath}`,
+        );
+        try { await fs.rm(tempStorePath, { recursive: true, force: true }); } catch {}
+      }
+    } else {
+      // Aborted — discard temp, keep original data intact
+      effectiveStore.close().catch(() => {});
+      try { await fs.rm(tempStorePath, { recursive: true, force: true }); } catch {}
+      logger.debug("Index pass cancelled; discarded temporary store.");
+    }
+  }
+
+  // Save manifest and keyword index (always to the real store path — after
+  // a successful swap this points to the new data; after an abort it's the old).
   await saveManifest(options.storePath, manifest);
   await options.keywordIndex?.save(options.storePath);
-  stats.finalCount = await options.store.count();
+
+  // Count from the store — after a successful swap, the original handle has
+  // been reopened pointing to the new directory.
+  try {
+    stats.finalCount = await options.store.count();
+  } catch {
+    stats.finalCount = (tempStorePath ? 0 : stats.totalChunks);
+  }
   return stats;
 }
 
 function aggregateStats(
   stats: IndexRunStats,
   results: WorkerResult[],
-  manifest: { files: Record<string, { hash: string; chunkCount: number; indexedAt?: number; mtime?: number; size?: number; descriptionFailed?: boolean }> },
-  workspaceFiles: { normalizedPath: string; mtime?: number; size?: number }[],
 ): void {
-  const fileMeta = new Map(workspaceFiles.map((f) => [f.normalizedPath, { mtime: f.mtime, size: f.size }]));
-
   for (const result of results) {
     if (result.isEmpty) {
       stats.skippedEmptyFiles++;
-      if (result.isRemoved) {
-        delete manifest.files[result.normalizedPath];
-        stats.removedFiles++;
-      }
+      if (result.isRemoved) stats.removedFiles++;
       continue;
     }
     if (result.isTooSmall) {
       stats.skippedSmallFiles++;
-      if (result.isRemoved) {
-        delete manifest.files[result.normalizedPath];
-        stats.removedFiles++;
-      }
+      if (result.isRemoved) stats.removedFiles++;
       continue;
     }
     if (result.isUnchanged) {
@@ -468,7 +583,6 @@ function aggregateStats(
       continue;
     }
     if (result.isRemoved) {
-      delete manifest.files[result.normalizedPath];
       stats.removedFiles++;
       continue;
     }
@@ -478,28 +592,11 @@ function aggregateStats(
       stats.newFiles++;
     }
     if (result.chunkCount > 0) {
-      const meta = fileMeta.get(result.normalizedPath);
-      manifest.files[result.normalizedPath] = {
-        hash: result.hash,
-        chunkCount: result.chunkCount,
-        indexedAt: Date.now(),
-        mtime: meta?.mtime,
-        size: meta?.size,
-        descriptionFailed: result.descriptionFailed,
-      };
       if (result.descriptionFailed) {
         stats.descriptionFailedFiles++;
       }
       stats.totalChunks += result.chunkCount;
       stats.batchesFlushed++;
-    }
-  }
-
-  for (const { normalizedPath, mtime, size } of workspaceFiles) {
-    const entry = manifest.files[normalizedPath];
-    if (entry && (mtime !== undefined || size !== undefined)) {
-      entry.mtime = mtime;
-      entry.size = size;
     }
   }
 }

@@ -180,6 +180,8 @@ export interface RagConfig {
     includeExtensions: string[];
     /** Directory name patterns to exclude. */
     excludeDirs: string[];
+    /** Specific filenames (basenames, case-insensitive) to exclude from indexing. */
+    excludeFiles?: string[];
     /** Number of overlapping lines between adjacent chunks. */
     chunkOverlap: number;
     /** Minimum file size in bytes to index (0 = no minimum). */
@@ -360,6 +362,9 @@ export const DEFAULT_CONFIG: RagConfig = {
       "wasm",
       ".commandcode",
       ".agents"
+    ],
+    excludeFiles: [
+      "package-lock.json",
     ],
     chunkOverlap: 0,
     minFileSizeBytes: 0,

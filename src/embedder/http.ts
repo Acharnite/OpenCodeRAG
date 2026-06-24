@@ -375,9 +375,9 @@ async function sendRawHttpRequest(
       }
 
       if (isChunked) {
-        if (bodyBuffer.length >= 7) {
+        if (bodyBuffer.length >= 5) {
           const tail = bodyBuffer.slice(-7).toString("ascii");
-          if (tail === "\r\n0\r\n\r\n") {
+          if (tail === "\r\n0\r\n\r\n" || bodyBuffer.toString("ascii") === "0\r\n\r\n") {
             settle(() => {
               releaseOrDestroy();
               resolve(assembled);
@@ -385,6 +385,14 @@ async function sendRawHttpRequest(
           }
         }
         return;
+      }
+
+      // No Content-Length and not chunked — response body is empty (e.g., 301 redirect).
+      if (headerEndIndex >= 0) {
+        settle(() => {
+          releaseOrDestroy();
+          resolve(assembled);
+        });
       }
     };
 

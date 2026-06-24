@@ -2,6 +2,7 @@ import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -658,6 +659,11 @@ describe("handleDescribeImage", () => {
 // ─── Suite: MCP server integration for describe_image ───────────────────────
 
 describe("MCP server describe_image integration", () => {
+  const FIXTURE_DIR = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "images"
+  );
+
   function createTestServer(): McpServer {
     const server = new McpServer({
       name: "test-server",
@@ -674,7 +680,7 @@ describe("MCP server describe_image integration", () => {
         try {
           const cfg = makeConfigWithImageDesc();
           const fakeVision = makeFakeVisionProvider();
-          const result = await handleDescribeImage(args as { filePath: string }, cfg, process.cwd(), fakeVision);
+          const result = await handleDescribeImage(args as { filePath: string }, cfg, FIXTURE_DIR, fakeVision);
           return {
             content: [{ type: "text" as const, text: result.formatted }],
           };
@@ -719,7 +725,7 @@ describe("MCP server describe_image integration", () => {
     try {
       const raw = await client.callTool({
         name: "describe_image",
-        arguments: { filePath: "BetterSuno_Library.png" },
+        arguments: { filePath: "TestFile.png" },
       });
       const result = raw as ToolResult;
       assert.ok(result.content);

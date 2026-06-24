@@ -16,6 +16,8 @@ export interface CliOptions {
   limit?: string;
   /** Show hybrid score breakdown in query results. */
   explain?: boolean;
+  /** Skip confirmation prompts for destructive operations. */
+  yes?: boolean;
 }
 
 /** Options for the `init` command. */
