@@ -35,3 +35,5 @@ build/config.gypi
 opencode-rag-db/__manifest/*
 graphify_out/*
 .graphify*
+graphify-out/cache/stat-index.json
+graphify-out/_ast_extract.py
