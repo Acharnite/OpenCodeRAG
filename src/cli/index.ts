@@ -2,13 +2,14 @@
  * CLI entry point — creates the Commander program, wires all command modules,
  * and handles auto-run detection for symlinked binaries.
  *
- * This file is the compiled output target (`dist/cli.js`) referenced by
- * the `bin` entry in `package.json`.
+ * This file is compiled to `dist/cli/index.js`, the actual entry point
+ * referenced by the `bin` entry in `package.json`. The sibling file
+ * `dist/cli.js` is a backwards-compatibility re-export shim.
  */
 
 import { Command } from "commander";
 import { realpathSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPackageMetadata } from "./helpers.js";
 import {
@@ -90,10 +91,24 @@ if (shouldAutoRunCli(import.meta.url, process.argv[1])) {
   // Fallback: auto-run only when the script being executed IS the CLI entry
   // (detected by basename match). Avoids triggering on test runner imports
   // or other modules that import the CLI programmatically.
-  const cliScript = basename(fileURLToPath(import.meta.url));
-  const runningScript = basename(process.argv[1] ?? "");
+  const modulePath = fileURLToPath(import.meta.url);
+  const argvRaw = process.argv[1] ?? "";
+  const cliScript = basename(modulePath);
+  const runningScript = basename(argvRaw);
   if (cliScript === runningScript) {
     void program.parseAsync(process.argv);
+  } else {
+    // Backwards-compatibility: when a shim points to the sibling cli.js
+    // (e.g. node dist/cli.js) but the real entry is dist/cli/index.js,
+    // check whether the running script lives in the same parent directory.
+    try {
+      const resolvedArgv = realpathSync(argvRaw);
+      if (dirname(resolvedArgv) === dirname(dirname(modulePath))) {
+        void program.parseAsync(process.argv);
+      }
+    } catch {
+      // If the path cannot be resolved, skip auto-run.
+    }
   }
 }
 
