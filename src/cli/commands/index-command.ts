@@ -12,6 +12,7 @@ import { appendDebugLog } from "../../core/fileLogger.js";
 import {
   createWatchPassScheduler,
   createWatchIgnore,
+  type IndexRunStats,
   runIndexPass,
 } from "../../indexer.js";
 import {
@@ -52,6 +53,22 @@ export function registerIndexCommand(program: Command): void {
         const { config, embedder, store, storePath, keywordIndex, descriptionProvider, dimension } = ctx;
         logFilePath = ctx.logFilePath;
 
+        // ── Abort controller for graceful Ctrl+C during the initial pass ──
+        const abortController = new AbortController();
+        let sigReceived = false;
+
+        const handleSigint = () => {
+          if (sigReceived) {
+            console.error("\nForce exiting...");
+            cleanupContext(ctx).finally(() => process.exit(130));
+            return;
+          }
+          sigReceived = true;
+          abortController.abort();
+        };
+        process.on("SIGINT", handleSigint);
+        process.on("SIGTERM", handleSigint);
+
         logCliInfo(logFilePath, "index", `\n${c.heading("Indexing workspace...")}`);
         logCliInfo(logFilePath, "index", `  ${c.label("Vector dimension:")}   ${c.num(dimension)}`);
         if (descriptionProvider) {
@@ -61,7 +78,7 @@ export function registerIndexCommand(program: Command): void {
 
         logCliInfo(logFilePath, "index", `${c.label("Scanning:")} ${c.file(cwd)}`);
         const progress = new TerminalProgressTable(process.stdout);
-        const runPass = async (watchTriggered: boolean = false): Promise<void> => {
+        const runPass = async (watchTriggered: boolean = false, abortSignal?: AbortSignal): Promise<IndexRunStats> => {
           const passStarted = Date.now();
           const stats = await runIndexPass({
             cwd,
@@ -73,6 +90,7 @@ export function registerIndexCommand(program: Command): void {
             descriptionProvider,
             progress,
             force: Boolean(options.force && !watchTriggered),
+            abortSignal,
             logger: {
               info: (message) => {
                 console.log(message);
@@ -95,18 +113,27 @@ export function registerIndexCommand(program: Command): void {
             "index",
             `\n${c.success("Indexing complete.")} ${c.num(stats.finalCount)} chunks stored (${formatDuration(Date.now() - passStarted)}).`
           );
+
+          if (sigReceived) {
+            logCliInfo(logFilePath, "index", `\n${c.warn("Indexing was interrupted.")} ${c.num(stats.finalCount)} chunks saved. Run again to index remaining files.`);
+          }
+
+          return stats;
         };
 
-        await runPass(false);
+        const stats = await runPass(false, abortController.signal);
+
+        process.removeListener("SIGINT", handleSigint);
+        process.removeListener("SIGTERM", handleSigint);
 
         if (!options.watch) {
           await cleanupContext(ctx);
-          process.exit(0);
+          process.exit(sigReceived ? 130 : 0);
         }
 
         logCliInfo(logFilePath, "index", `\n${c.heading("Watching for changes...")}`);
         const scheduler = createWatchPassScheduler(
-          () => runPass(true),
+          async (): Promise<void> => { await runPass(true); },
           (error) => {
             const message = (error as Error).message || String(error);
             logCliError(logFilePath, "watch", `\nWatch reindex failed: ${message}`, error);

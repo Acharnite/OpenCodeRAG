@@ -48,3 +48,23 @@ export function markFileDocumented(storePath: string, filePath: string): void {
     saveDocProgress(storePath, progress);
   }
 }
+
+/** Record all files under a subdirectory as documented. Matches files whose path starts with subdir. */
+export function markSubdirectoryDocumented(storePath: string, subdir: string, allFilePaths: string[]): void {
+  const normalized = subdir.replace(/\\/g, "/").replace(/\/$/, "");
+  const progress = loadDocProgress(storePath);
+  let changed = false;
+  for (const filePath of allFilePaths) {
+    const normalizedFile = filePath.replace(/\\/g, "/");
+    if (normalizedFile.startsWith(normalized + "/") || normalizedFile === normalized) {
+      if (!progress.documented.includes(filePath)) {
+        progress.documented.push(filePath);
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    progress.lastUpdated = Date.now();
+    saveDocProgress(storePath, progress);
+  }
+}
