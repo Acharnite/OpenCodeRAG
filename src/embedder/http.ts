@@ -375,9 +375,9 @@ async function sendRawHttpRequest(
       }
 
       if (isChunked) {
-        if (bodyBuffer.length >= 7) {
+        if (bodyBuffer.length >= 5) {
           const tail = bodyBuffer.slice(-7).toString("ascii");
-          if (tail === "\r\n0\r\n\r\n") {
+          if (tail === "\r\n0\r\n\r\n" || bodyBuffer.toString("ascii") === "0\r\n\r\n") {
             settle(() => {
               releaseOrDestroy();
               resolve(assembled);
