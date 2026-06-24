@@ -2,12 +2,12 @@
 
 ## Completed ✓
 
-- [x] AST-aware chunking for JavaScript/TypeScript
+- [x] AST-aware chunking for JavaScript/TypeScript (+ 25 languages via tree-sitter: Python, Java, Go, C#, Kotlin, Swift, Rust, Ruby, PHP, SQL, YAML, TOML, XML, HTML, CSS, JSON, Markdown, Bash, Dockerfile, PowerShell, INI, TeX, Razor, SLN, StarLIMS SSL)
 - [x] Document chunking for PDF, DOCX, DOC, Excel
 - [x] Hybrid keyword + vector search with configurable fusion weights
 - [x] LanceDB vector storage with incremental indexing
-- [x] Background indexing with file watching
-- [x] Configurable embeddings with proxy support
+- [x] Background indexing with file watching (chokidar-based live re-indexing)
+- [x] Configurable embeddings with proxy support (custom HTTP client with connection pooling, raw TCP/TLS sockets, NO_PROXY matching)
 - [x] API key auto-resolution from OpenCode provider config
 - [x] Manifest schema versioning with auto-rebuild
 - [x] Runtime overrides system (no JSON editing required)
@@ -20,13 +20,29 @@
 - [x] MCP server (`opencode-rag mcp`) — expose `search_semantic`, `get_file_skeleton`, `find_usages`, `describe_image` via stdio MCP for any MCP-compatible client
 - [x] Programmatic TypeScript API (`search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()`, `createBackgroundIndexer()`, `getIndexStatusSummary()`)
 - [x] Retrieval debug surfaces (explain why files/chunks were returned) — `SearchExplanation` type, `getMatchedTerms()`, `--explain` CLI flag, `explain` param on API calls
-- [x] Image description via vision LLMs — `describe_image` tool in OpenCode plugin, MCP server, and CLI; image indexing with searchable vector chunks
+- [x] Image description via vision LLMs — `describe_image` tool in OpenCode plugin, MCP server, and CLI; 4 vision providers (Ollama, OpenAI, Anthropic, Gemini); image resizing via sharp; image chunking with searchable vector chunks
+- [x] Evaluation framework — session event capture, token usage analysis, RAG impact measurement, cross-session comparison (`eval:sessions`, `eval:analyze`, `eval:compare` commands)
+- [x] Multi-provider description generation — Anthropic Claude, Google Gemini, and OpenAI-compatible providers with batch description support
+- [x] Self-updater — check/install updates from GitHub Releases (`opencode-rag update`)
+- [x] Provider health checking — validates all configured providers (embedding, description, image_description) at startup
+- [x] Enhanced CLI — 16 commands: `index`, `query`, `show`, `dump`, `status`, `init`, `clear`, `list`, `eval`, `describe-image`, `mcp`, `ui`, `update`, plus progress tracking
+- [x] Pluggable chunker loading — dynamic import of custom chunker modules from config
+- [x] In-memory vector store — ephemeral alternative to LanceDB for testing/embedding
+- [x] Lock-file concurrency protection for index passes
+- [x] Data-loss detection in indexing pipeline
+- [x] Batch description generation with failure tracking and retry
+- [x] Live terminal progress table with pipeline breadcrumbs (Chunking → Description → Embedding → Finished)
+- [x] Documentation mode progress tracking (`doc-mode-progress.json`)
+- [x] SSL/STARLIMS chunker for procedural script files
+- [x] Cohere embedding provider with health check
+- [x] Config validation at startup — validate `opencode-rag.json` schema with clear error messages
+- [x] Better ranking/diversity for `chat.message` file suggestions
 
 ## Short Term
+- [ ] Git-aware incremental indexing — `git diff --name-only` since last indexed commit, skips unchanged tracked files
 - [ ] LLM-based re-ranking layer (cross-encoder or lightweight model after vector search)
 - [ ] Query rewriting / multi-variant expansion
 - [ ] Context window optimization (dedup, merge adjacent chunks)
-- [ ] Better ranking/diversity for `chat.message` file suggestions
 - [ ] Persistent query cache (disk-based, not just in-memory)
 
 ## Mid Term
@@ -36,21 +52,17 @@
 - [ ] Multi-repo / cross-workspace search
 - [ ] IDE context awareness (current file, cursor position)
 - [ ] Prompt template customization
-- [ ] Debugging tools (inspecting embeddings, result explanations)
 - [ ] Memory / persistent context across sessions
 
 ## Long Term
 
-- [ ] Evaluation framework (benchmark queries, precision@K, recall)
 - [ ] Code execution-aware retrieval
 - [ ] Semantic refactoring assistant
 - [ ] Agent-based code navigation
 - [ ] Richer non-code / multimodal support (diagrams, API specs, JSON schemas, YAML configs)
 - [ ] Access control (per-folder permissions, sensitive file exclusion)
-- [ ] Git-aware incremental indexing — index only files changed since last commit instead of full-file hash scan
 - [ ] Index export/import — serialize the index for CI/CD, team sharing, or backup/restore
 - [ ] Performance benchmark suite — measure index time, query latency, memory usage across repo sizes
-- [ ] Config validation at startup — validate `opencode-rag.json` schema with clear error messages
 
 ---
 
@@ -76,10 +88,6 @@ Prevent token overload by deduplicating similar chunks, merging adjacent chunks,
 
 Integrate with the editor's current context: active file, cursor position, and selected code. Boost retrieval relevance by weighting results near the user's current focus.
 
-## Evaluation Framework
-
-Measure retrieval quality with benchmark queries, precision@K, and recall. Needed before tuning chunking strategies or embedding models.
-
 ## Access Control
 
 Per-folder permissions and sensitive file exclusion for enterprise or multi-user environments.
@@ -96,10 +104,6 @@ Initial document support already in place via extracted text for PDF, DOCX, DOC,
 
 Allow users to customize how retrieved context is formatted and injected into LLM prompts. Currently uses a fixed pattern.
 
-## Debugging Tools
-
-Inspect embeddings visually, show vector distances between results, explain why a particular chunk or file was retrieved.
-
 ## Memory & Storage Optimization
 
 Quantized embeddings to reduce storage, pruning stale entries, garbage collection on unused chunks.
@@ -111,10 +115,6 @@ Retain coding patterns, project conventions, and past decisions across sessions.
 ## Multi-Workspace Awareness
 
 Support indexing and searching across multiple repositories. Enable cross-project queries for monorepo setups or microservice architectures. Could use per-workspace vector shards with a unified query layer.
-
-## Git-Aware Incremental Indexing
-
-Instead of hashing every file on each index pass, detect changed files via `git diff --name-only` since the last indexed commit. Skips unchanged tracked files entirely — dramatically faster for large repos.
 
 ## Index Export / Import
 
@@ -143,35 +143,3 @@ LLM produces directory-level summaries from indexed chunks. Useful for onboardin
 ## Chunk Quality Heuristics
 
 Score chunks during indexing for size, coherence, and boundary quality. Flag poorly-chunked files for improvement. Could guide chunker selection or parameter tuning.
-
----
-
-# 🎯 Summary
-
-OpenCodeRAG delivers a local-first semantic code search pipeline with AST and
-document-aware chunking, incremental/background indexing, configurable
-embeddings with proxy support, LanceDB vector storage, a full-lifecycle CLI,
-OpenCode plugin integration with read-override and TUI modules, MCP server with 4 tools, and
-install/release automation.
-
-**Key strengths:**
-- Local + privacy-first
-- Modular architecture (interfaces + factory/adapter patterns)
-- Workspace-native bootstrap via `opencode-rag init`
-- Broad source and document coverage (JS/TS, PDF, DOCX, DOC, Excel) plus image indexing via vision LLMs
-- RAG-backed read tool that enriches file reads with related code chunks
-- Hybrid keyword + vector search with configurable fusion weights
-- TUI settings menu with model picker for embedding and description providers
-- Runtime overrides system for live config changes without editing JSON files
-- API key auto-resolution from OpenCode provider config
-- Manifest schema versioning with auto-rebuild on format changes
-- Install scripts for one-command global setup and uninstall
-
-**Next steps (prioritized):**
-1. LLM-based re-ranking for retrieval precision
-2. Query rewriting and multi-variant expansion
-3. Context window optimization (dedup, merge, diversity ranking)
-4. Persistent query cache across restarts
-5. Cross-file code graph integration (imports, call graph)
-6. Index export/import for CI/CD and team sharing
-7. Git-aware incremental indexing
