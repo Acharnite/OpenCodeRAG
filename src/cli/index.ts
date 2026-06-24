@@ -8,6 +8,8 @@
 
 import { Command } from "commander";
 import { realpathSync } from "node:fs";
+import { basename } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getPackageMetadata } from "./helpers.js";
 import {
   registerIndexCommand,
@@ -85,12 +87,12 @@ export function shouldAutoRunCli(moduleUrl: string, argv1?: string): boolean {
 if (shouldAutoRunCli(import.meta.url, process.argv[1])) {
   void program.parseAsync(process.argv);
 } else {
-  // Fallback: if the module appears to be running as a CLI and not being
-  // imported as a library, parse the arguments anyway. When invoked with no
-  // arguments Commander will display the help text.
-  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump', 'describe-image', 'ui', 'mcp', 'update', 'eval:sessions', 'eval:analyze', 'eval:compare'];
-  const cmd = process.argv[2];
-  if ((process.argv.length <= 2) || (cmd && commands.includes(cmd.toLowerCase()))) {
+  // Fallback: auto-run only when the script being executed IS the CLI entry
+  // (detected by basename match). Avoids triggering on test runner imports
+  // or other modules that import the CLI programmatically.
+  const cliScript = basename(fileURLToPath(import.meta.url));
+  const runningScript = basename(process.argv[1] ?? "");
+  if (cliScript === runningScript) {
     void program.parseAsync(process.argv);
   }
 }
