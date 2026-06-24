@@ -101,7 +101,7 @@ export function registerIndexCommand(program: Command): void {
 
         if (!options.watch) {
           await cleanupContext(ctx);
-          return;
+          process.exit(0);
         }
 
         logCliInfo(logFilePath, "index", `\n${c.heading("Watching for changes...")}`);
