@@ -7,6 +7,7 @@
 
 import type { Command } from "commander";
 import path from "node:path";
+import readline from "node:readline";
 import chokidar from "chokidar";
 import { appendDebugLog } from "../../core/fileLogger.js";
 import {
@@ -42,6 +43,7 @@ export function registerIndexCommand(program: Command): void {
     .description("Index workspace files")
     .option("-c, --config <path>", "path to config file")
     .option("-f, --force", "force full re-index")
+    .option("-y, --yes", "skip confirmation prompt for full rebuild")
     .option("-w, --watch", "watch workspace and incrementally re-index on changes")
     .action(async (options: CliOptions) => {
       const started = Date.now();
@@ -76,6 +78,24 @@ export function registerIndexCommand(program: Command): void {
           logCliInfo(logFilePath, "index", `  ${c.label("Description LLM:")}  ${c.value(descriptionConfig.model)} (${descriptionConfig.provider})`);
         }
 
+        // ── Prompt for confirmation when --force would destroy existing data ──
+        if (options.force && !options.yes) {
+          const prevCount = await store.count();
+          if (prevCount > 0) {
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+            const answer = await new Promise<string>((resolve) => {
+              rl.question(`Delete ${c.num(prevCount)} existing chunks and re-index everything? [y/N] `, resolve);
+            });
+            rl.close();
+            const trimmed = answer.trim().toLowerCase();
+            if (trimmed !== "y" && trimmed !== "yes") {
+              logCliInfo(logFilePath, "index", c.warn("Force rebuild cancelled."));
+              await cleanupContext(ctx);
+              process.exit(0);
+            }
+          }
+        }
+
         logCliInfo(logFilePath, "index", `${c.label("Scanning:")} ${c.file(cwd)}`);
         const progress = new TerminalProgressTable(process.stdout);
         const runPass = async (watchTriggered: boolean = false, abortSignal?: AbortSignal): Promise<IndexRunStats> => {
@@ -91,6 +111,7 @@ export function registerIndexCommand(program: Command): void {
             progress,
             force: Boolean(options.force && !watchTriggered),
             abortSignal,
+            dimension,
             logger: {
               info: (message) => {
                 console.log(message);

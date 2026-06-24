@@ -13,6 +13,8 @@ import type {
   VectorStore,
 } from "../core/interfaces.js";
 import { embedBatch } from "../embedder/factory.js";
+import { createVectorStore } from "../vectorstore/factory.js";
+import { swapStoreDirectories } from "../vectorstore/lancedb.js";
 import { createIndexStats, type IndexRunStats, type IndexStatusSummary } from "./stats.js";
 import { prepareFile, buildTextsToEmbed, storeFileChunks, type WorkerResult, type PreparedFile } from "./worker.js";
 import { getCurrentCommit, getChangedFilesSince, getUntrackedFiles, getRepoRoot } from "./git-diff.js";
@@ -44,6 +46,8 @@ export interface RunIndexPassOptions {
   progress?: IndexProgress;
   /** Optional abort signal – when fired, the pass finishes the current file then stops. */
   abortSignal?: AbortSignal;
+  /** Embedding vector dimension — needed when creating a temporary store for atomic rebuilds. */
+  dimension?: number;
 }
 
 export interface Logger {
@@ -200,8 +204,11 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     }
   }
 
+  // Effective store used throughout the pass — may be a temp store for atomic rebuild.
+  let effectiveStore: VectorStore = options.store;
+  let tempStorePath: string | undefined;
+
   if (options.force || (manifestStatus !== "ok" && existingCount > 0)) {
-    await options.store.clear();
     options.keywordIndex?.clear();
     for (const key of Object.keys(manifest.files)) {
       delete manifest.files[key];
@@ -212,6 +219,20 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
       logger.warn("Manifest missing or corrupt; rebuilding full index.");
     }
     manifestStatus = options.force ? "missing" : manifestStatus;
+
+    // Build the new index into a temporary store first, then atomically
+    // swap on completion.  Original data stays untouched if the process
+    // is aborted (Ctrl+C, crash) before the swap completes.
+    if (options.dimension) {
+      tempStorePath = options.storePath + "_tmp";
+      try { await fs.rm(tempStorePath, { recursive: true, force: true }); } catch { /* may not exist */ }
+      effectiveStore = createVectorStore(options.config, tempStorePath, options.dimension);
+      logger.debug(`Rebuilding index in temporary store at ${tempStorePath}`);
+    } else {
+      // Fallback — in-memory store or no dimension: clear in place.
+      logger.warn("No embedding dimension available; falling back to in-place clear.");
+      await options.store.clear();
+    }
   }
 
   const stats = createIndexStats(workspaceFiles.length, manifestStatus);
@@ -241,7 +262,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     await Promise.all(
       stalePaths.map((p) =>
         deleteLimit(async () => {
-          await options.store.deleteByFilePath(p);
+          await effectiveStore.deleteByFilePath(p);
           options.keywordIndex?.removeByFilePath(p);
           delete manifest.files[p];
           stats.deletedFiles++;
@@ -390,7 +411,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
         if (prep.earlyResult) {
           // Remove stale manifest/store entries for files that no longer produce chunks
           if (prep.earlyResult.isRemoved) {
-            await options.store.deleteByFilePath(prep.normalizedPath);
+            await effectiveStore.deleteByFilePath(prep.normalizedPath);
             options.keywordIndex?.removeByFilePath(prep.normalizedPath);
             delete manifest.files[prep.normalizedPath];
             enqueueManifestSave();
@@ -407,12 +428,6 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
             isTooSmall: false, isRemoved: true, hadChunks: false,
             descriptionFailed: prep.descriptionFailed,
           };
-        }
-
-        // ── Delete old store/keyword entries for modified files ──
-        if (prep.isModified && prep.chunks.length > 0) {
-          await options.store.deleteByFilePath(prep.normalizedPath);
-          options.keywordIndex?.removeByFilePath(prep.normalizedPath);
         }
 
         // ── Embed ──
@@ -444,8 +459,15 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
           };
         }
 
-        // ── Store ──
-        const result = await storeFileChunks(prep, embeddings, options.store, logger);
+        // ── Store (new data first, then cleanup old) ──
+        const result = await storeFileChunks(prep, embeddings, effectiveStore, logger);
+
+        // ── Clean up old store/keyword entries for modified files ──
+        // Done *after* storing the new chunks so an abort never orphans data.
+        if (prep.isModified && !result.isRemoved && result.chunkCount > 0) {
+          await effectiveStore.deleteByFilePath(prep.normalizedPath).catch(() => {});
+          options.keywordIndex?.removeByFilePath(prep.normalizedPath);
+        }
 
         // ── Update manifest in-memory and enqueue an atomic save ──
         if (result.chunkCount > 0 && !result.isRemoved) {
@@ -498,9 +520,46 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     tryUpdateLastGitCommit(options.cwd, manifest);
   }
 
+  // ── Atomically promote temp store if a full rebuild was performed ──
+  if (tempStorePath) {
+    if (!aborted()) {
+      try {
+        await effectiveStore.close();
+        await options.store.close();
+        // Swap the newly-built temp directory into the real path
+        await swapStoreDirectories(tempStorePath, options.storePath);
+        // Re-open the original store handle so callers can search the new data
+        if (typeof (options.store as any).reopen === "function") {
+          await (options.store as any).reopen(options.storePath);
+        }
+        logger.debug(`Promoted temporary store ${tempStorePath} → ${options.storePath}`);
+      } catch (err) {
+        logger.warn(
+          `Could not promote temporary store: ${(err as Error).message}. ` +
+          `Original data preserved at ${options.storePath}`,
+        );
+        try { await fs.rm(tempStorePath, { recursive: true, force: true }); } catch {}
+      }
+    } else {
+      // Aborted — discard temp, keep original data intact
+      effectiveStore.close().catch(() => {});
+      try { await fs.rm(tempStorePath, { recursive: true, force: true }); } catch {}
+      logger.debug("Index pass cancelled; discarded temporary store.");
+    }
+  }
+
+  // Save manifest and keyword index (always to the real store path — after
+  // a successful swap this points to the new data; after an abort it's the old).
   await saveManifest(options.storePath, manifest);
   await options.keywordIndex?.save(options.storePath);
-  stats.finalCount = await options.store.count();
+
+  // Count from the store — after a successful swap, the original handle has
+  // been reopened pointing to the new directory.
+  try {
+    stats.finalCount = await options.store.count();
+  } catch {
+    stats.finalCount = (tempStorePath ? 0 : stats.totalChunks);
+  }
   return stats;
 }
 

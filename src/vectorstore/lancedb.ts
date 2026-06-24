@@ -25,6 +25,34 @@ export function isCorruptionError(err: unknown): boolean {
   return false;
 }
 
+/**
+ * Atomically replace one LanceDB store directory with another.
+ * Swaps the real directory with a temporary one that was built during a rebuild.
+ * The old directory is moved to `${realPath}_old` and deleted asynchronously.
+ *
+ * @param tempPath - Path to the newly built store (source).
+ * @param realPath - Path to the current store (destination, will be replaced).
+ */
+export async function swapStoreDirectories(tempPath: string, realPath: string): Promise<void> {
+  const oldPath = `${realPath}_old`;
+  // Move current real → old (so we can recover if the rename fails)
+  try {
+    await fs.rename(realPath, oldPath);
+  } catch {
+    // realPath may not exist yet (first-time build)
+  }
+  // Move temp → real
+  try {
+    await fs.rename(tempPath, realPath);
+  } catch (err) {
+    // Rename failed — try to restore old back
+    try { await fs.rename(oldPath, realPath); } catch {}
+    throw err;
+  }
+  // Best-effort async cleanup of old directory
+  fs.rm(oldPath, { recursive: true, force: true }).catch(() => {});
+}
+
 /** Internal row shape stored in the LanceDB table. */
 interface ChunkRow {
   id: string;
@@ -87,10 +115,25 @@ export class LanceDBStore implements VectorStore {
       if (await this.tableHasDescriptionColumn()) {
         return this.table;
       }
+      // Schema missing 'description' column -- try to add it gracefully first.
+      try {
+        await this.table.addColumns([{ name: "description", valueSql: "''" }]);
+        console.warn("[lancedb] Added missing 'description' column to existing table.");
+        return this.table;
+      } catch {
+        console.warn(
+          "[lancedb] Could not auto-add missing 'description' column. " +
+          "Run 'opencode-rag index --force' to rebuild the index with the correct schema."
+        );
+        // Fall through to drop + recreate below
+      }
       try {
         const oldCount = await this.table.countRows();
         if (oldCount > 0) {
-          console.error(`[lancedb] WARNING: Dropping table with ${oldCount} rows — schema missing 'description' column (data will be lost). Clearing manifest so index will rebuild.`);
+          console.warn(
+            `[lancedb] Dropping table with ${oldCount} rows — schema missing 'description' column. ` +
+            `Clearing manifest so index will rebuild.`
+          );
           try {
             const manifestPath = manifestPathFor(this.dbPath);
             await fs.unlink(manifestPath).catch(() => {});
@@ -144,9 +187,10 @@ export class LanceDBStore implements VectorStore {
   }
 
   /**
-   * Store chunks in the LanceDB table. Existing rows for the same file path
-   * and start line are deleted before insertion. Automatically attempts repair
-   * on corruption errors.
+   * Store chunks in the LanceDB table. New rows are inserted first, then
+   * any old rows at the same (filePath, startLine) with different IDs are
+   * removed. This ensures no data is lost if the process aborts between
+   * insert and cleanup. Automatically attempts repair on corruption errors.
    * @param chunks - The chunks to add.
    */
   async addChunks(chunks: Chunk[]): Promise<void> {
@@ -179,24 +223,35 @@ export class LanceDBStore implements VectorStore {
 
     if (rows.length === 0) return;
 
-    const fileLinesMap = new Map<string, Set<number>>();
+    // Build a map: (filePath, startLine) → set of new IDs for dedup after insert
+    const newIdsByLine = new Map<string, Set<string>>();
     for (const row of rows) {
-      const existing = fileLinesMap.get(row.filePath);
-      if (existing) {
-        existing.add(row.startLine);
+      const key = `${row.filePath}:${row.startLine}`;
+      const ids = newIdsByLine.get(key);
+      if (ids) {
+        ids.add(row.id);
       } else {
-        fileLinesMap.set(row.filePath, new Set([row.startLine]));
+        newIdsByLine.set(key, new Set([row.id]));
       }
     }
 
-    for (const [filePath, startLines] of fileLinesMap) {
-      const escaped = filePath.replace(/'/g, "''");
-      for (const line of startLines) {
-        await table.delete(`filePath = '${escaped}' AND startLine = ${line}`);
-      }
-    }
-
+    // INSERT FIRST: data is safely stored before any delete
     await table.add(rows as unknown as Record<string, unknown>[]);
+
+    // THEN DEDUP: remove old rows at the same (filePath, startLine) positions,
+    // but preserve the newly inserted rows by filtering out their IDs.
+    for (const [key, newIds] of newIdsByLine) {
+      const colonIdx = key.lastIndexOf(":");
+      const filePath = key.slice(0, colonIdx);
+      const startLine = parseInt(key.slice(colonIdx + 1), 10);
+      const escapedPath = filePath.replace(/'/g, "''");
+      for (const id of newIds) {
+        const escapedId = id.replace(/'/g, "''");
+        await table.delete(
+          `filePath = '${escapedPath}' AND startLine = ${startLine} AND id != '${escapedId}'`,
+        );
+      }
+    }
   }
 
   /**
@@ -348,6 +403,20 @@ export class LanceDBStore implements VectorStore {
     }
   }
 
+  /**
+   * Re-open the store, optionally pointing at a new database path.
+   * Closes any existing connection and resets internal state so that the
+   * next operation lazily reconnects to (the new) path.
+   *
+   * @param newPath - Optional new filesystem path for the LanceDB database.
+   */
+  async reopen(newPath?: string): Promise<void> {
+    if (newPath) this.dbPath = newPath;
+    this.table = null;
+    this.db = null;
+    this.tableInit = null;
+  }
+
   /** Close the database connection and release resources. */
   async close(): Promise<void> {
     this.table?.close();
@@ -428,23 +497,30 @@ export class LanceDBStore implements VectorStore {
       try {
         table = await db.openTable(TABLE_NAME);
       } catch {
-        await this.dropDatabase();
-        return true;
+        // Table is corrupt and can't even be opened — leave it be so the user
+        // can run `opencode-rag index --force` to rebuild with full control.
+        console.error(
+          "[lancedb] Corrupt table detected. Run 'opencode-rag index --force' to rebuild."
+        );
+        return false;
       }
 
       let versions: Version[];
       try {
         versions = await table.listVersions();
       } catch {
-        await db.dropTable(TABLE_NAME).catch(() => {});
-        this.table = null;
-        return true;
+        // Can't list versions (corrupt version manifest). Don't nuke data —
+        // let the user decide how to proceed.
+        console.warn(
+          "[lancedb] Could not list table versions for repair. " +
+          "Run 'opencode-rag index --force' to rebuild if search results are incorrect."
+        );
+        return false;
       }
 
+      // No previous version to roll back to — not a corruption we can fix.
       if (versions.length <= 1) {
-        await db.dropTable(TABLE_NAME).catch(() => {});
-        this.table = null;
-        return true;
+        return false;
       }
 
       const sorted = [...versions].sort((a, b) => b.version - a.version);
@@ -462,9 +538,12 @@ export class LanceDBStore implements VectorStore {
         }
       }
 
-      await db.dropTable(TABLE_NAME).catch(() => {});
-      this.table = null;
-      return true;
+      // Tried all versions, none worked — report failure but don't destroy data.
+      console.error(
+        "[lancedb] All version-restore attempts failed. " +
+        "Run 'opencode-rag index --force' to rebuild the index."
+      );
+      return false;
     } catch {
       return false;
     }

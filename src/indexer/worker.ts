@@ -386,11 +386,6 @@ export async function processFile(
     return prep.earlyResult;
   }
 
-  if (prep.isModified) {
-    await store.deleteByFilePath(prep.normalizedPath);
-    keywordIndex?.removeByFilePath(prep.normalizedPath);
-  }
-
   if (!prep.textToEmbed || prep.textToEmbed.length === 0) {
     return {
       normalizedPath: prep.normalizedPath, hash: prep.hash, chunkCount: 0, fileLabel: prep.fileLabel,
@@ -403,6 +398,14 @@ export async function processFile(
     const { embedBatch } = await import("../embedder/factory.js");
     const embeddings = await embedBatch(embedder, prep.textToEmbed, config.indexing.embedBatchSize, "document", config.indexing.embedConcurrency ?? 1);
     const result = await storeFileChunks(prep, embeddings, store);
+
+    // Clean up old store/keyword entries for modified files.
+    // Done *after* storing the new chunks so an abort never orphans data.
+    if (prep.isModified && !result.isRemoved && result.chunkCount > 0) {
+      await store.deleteByFilePath(prep.normalizedPath).catch(() => {});
+      keywordIndex?.removeByFilePath(prep.normalizedPath);
+    }
+
     return result;
   } catch (err) {
     logger.warn(`  ${prep.fileLabel} (embed/store failed: ${(err as Error).message})`);

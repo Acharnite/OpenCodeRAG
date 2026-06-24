@@ -97,41 +97,15 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
       });
       updateStatus({ running: false, lastRunAt: Date.now() });
     } catch (err) {
+      appendDebugLog(logFilePath, {
+        scope: "autoIndex",
+        message: "Watch reindex pass failed",
+        error: err,
+      }, logLevel);
       if (isCorruptionError(err)) {
         appendDebugLog(logFilePath, {
           scope: "autoIndex",
-          message: "Corruption detected; clearing store and rebuilding",
-          error: err,
-        }, logLevel);
-        try {
-          await store.clear();
-          keywordIndex?.clear();
-          await runIndexPass({
-            cwd,
-            storePath,
-            config,
-            store,
-            embedder,
-            keywordIndex,
-            descriptionProvider,
-            logger: {
-              info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
-              warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
-          debug: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message: `DEBUG: ${message}`, severity: "debug" }, logLevel),
-            },
-          });
-        } catch (retryErr) {
-          appendDebugLog(logFilePath, {
-            scope: "autoIndex",
-            message: "Rebuild after corruption also failed",
-            error: retryErr,
-          }, logLevel);
-        }
-      } else {
-        appendDebugLog(logFilePath, {
-          scope: "autoIndex",
-          message: "Watch reindex pass failed",
-          error: err,
+          message: "Corruption detected — run 'opencode-rag index --force' to rebuild manually",
         }, logLevel);
       }
       updateStatus({ running: false, lastRunAt: Date.now() });
