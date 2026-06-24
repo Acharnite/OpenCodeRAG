@@ -37,6 +37,7 @@ export async function walkFiles(
   dir: string,
   extensions: Set<string>,
   excludeDirs: Set<string>,
+  excludeFiles?: Set<string>,
 ): Promise<string[]> {
   const results: string[] = [];
   const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -47,11 +48,11 @@ export async function walkFiles(
     if (entry.isDirectory()) {
       if (excludeDirs.has(entry.name)) continue;
       if (entry.name.startsWith(".")) continue;
-      results.push(...(await walkFiles(fullPath, extensions, excludeDirs)));
+      results.push(...(await walkFiles(fullPath, extensions, excludeDirs, excludeFiles)));
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       const basename = entry.name.toLowerCase();
-      if (extensions.has(ext) || extensions.has(basename)) {
+      if ((extensions.has(ext) || extensions.has(basename)) && !excludeFiles?.has(basename)) {
         results.push(fullPath);
       }
     }
@@ -118,12 +119,14 @@ export async function scanWorkspaceFiles(
   let files: string[];
   if (filterPaths && filterPaths.length > 0) {
     const excludeDirs = new Set(config.indexing.excludeDirs);
+    const excludeFiles = new Set(config.indexing.excludeFiles?.map((f) => f.toLowerCase()) ?? []);
     files = filterPaths
       .map((p) => path.resolve(cwd, p))
       .filter((fp) => {
         const ext = path.extname(fp).toLowerCase();
         const basename = path.basename(fp).toLowerCase();
         if (!extensions.has(ext) && !extensions.has(basename)) return false;
+        if (excludeFiles.has(basename)) return false;
         const rel = path.relative(cwd, fp);
         if (rel.startsWith("..")) return false;
         const parts = rel.split(path.sep);
@@ -135,6 +138,7 @@ export async function scanWorkspaceFiles(
       cwd,
       extensions,
       new Set(config.indexing.excludeDirs),
+      new Set(config.indexing.excludeFiles?.map((f) => f.toLowerCase()) ?? []),
     );
   }
 
