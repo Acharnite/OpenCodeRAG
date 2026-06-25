@@ -23,7 +23,7 @@ import {
   generateSkillFile,
   generateWorkspacePluginFile,
   generateWorkspaceTuiPluginFile,
-  installWorkspaceDependencies,
+  installPluginFromGlobal,
   mergeGitignoreContent,
   removeStaleGlobalPluginRegistrations,
 } from "./init-helpers.js";
@@ -153,7 +153,7 @@ export function registerInitCommand(program: Command): void {
       }
 
       const workspacePackageExists = existsSync(opencodePackagePath);
-      const nextWorkspacePackage = buildWorkspacePackageJson(readJsonObject(opencodePackagePath), packageMetadata, opencodeDir);
+      const nextWorkspacePackage = buildWorkspacePackageJson(readJsonObject(opencodePackagePath), packageMetadata);
       if (!workspacePackageExists || options.force) {
         writeJsonFile(opencodePackagePath, nextWorkspacePackage);
         console.log(`  ${workspacePackageExists ? c.updated("Updated:") : c.created("Created:")} .opencode/package.json`);
@@ -183,7 +183,7 @@ export function registerInitCommand(program: Command): void {
 
       const installPromise = options.skipInstall
         ? null
-        : installWorkspaceDependencies(opencodeDir);
+        : installPluginFromGlobal(opencodeDir, packageMetadata.name, packageMetadata.version, false);
 
       // Wait for health check results first
       if (healthPromise) {
@@ -243,9 +243,9 @@ export function registerInitCommand(program: Command): void {
         }
       }
 
-      // Now wait for npm install to finish
+      // Now install the plugin from global cache + @opencode-ai/plugin
       if (installPromise) {
-        console.log(`\n${c.heading("Installing workspace-local plugin dependencies...")}\n`);
+        console.log(`\n${c.heading("Installing workspace-local plugin...")}\n`);
         await installPromise;
         console.log(`\n  ${c.success("Installed:")} .opencode/node_modules/`);
         const updatedGlobalConfigs = removeStaleGlobalPluginRegistrations(os.homedir(), packageMetadata.name);
@@ -256,7 +256,7 @@ export function registerInitCommand(program: Command): void {
         }
         console.log(`  ${c.dim("OpenCode loads the plugin from .opencode/plugins/rag-plugin.js; no global plugin registration is required.")}`);
       } else {
-        console.log(`\n  ${c.exists("Skipped:")}   dependency installation (--skip-install)`);
+        console.log(`\n  ${c.exists("Skipped:")}   plugin installation (--skip-install)`);
       }
 
       console.log(`\n${c.success("Done.")} Restart OpenCode if it is running, then run ${c.file("'opencode-rag index'")} in this workspace.`);

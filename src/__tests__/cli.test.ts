@@ -70,7 +70,8 @@ describe("opencode-rag init", () => {
     assert.equal(opencodePackage.type, "module");
     assert.equal(opencodePackage.private, true);
     assert.equal(opencodePackage.dependencies["@opencode-ai/plugin"], "1.15.5");
-    assert.match(opencodePackage.dependencies["opencode-rag-plugin"], /^file:/);
+    // The RAG plugin is extracted directly into node_modules/, not via npm
+    assert.equal("opencode-rag-plugin" in opencodePackage.dependencies, false);
 
     const pluginEntry = readFileSync(pluginEntryPath, "utf-8");
     assert.match(pluginEntry, /node_modules\/opencode-rag-plugin\/dist\/plugin-entry\.js/);

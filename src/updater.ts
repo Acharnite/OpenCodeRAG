@@ -1,8 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-
 const GITHUB_REPO = "MrDoe/OpenCodeRAG";
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
@@ -165,22 +164,45 @@ export function applyUpdate(options: {
     process.env.USERPROFILE ?? process.env.HOME ?? "",
     ".opencode",
   );
-  const pluginDir = path.join(runtimeDir, "node_modules", "opencode-rag-plugin");
-  const junctionScript = path.join(repoRoot, "scripts", "make-junction.cjs");
+  const pluginName = "opencode-rag-plugin";
 
   try {
-    execSync(
-      `node "${junctionScript}" "${pluginDir}" "${repoRoot}"`,
-      { stdio, timeout: 10_000 },
-    );
+    // Pack the updated package
+    const packOutput = execSync(`npm pack --pack-destination "${runtimeDir}"`, {
+      cwd: repoRoot,
+      stdio: "pipe",
+      timeout: 30_000,
+    }).toString().trim();
 
-    // Also recreate workspace junction if we're inside a workspace root
-    const workspaceLink = path.join(repoRoot, ".opencode", "node_modules", "opencode-rag-plugin");
-    if (existsSync(path.dirname(workspaceLink))) {
-      execSync(
-        `node "${junctionScript}" "${workspaceLink}" "${pluginDir}"`,
-        { stdio, timeout: 10_000 },
-      );
+    // Find the .tgz file
+    const tgzName = packOutput.split("\n").pop()?.trim() ?? `${pluginName}-*.tgz`;
+    const tgzPath = path.join(runtimeDir, tgzName);
+
+    // Ensure runtime dir has a package.json for npm context
+    const runtimePkg = path.join(runtimeDir, "package.json");
+    if (!existsSync(runtimePkg)) {
+      execSync(`node -e "require('fs').writeFileSync('${runtimePkg.replace(/\\/g, '\\\\')}','{\\"private\\":true,\\"type\\":\\"module\\"}\\n')"`, { stdio, timeout: 5_000 });
+    }
+
+    // Install the plugin from .tgz via npm (resolves all JS deps, skips native compilation)
+    execSync(`npm install "${tgzPath}" --no-save --no-package-lock --ignore-scripts --silent`, {
+      cwd: runtimeDir,
+      stdio,
+      timeout: 120_000,
+    });
+
+    // Also update the workspace copy if present (via npm install from same .tgz)
+    const workspaceNodeModules = path.join(repoRoot, ".opencode", "node_modules");
+    if (existsSync(workspaceNodeModules)) {
+      const workspacePkg = path.join(repoRoot, ".opencode", "package.json");
+      if (!existsSync(workspacePkg)) {
+        execSync(`node -e "require('fs').writeFileSync('${workspacePkg.replace(/\\/g, '\\\\')}','{\\"private\\":true,\\"type\\":\\"module\\"}\\n')"`, { stdio, timeout: 5_000 });
+      }
+      execSync(`npm install "${tgzPath}" --no-save --no-package-lock --ignore-scripts --silent`, {
+        cwd: path.dirname(workspacePkg),
+        stdio,
+        timeout: 120_000,
+      });
     }
 
     return { success: true, message: "Update installed successfully. Restart OpenCode to use the new version." };

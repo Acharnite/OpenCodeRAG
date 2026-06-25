@@ -46,32 +46,19 @@ function remove_stale_plugin_from_global_config {
     return $removed
 }
 
+function get_plugin_version {
+    return (Get-Content -LiteralPath "$REPO_ROOT\package.json" -Raw | ConvertFrom-Json).version
+}
+
 function cleanup_tgz {
     Remove-Item -Path "$RUNTIME_DIR\$PLUGIN_NAME-*.tgz" -Force -ErrorAction SilentlyContinue
 }
 
-function remove_from_npm {
+function remove_plugin_dir {
     param([string]$dir)
-    $pkg = Join-Path $dir "package.json"
     $pluginDir = Join-Path (Join-Path $dir "node_modules") $PLUGIN_NAME
     if (Test-Path -LiteralPath $pluginDir) {
-        & cmd /c "rmdir /q `"$pluginDir`" 2>nul"
-        if (Test-Path -LiteralPath $pluginDir) {
-            Remove-Item -LiteralPath $pluginDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-    if (Test-Path -LiteralPath $pkg -PathType Leaf) {
-        try {
-            $content = Get-Content -LiteralPath $pkg -Raw | ConvertFrom-Json
-            if ($content.dependencies -and $content.dependencies.$PLUGIN_NAME) {
-                $content.dependencies.PSObject.Properties.Remove($PLUGIN_NAME)
-            }
-            $content | ConvertTo-Json | Set-Content -LiteralPath $pkg -NoNewline
-            Add-Content -LiteralPath $pkg -Value "`n"
-        } catch {}
-        Push-Location $dir
-        & cmd /c "npm prune --prefix `"$dir`" --silent 2>nul"
-        Pop-Location
+        Remove-Item -LiteralPath $pluginDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -94,43 +81,6 @@ function remove_from_config {
     }
 }
 
-function ensure_global_package_json {
-    $pkgPath = Join-Path $RUNTIME_DIR "package.json"
-    $pkgDir = Split-Path -Parent $pkgPath
-    if (-not (Test-Path -LiteralPath $pkgDir -PathType Container)) {
-        New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
-    }
-    if (Test-Path -LiteralPath $pkgPath -PathType Leaf) {
-        $content = Get-Content -LiteralPath $pkgPath -Raw | ConvertFrom-Json
-    } else {
-        $content = [PSCustomObject]@{}
-    }
-    if (-not $content.dependencies) {
-        $content | Add-Member -Name "dependencies" -Value ([PSCustomObject]@{}) -MemberType NoteProperty -Force
-    }
-    $expectedValue = "file:$($REPO_ROOT.Replace('\', '/'))"
-    $needsUpdate = $false
-    $hasPlugin = $false
-    foreach ($prop in $content.dependencies.PSObject.Properties) {
-        if ($prop.Name -eq $PLUGIN_NAME) {
-            $hasPlugin = $true
-            if ($prop.Value -ne $expectedValue) {
-                $prop.Value = $expectedValue
-                $needsUpdate = $true
-            }
-            break
-        }
-    }
-    if (-not $hasPlugin) {
-        $content.dependencies | Add-Member -Name $PLUGIN_NAME -Value $expectedValue -MemberType NoteProperty -Force
-        $needsUpdate = $true
-    }
-    if ($needsUpdate) {
-        $content | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $pkgPath -NoNewline
-        Add-Content -LiteralPath $pkgPath -Value "`n"
-    }
-}
-
 # --- preflight checks ---
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { die "npm is required but was not found in PATH" }
@@ -146,11 +96,8 @@ if ($args[0] -eq "uninstall") {
     Remove-Item -Path "$CLI_BIN_DIR\opencode-rag" -Force -ErrorAction SilentlyContinue
     Remove-Item -Path "$CLI_BIN_DIR\opencode-rag.sh" -Force -ErrorAction SilentlyContinue
 
-    info "Removing from global config ($GLOBAL_CONFIG)..."
-    remove_from_npm $GLOBAL_CONFIG
-
     info "Removing from OpenCode runtime ($RUNTIME_DIR)..."
-    remove_from_npm $RUNTIME_DIR
+    remove_plugin_dir $RUNTIME_DIR
 
     info "Removing .tgz package files..."
     cleanup_tgz
@@ -183,19 +130,44 @@ step "Building $PLUGIN_NAME..."
 if ($LASTEXITCODE -ne 0) { die "npm run build failed" }
 
 step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
+New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
 
-ensure_global_package_json
+# Pack the package into a .tgz
+$version = get_plugin_version
+$tgzName = "$PLUGIN_NAME-$version.tgz"
+$tgzPath = Join-Path $RUNTIME_DIR $tgzName
+Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
+
+$packOutput = & cmd /c "npm pack --pack-destination `"$RUNTIME_DIR`" 2>&1"
+if ($LASTEXITCODE -ne 0) { die "npm pack failed: $packOutput" }
+
+if (-not (Test-Path -LiteralPath $tgzPath -PathType Leaf)) {
+    $tgzName = ($packOutput | Select-Object -Last 1).Trim()
+    $tgzPath = Join-Path $RUNTIME_DIR $tgzName
+}
+
+# Install the plugin from .tgz via npm — resolves all dependencies
 Push-Location $RUNTIME_DIR
-& cmd /c "npm install --silent 2>nul"
+if (-not (Test-Path "package.json")) {
+    @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
+}
+$installOutput = & cmd /c "npm install `"$tgzPath`" --no-package-lock --ignore-scripts --silent 2>&1"
+if ($LASTEXITCODE -ne 0) {
+    Pop-Location
+    die "npm install from .tgz failed: $installOutput"
+}
 Pop-Location
 
-$junctionScript = Join-Path $REPO_ROOT "scripts\make-junction.cjs"
-& node $junctionScript "$RUNTIME_DIR\node_modules\$PLUGIN_NAME" "$REPO_ROOT"
-if ($LASTEXITCODE -eq 0) { ok "Runtime node_modules (junction to repo)" } else { fail_msg "Runtime node_modules"; die "Failed to link runtime node_modules" }
+$pluginDir = "$RUNTIME_DIR\node_modules\$PLUGIN_NAME"
+if (Test-Path -LiteralPath "$pluginDir\dist") {
+    ok "$pluginDir (installed from $tgzName via npm)"
+} else {
+    fail_msg "$pluginDir"; die "Failed to install plugin — dist/ not found"
+}
 
 step "Making CLI available on PATH..."
 New-Item -ItemType Directory -Path $CLI_BIN_DIR -Force | Out-Null
-$wrapperLine = '& node "{0}\node_modules\{1}\dist\cli.js" @args' -f $RUNTIME_DIR, $PLUGIN_NAME
+$wrapperLine = '& node "{0}\dist\cli.js" @args' -f $pluginDir
 Set-Content -LiteralPath "$CLI_BIN_DIR\opencode-rag.ps1" -Value $wrapperLine -Encoding UTF8
 ok "$CLI_BIN_DIR\opencode-rag.ps1"
 
@@ -207,25 +179,15 @@ if ($pathUpdated) { info "Added $CLI_BIN_DIR to your user PATH" }
 step "Verifying installation..."
 $verified = $true
 
-$runtimeLink = "$RUNTIME_DIR\node_modules\$PLUGIN_NAME"
-if (Test-Path -LiteralPath "$runtimeLink\dist") { ok "Runtime link (resolves via junction)" } else { fail_msg "Runtime link"; $verified = $false }
+if (Test-Path -LiteralPath "$pluginDir\dist") { ok "Runtime package (installed)" } else { fail_msg "Runtime package"; $verified = $false }
 
 if (Test-Path -LiteralPath "$CLI_BIN_DIR\opencode-rag.ps1") { ok "CLI wrapper" } else { fail_msg "CLI wrapper"; $verified = $false }
 
 # --- workspace init ---
 
 step "Initializing workspace for OpenCodeRAG..."
-& node "$runtimeLink\dist\cli.js" init --skip-health-check --skip-install
+& node "$pluginDir\dist\cli.js" init --skip-health-check --skip-install
 if ($LASTEXITCODE -eq 0) { ok "Workspace config files" } else { Write-Host "  init command completed with warnings, continuing..." -ForegroundColor Yellow }
-
-$workspaceNodeModules = Join-Path $REPO_ROOT ".opencode\node_modules"
-& node $junctionScript "$workspaceNodeModules\$PLUGIN_NAME" $runtimeLink
-if ($LASTEXITCODE -eq 0) { ok "Workspace node_modules (junction to runtime)" } else { fail_msg "Workspace node_modules"; $verified = $false }
-
-# --- validate full junction chain ---
-
-$mcpEntry = Join-Path $workspaceNodeModules "$PLUGIN_NAME\dist\cli.js"
-if (Test-Path -LiteralPath $mcpEntry) { ok "MCP entry resolves through junction chain" } else { fail_msg "MCP entry path (broken junction chain — check global package.json)"; $verified = $false }
 
 # --- done ---
 

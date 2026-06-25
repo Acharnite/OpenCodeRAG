@@ -16,30 +16,12 @@ step()  { printf '\n%s\n' "$*"; }
 ok()    { printf '  %s  OK\n' "$1"; }
 fail()  { printf '  %s  FAILED\n' "$1" >&2; }
 
-remove_stale_plugin_from_config() {
-  local removed=false
-  for cfg in opencode.jsonc opencode.json; do
-    local cfgpath="$GLOBAL_CONFIG/$cfg"
-    [[ -f "$cfgpath" ]] || continue
-    if node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('$cfgpath','utf8'));if(c.plugin){delete c.plugin;fs.writeFileSync('$cfgpath',JSON.stringify(c,null,2)+'\n');process.exit(0)}process.exit(1)" 2>/dev/null; then
-      info "Removed stale plugin entry from $cfgpath"
-      removed=true
-    fi
-  done
-  $removed
+get_plugin_version() {
+  node -e "console.log(JSON.parse(require('fs').readFileSync('$REPO_ROOT/package.json','utf-8')).version)"
 }
 
 cleanup_tgz() {
-  rm -f "$RUNTIME_DIR/$PLUGIN_NAME-"*.tgz "$GLOBAL_CONFIG/$PLUGIN_NAME-"*.tgz
-}
-
-remove_from_npm() {
-  local dir="$1" pkg="$dir/package.json"
-  rm -rf "$dir/node_modules/$PLUGIN_NAME"
-  if [[ -f "$pkg" ]]; then
-    node -e "const fs=require('fs');const p='$pkg';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(pkg.dependencies&&pkg.dependencies['$PLUGIN_NAME']){delete pkg.dependencies['$PLUGIN_NAME']}fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\n')"
-    (cd "$dir" && npm prune --silent 2>/dev/null || true)
-  fi
+  rm -f "$RUNTIME_DIR/$PLUGIN_NAME-"*.tgz
 }
 
 remove_from_config() {
@@ -49,25 +31,6 @@ remove_from_config() {
     node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('$cfgpath','utf8'));if(c.plugin){c.plugin=c.plugin.filter(p=>p!=='$PLUGIN_NAME');if(c.plugin.length===0)delete c.plugin}fs.writeFileSync('$cfgpath',JSON.stringify(c,null,2)+'\n')"
     info "Removed $PLUGIN_NAME from $cfgpath"
   done
-}
-
-ensure_global_package_json() {
-  local pkg="$RUNTIME_DIR/package.json"
-  mkdir -p "$(dirname "$pkg")"
-  if [[ ! -f "$pkg" ]]; then
-    printf '{"dependencies":{"%s":"file:%s"}}\n' "$PLUGIN_NAME" "$REPO_ROOT" > "$pkg"
-    return
-  fi
-  node -e "
-    const fs=require('fs');
-    const p='$pkg';
-    const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
-    if(!pkg.dependencies)pkg.dependencies={};
-    if(!pkg.dependencies['$PLUGIN_NAME']||pkg.dependencies['$PLUGIN_NAME']!=='file:$REPO_ROOT'){
-      pkg.dependencies['$PLUGIN_NAME']='file:$REPO_ROOT';
-      fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\n');
-    }
-  " 2>/dev/null || true
 }
 
 # --- preflight ---
@@ -81,8 +44,8 @@ if [[ "${1:-}" = "uninstall" ]]; then
   step "Uninstalling $PLUGIN_NAME from all locations..."
   info "Removing CLI wrapper..."
   rm -f "$CLI_BIN_DIR/opencode-rag" "$CLI_BIN_DIR/opencode-rag.ps1" "$CLI_BIN_DIR/opencode-rag.sh"
-  info "Removing from global config ($GLOBAL_CONFIG)...";  remove_from_npm "$GLOBAL_CONFIG"
-  info "Removing from OpenCode runtime ($RUNTIME_DIR)...";   remove_from_npm "$RUNTIME_DIR"
+  info "Removing from OpenCode runtime ($RUNTIME_DIR)..."
+  rm -rf "$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
   info "Removing .tgz package files...";                     cleanup_tgz
   info "Removing OpenCode cache..."
   rm -rf "$HOME/.cache/opencode/packages/$PLUGIN_NAME-"* 2>/dev/null || true
@@ -103,18 +66,35 @@ step "Building $PLUGIN_NAME..."
 npm run build
 
 step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
+mkdir -p "$RUNTIME_DIR/node_modules"
 
-ensure_global_package_json
-(cd "$RUNTIME_DIR" && npm install --silent 2>/dev/null || true)
+# Pack the package into a .tgz
+version=$(get_plugin_version)
+tgz_name="$PLUGIN_NAME-$version.tgz"
+tgz_path="$RUNTIME_DIR/$tgz_name"
+rm -f "$tgz_path"
 
-mkdir -p "$(dirname "$RUNTIME_DIR/node_modules/$PLUGIN_NAME")"
-rm -rf "$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
-ln -sfn "$REPO_ROOT" "$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
-if [[ -d "$REPO_ROOT/dist" ]]; then
-  ok "Runtime node_modules (symlink to repo)"
+pack_output=$(npm pack --pack-destination "$RUNTIME_DIR" 2>&1)
+if [[ $? -ne 0 ]]; then die "npm pack failed: $pack_output"; fi
+
+if [[ ! -f "$tgz_path" ]]; then
+  tgz_name=$(echo "$pack_output" | tail -1 | tr -d '[:space:]')
+  tgz_path="$RUNTIME_DIR/$tgz_name"
+fi
+
+# Install the plugin from .tgz via npm — resolves all dependencies
+mkdir -p "$RUNTIME_DIR"
+if [[ ! -f "$RUNTIME_DIR/package.json" ]]; then
+  printf '{"private":true,"type":"module"}\n' > "$RUNTIME_DIR/package.json"
+fi
+(cd "$RUNTIME_DIR" && npm install "$tgz_path" --no-package-lock --ignore-scripts --silent 2>/dev/null || true)
+if [[ $? -ne 0 ]]; then die "npm install from .tgz failed"; fi
+
+plugin_dir="$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
+if [[ -d "$plugin_dir/dist" ]]; then
+  ok "$plugin_dir (installed from $tgz_name via npm)"
 else
-  fail "Runtime node_modules"
-  die "dist/ not found in repo root -- did npm run build succeed?"
+  fail "$plugin_dir"; die "Failed to install plugin — dist/ not found"
 fi
 
 step "Making CLI available on PATH..."
@@ -131,10 +111,10 @@ ok "$CLI_BIN_DIR/opencode-rag"
 step "Verifying installation..."
 verified=true
 
-if [[ -d "$RUNTIME_DIR/node_modules/$PLUGIN_NAME/dist" ]]; then
-  ok "Runtime link (resolves via symlink)"
+if [[ -d "$plugin_dir/dist" ]]; then
+  ok "Runtime package (installed)"
 else
-  fail "Runtime link"; verified=false
+  fail "Runtime package"; verified=false
 fi
 
 if [[ -x "$CLI_BIN_DIR/opencode-rag" ]]; then
@@ -146,23 +126,8 @@ fi
 # --- workspace init ---
 
 step "Initializing workspace for OpenCodeRAG..."
-node "$RUNTIME_DIR/node_modules/$PLUGIN_NAME/dist/cli.js" init --skip-health-check --skip-install || true
+node "$plugin_dir/dist/cli.js" init --skip-health-check --skip-install || true
 ok "Workspace config files"
-
-mkdir -p "$(dirname "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME")"
-rm -rf "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME"
-ln -sfn "$RUNTIME_DIR/node_modules/$PLUGIN_NAME" "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME"
-if [[ -d "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME/dist" ]]; then
-  ok "Workspace node_modules (symlink to runtime)"
-else
-  fail "Workspace node_modules"; verified=false
-fi
-
-if [[ -f "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME/dist/cli.js" ]]; then
-  ok "MCP entry resolves through symlink chain"
-else
-  fail "MCP entry path (check symlink chain)"; verified=false
-fi
 
 # --- done ---
 

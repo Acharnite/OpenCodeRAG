@@ -5,57 +5,34 @@
 
 import path from "node:path";
 import os from "node:os";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { spawn } from "node:child_process";
 import { DEFAULT_CONFIG } from "../../core/config.js";
 import { c } from "../format.js";
 import {
-  getPackageRoot,
   getStringRecord,
   readJsonObject,
   writeJsonFile,
-  toPosixPath,
 } from "../helpers.js";
 import type { PackageMetadata } from "../types.js";
 
 /**
- * Resolve the npm package specifier for the workspace-local plugin.
- *
- * If the workspace root and package root share the same drive letter,
- * a relative `file:` specifier is used; otherwise the bare version
- * string is returned (for published packages).
- *
- * @param opencodeDir - Absolute path to the `.opencode/` directory.
- * @param packageRoot - Absolute path to the package root.
- * @param version - The package version string.
- * @returns A specifier like `"file:../../opencode-rag"` or `"1.12.17"`.
- */
-export function resolveWorkspacePackageSpecifier(opencodeDir: string, packageRoot: string, version: string): string {
-  const workspaceRoot = path.parse(opencodeDir).root.toLowerCase();
-  const sourceRoot = path.parse(packageRoot).root.toLowerCase();
-
-  if (workspaceRoot === sourceRoot) {
-    return `file:${toPosixPath(path.relative(opencodeDir, packageRoot))}`;
-  }
-
-  return version;
-}
-
-/**
  * Build the workspace-local `.opencode/package.json` content.
  *
- * Merges existing dependencies with the required `@opencode-ai/plugin`
- * and the current package's workspace specifier.
+ * Only declares `@opencode-ai/plugin` as a dependency — the RAG plugin
+ * itself is extracted directly into `node_modules/` by `installPluginFromGlobal`.
  *
  * @param existing - The existing package.json content (if any).
  * @param packageMetadata - The CLI package's metadata for version resolution.
- * @param opencodeDir - Absolute path to the `.opencode/` directory.
  * @returns The merged package.json object.
  */
 export function buildWorkspacePackageJson(
   existing: Record<string, unknown> | undefined,
   packageMetadata: PackageMetadata,
-  opencodeDir: string,
 ): Record<string, unknown> {
   const existingDependencies = getStringRecord(existing?.dependencies);
   const pluginVersion =
@@ -64,16 +41,22 @@ export function buildWorkspacePackageJson(
     packageMetadata.peerDependencies?.["@opencode-ai/plugin"] ??
     ">=1.0.0";
 
+  const deps: Record<string, string> = {};
+  // Preserve any existing deps that are NOT the RAG plugin (it's extracted directly)
+  for (const [name, version] of Object.entries(existingDependencies)) {
+    if (name !== packageMetadata.name) {
+      deps[name] = version;
+    }
+  }
+  // Ensure @opencode-ai/plugin is always present
+  deps["@opencode-ai/plugin"] = pluginVersion;
+
   return {
     ...existing,
     name: typeof existing?.name === "string" ? existing.name : ".opencode",
     private: true,
     type: "module",
-    dependencies: {
-      ...existingDependencies,
-      "@opencode-ai/plugin": pluginVersion,
-      [packageMetadata.name]: resolveWorkspacePackageSpecifier(opencodeDir, getPackageRoot(), packageMetadata.version),
-    },
+    dependencies: deps,
   };
 }
 
@@ -295,92 +278,104 @@ export function mergeGitignoreContent(existingContent?: string): string {
 }
 
 /**
- * Run `npm install` in the `.opencode/` directory to install workspace-local
- * plugin dependencies. Retries once with `--ignore-scripts --no-optional`
- * if the first attempt fails (to handle native module compilation issues).
+ * Get the runtime directory path (`~/.opencode`).
  *
- * Shows an animated spinner while the install runs.
- *
- * @param opencodeDir - Absolute path to the `.opencode/` directory.
- * @throws If both install attempts fail.
+ * @returns The absolute path to the user's OpenCode runtime directory.
  */
-export async function installWorkspaceDependencies(opencodeDir: string): Promise<void> {
-  const attempts = [
-    {
-      args: ["install", "--silent", "--no-package-lock"],
-      retry: false,
-    },
-    {
-      args: [
-        "install",
-        "--silent",
-        "--no-package-lock",
-        "--ignore-scripts",
-        "--no-optional",
-      ],
-      retry: true,
-    },
-  ];
+export function getRuntimeDir(): string {
+  return path.join(os.homedir(), ".opencode");
+}
 
-  let lastError: Error | undefined;
-
-  for (const attempt of attempts) {
-    if (attempt.retry) {
-      console.log(c.warn("  Retrying dependency install without native module compilation..."));
+/**
+ * Copy the pre-extracted plugin package from the global runtime directory
+ * into the workspace's `.opencode/node_modules/`, then run a lightweight
+ * npm install for `@opencode-ai/plugin`).
+ *
+ * @param args - Command arguments for npm.
+ * @param cwd - Working directory for npm.
+ */
+async function runNpm(args: string[], cwd: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    let child: ReturnType<typeof spawn>;
+    if (process.platform === "win32") {
+      const cmd = process.env.ComSpec ?? "cmd.exe";
+      const shellArgs = args.map((a) => (/[\s"]/u.test(a) ? `"${a.replace(/"/g, '""')}"` : a));
+      child = spawn(cmd, ["/d", "/s", "/c", `npm ${shellArgs.join(" ")}`], {
+        cwd,
+        stdio: "ignore",
+        env: process.env,
+      });
+    } else {
+      child = spawn("npm", args, {
+        cwd,
+        stdio: "ignore",
+        env: process.env,
+      });
     }
-
-    await new Promise<void>((resolve, reject) => {
-      const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-      let frameIdx = 0;
-      const spinnerInterval = setInterval(() => {
-        process.stderr.write(`\r  ${frames[frameIdx++ % frames.length]} Installing dependencies...`);
-      }, 80);
-
-      let child: ReturnType<typeof spawn>;
-      if (process.platform === "win32") {
-        const cmd = process.env.ComSpec ?? "cmd.exe";
-        const shellArgs = attempt.args.map((a) => (/[\s"]/u.test(a) ? `"${a.replace(/"/g, '""')}"` : a));
-        child = spawn(cmd, ["/d", "/s", "/c", `npm ${shellArgs.join(" ")}`], {
-          cwd: opencodeDir,
-          stdio: "ignore",
-          env: process.env,
-        });
-      } else {
-        child = spawn("npm", attempt.args, {
-          cwd: opencodeDir,
-          stdio: "ignore",
-          env: process.env,
-        });
-      }
-
-      child.on("error", (err) => {
-        clearInterval(spinnerInterval);
-        process.stderr.write("\r");
-        lastError = err;
-        reject(err);
-      });
-
-      child.on("close", (code) => {
-        clearInterval(spinnerInterval);
-        process.stderr.write("\r");
-        if (code === 0) {
-          resolve();
-        } else {
-          lastError = new Error(`npm install exited with code ${code ?? 1}`);
-          reject(lastError);
-        }
-      });
-    }).catch(() => {
-      // caught per-attempt; continue to retry or throw below
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`npm ${args[0]} exited with code ${code ?? 1}`));
     });
+  });
+}
 
-    if (!lastError) {
-      return;
-    }
+/**
+ * Copy the pre-packed plugin `.tgz` from the global runtime directory
+ * (`~/.opencode/`) into the workspace and install it via `npm install`,
+ * then install `@opencode-ai/plugin`.
+ *
+ * The plugin is installed via `npm install <tgz> --ignore-scripts` which
+ * resolves all JS dependencies (`commander`, `picocolors`, etc.)
+ * without compiling native modules.
+ * Then runs a lightweight `npm install` for `@opencode-ai/plugin`.
+ *
+ * @param opencodeDir - Absolute path to the workspace `.opencode/` directory.
+ * @param packageName - The npm package name of the RAG plugin.
+ * @param packageVersion - The version string of the RAG plugin (used to find the .tgz).
+ * @param skipInstall - If true, skip the install steps.
+ * @throws If the .tgz is not found in the global cache or npm install fails.
+ */
+export async function installPluginFromGlobal(
+  opencodeDir: string,
+  packageName: string,
+  packageVersion: string,
+  skipInstall: boolean,
+): Promise<void> {
+  if (skipInstall) {
+    console.log(`\n  ${c.exists("Skipped:")}   plugin installation (--skip-install)`);
+    return;
   }
 
-  throw lastError ?? new Error("npm install failed for workspace dependencies");
+  const runtimeDir = getRuntimeDir();
+  const tgzPath = path.join(runtimeDir, `${packageName}-${packageVersion}.tgz`);
+
+  if (!existsSync(tgzPath)) {
+    throw new Error(
+      `Plugin tarball not found at ${tgzPath}. ` +
+        "Run the install script (install.ps1 / install.sh) first.",
+    );
+  }
+
+  // Install the plugin from .tgz via npm — this resolves all JS deps
+  // (commander, picocolors, chokidar, etc.) without compiling native modules
+  console.log(`  ${c.created("Installing:")} ${packageName} from global cache...`);
+  const pluginInstallArgs = [
+    "install",
+    tgzPath,
+    "--no-save",
+    "--no-package-lock",
+    "--ignore-scripts",
+    "--silent",
+  ];
+  await runNpm(pluginInstallArgs, opencodeDir);
+
+  // Install @opencode-ai/plugin from npm (pure JS, no native deps)
+  console.log(`  ${c.created("Installing:")} @opencode-ai/plugin...`);
+  await runNpm(["install", "--no-package-lock", "--silent"], opencodeDir);
 }
+
+
 
 /**
  * Generate the default `opencode-rag.json` configuration content.
