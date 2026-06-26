@@ -911,12 +911,35 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         }
 
         if (pendingInjection === "chunks") {
-          const maxChunks = effectiveCfg.openCode.autoInject?.maxChunks ?? 5;
-          const topChunks = results.slice(0, maxChunks);
+          const autoInjectCfg = effectiveCfg.openCode.autoInject;
+          if (autoInjectCfg?.enabled === false) {
+            sessionLogger.onRagContext(input.sessionID, input.messageID, {
+              chunkCount: 0,
+              uniqueFiles: 0,
+              contextTokens: 0,
+              topScore: 0,
+              retrievalTimeMs,
+            });
+            return;
+          }
+          const minScore = autoInjectCfg?.minScore ?? 0.85;
+          const maxChunks = autoInjectCfg?.maxChunks ?? 5;
+          const filtered = results.filter((r) => r.score >= minScore);
+          if (filtered.length === 0) {
+            sessionLogger.onRagContext(input.sessionID, input.messageID, {
+              chunkCount: 0,
+              uniqueFiles: 0,
+              contextTokens: 0,
+              topScore: 0,
+              retrievalTimeMs,
+            });
+            return;
+          }
+          const topChunks = filtered.slice(0, maxChunks);
           const chunkContext = formatAutoInjectContext(
             topChunks,
             options.worktree,
-            effectiveCfg.openCode.autoInject?.maxTokens ?? 3000,
+            autoInjectCfg?.maxTokens ?? 3000,
             maxChunks
           );
           sessionLogger.onRagContext(input.sessionID, input.messageID, {
@@ -938,12 +961,35 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         }
 
         if (pendingInjection === "files") {
-          const fileList = formatFileList(results, options.worktree, effectiveCfg.retrieval.topK);
+          const autoInjectCfg = effectiveCfg.openCode.autoInject;
+          if (autoInjectCfg?.enabled === false) {
+            sessionLogger.onRagContext(input.sessionID, input.messageID, {
+              chunkCount: 0,
+              uniqueFiles: 0,
+              contextTokens: 0,
+              topScore: 0,
+              retrievalTimeMs,
+            });
+            return;
+          }
+          const minScore = autoInjectCfg?.minScore ?? 0.85;
+          const filtered = results.filter((r) => r.score >= minScore);
+          if (filtered.length === 0) {
+            sessionLogger.onRagContext(input.sessionID, input.messageID, {
+              chunkCount: 0,
+              uniqueFiles: 0,
+              contextTokens: 0,
+              topScore: 0,
+              retrievalTimeMs,
+            });
+            return;
+          }
+          const fileList = formatFileList(filtered, options.worktree, effectiveCfg.retrieval.topK);
           sessionLogger.onRagContext(input.sessionID, input.messageID, {
             chunkCount: 0,
             uniqueFiles: 0,
             contextTokens: fileList ? countTokens(fileList) : 0,
-            topScore: results[0]?.score ?? 0,
+            topScore: filtered[0]?.score ?? 0,
             retrievalTimeMs,
           });
           if (!fileList) return;

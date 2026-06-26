@@ -9,6 +9,9 @@ import {
   existsSync,
   readFileSync,
   writeFileSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
 import { DEFAULT_CONFIG } from "../../core/config.js";
@@ -287,73 +290,35 @@ export function getRuntimeDir(): string {
 }
 
 /**
- * Run npm with the given arguments and a timeout.
+ * Create a directory junction (Windows) or symlink (Linux/macOS) from
+ * `linkPath` pointing to `targetPath`.
  *
- * @param args - Command arguments for npm.
- * @param cwd - Working directory for npm.
- * @param timeoutMs - Max milliseconds before the child process is killed (default 120s).
+ * @param targetPath - The existing directory to link to.
+ * @param linkPath - The junction/symlink to create (must not exist).
  */
-async function runNpm(args: string[], cwd: string, timeoutMs = 120_000): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), timeoutMs);
-
-    let child: ReturnType<typeof spawn>;
-    if (process.platform === "win32") {
-      const cmd = process.env.ComSpec ?? "cmd.exe";
-      const shellArgs = args.map((a) => (/[\s"]/u.test(a) ? `"${a.replace(/"/g, '""')}"` : a));
-      child = spawn(cmd, ["/d", "/s", "/c", `npm ${shellArgs.join(" ")}`], {
-        cwd,
-        stdio: "ignore",
-        env: process.env,
-        signal: ac.signal,
-      });
-    } else {
-      child = spawn("npm", args, {
-        cwd,
-        stdio: "ignore",
-        env: process.env,
-        signal: ac.signal,
-      });
-    }
-
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      if ((err as NodeJS.ErrnoException).code === "ABORT_ERR") {
-        reject(new Error(`npm ${args[0]} timed out after ${timeoutMs}ms`));
-      } else {
-        reject(err);
-      }
-    });
-
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(`npm ${args[0]} exited with code ${code ?? 1}`));
-    });
-  });
+function createJunction(targetPath: string, linkPath: string): void {
+  const type = process.platform === "win32" ? "junction" : "dir";
+  symlinkSync(targetPath, linkPath, type);
 }
 
 /**
- * Copy the pre-packed plugin `.tgz` from the global runtime directory
- * (`~/.opencode/`) into the workspace and install it via `npm install`,
- * then install `@opencode-ai/plugin`.
+ * Link the precompiled plugin from the global runtime directory
+ * (`~/.opencode/node_modules/...`) into the workspace via a junction/symlink,
+ * then verify that both the plugin entry and `@opencode-ai/plugin` are
+ * resolvable through the junction.
  *
- * The plugin is installed via `npm install <tgz> --ignore-scripts` which
- * resolves all JS dependencies (`commander`, `picocolors`, etc.)
- * without compiling native modules.
- * Then runs a lightweight `npm install` for `@opencode-ai/plugin`.
+ * No npm install is required — the global runtime (created by the `compile`
+ * step) has all dependencies pre-installed, and Node.js resolves module
+ * imports through the junction's real path.
  *
  * @param opencodeDir - Absolute path to the workspace `.opencode/` directory.
  * @param packageName - The npm package name of the RAG plugin.
- * @param packageVersion - The version string of the RAG plugin (used to find the .tgz).
- * @param skipInstall - If true, skip the install steps.
- * @throws If the .tgz is not found in the global cache or npm install fails.
+ * @param skipInstall - If true, skip the junction creation.
+ * @throws If the global runtime is missing or the junction cannot be created.
  */
 export async function installPluginFromGlobal(
   opencodeDir: string,
   packageName: string,
-  packageVersion: string,
   skipInstall: boolean,
 ): Promise<void> {
   if (skipInstall) {
@@ -362,64 +327,43 @@ export async function installPluginFromGlobal(
   }
 
   const runtimeDir = getRuntimeDir();
-  const tgzPath = path.join(runtimeDir, `${packageName}-${packageVersion}.tgz`);
+  const globalPluginDir = path.join(runtimeDir, "node_modules", packageName);
+  const workspaceTarget = path.join(opencodeDir, "node_modules", packageName);
 
-  if (!existsSync(tgzPath)) {
+  if (!existsSync(globalPluginDir)) {
     throw new Error(
-      `Plugin tarball not found at ${tgzPath}. ` +
-        "Run the install script (install.ps1 / install.sh) first.",
+      `Global plugin cache not found at ${globalPluginDir}. ` +
+        "Run 'install.sh compile' / 'install.ps1 compile' first.",
     );
   }
 
-  // Install the plugin from .tgz via npm — this resolves all JS deps
-  // (commander, picocolors, chokidar, etc.) without compiling native modules
-  console.log(`  ${c.created("Installing:")} ${packageName} from global cache...`);
-  const pluginInstallArgs = [
-    "install",
-    tgzPath,
-    "--no-save",
-    "--no-package-lock",
-    "--ignore-scripts",
-    "--silent",
-  ];
-  await runNpm(pluginInstallArgs, opencodeDir);
-
-  // Install @opencode-ai/plugin from npm explicitly — MUST use --no-save and
-  // the explicit package@version form so that npm does NOT prune the
-  // already-installed opencode-rag-plugin (which is not in package.json).
-  console.log(`  ${c.created("Installing:")} @opencode-ai/plugin...`);
-  const opencodePkg = readJsonObject(path.join(opencodeDir, "package.json"));
-  const deps = opencodePkg?.dependencies as Record<string, unknown> | undefined;
-  const pluginSdkVersion = typeof deps?.["@opencode-ai/plugin"] === "string"
-    ? deps["@opencode-ai/plugin"] as string
-    : undefined;
-  if (!pluginSdkVersion) {
-    throw new Error(
-      "@opencode-ai/plugin version not found in workspace package.json. " +
-        "This is a bug — run 'opencode-rag init' with --force to regenerate the config.",
-    );
+  // Remove any stale copy (e.g. from a previous 'npm install' run)
+  if (existsSync(workspaceTarget)) {
+    rmSync(workspaceTarget, { recursive: true, force: true });
   }
-  await runNpm([
-    "install",
-    `@opencode-ai/plugin@${pluginSdkVersion}`,
-    "--no-save",
-    "--no-package-lock",
-    "--silent",
-  ], opencodeDir);
 
-  // Verify the plugin entry and @opencode-ai/plugin are actually on disk
-  const cliEntry = path.join(opencodeDir, "node_modules", packageName, "dist", "cli.js");
+  // Create directory junction from workspace → global runtime
+  console.log(`  ${c.created("Linking:")} ${packageName} from global cache...`);
+  mkdirSync(path.dirname(workspaceTarget), { recursive: true });
+  createJunction(globalPluginDir, workspaceTarget);
+
+  // Verify the plugin entry resolves through the junction
+  const cliEntry = path.join(workspaceTarget, "dist", "cli.js");
   if (!existsSync(cliEntry)) {
-    throw new Error(
-      `Plugin entry not found at ${cliEntry} after npm install. ` +
-        "Check network connectivity to the npm registry and try again.",
-    );
+    // Junction may not work (e.g. cross-drive on Windows) — fall back to copy
+    console.log(`  ${c.warn("Junction not supported, falling back to copy...")}`);
+    rmSync(workspaceTarget, { recursive: true, force: true });
+    const { cpSync } = await import("node:fs");
+    mkdirSync(path.dirname(workspaceTarget), { recursive: true });
+    cpSync(globalPluginDir, workspaceTarget, { recursive: true });
   }
-  const pluginPkg = path.join(opencodeDir, "node_modules", "@opencode-ai", "plugin", "package.json");
-  if (!existsSync(pluginPkg)) {
+
+  // Verify @opencode-ai/plugin is resolvable from the global runtime
+  const pluginSdkPkg = path.join(runtimeDir, "node_modules", "@opencode-ai", "plugin", "package.json");
+  if (!existsSync(pluginSdkPkg)) {
     throw new Error(
-      "@opencode-ai/plugin not found after npm install. " +
-        "Check that the package.json declares it as a dependency and that the npm registry is reachable.",
+      "@opencode-ai/plugin not found in global runtime. " +
+        "Run 'install.sh compile' / 'install.ps1 compile' to install it.",
     );
   }
 }

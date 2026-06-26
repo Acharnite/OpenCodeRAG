@@ -9,7 +9,6 @@
 
 import type { Command } from "commander";
 import path from "node:path";
-import os from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadConfig } from "../../core/config.js";
 import { checkProviderHealth, pullOllamaModels } from "../../embedder/health.js";
@@ -25,7 +24,6 @@ import {
   generateWorkspaceTuiPluginFile,
   installPluginFromGlobal,
   mergeGitignoreContent,
-  removeStaleGlobalPluginRegistrations,
 } from "./init-helpers.js";
 
 /**
@@ -183,7 +181,7 @@ export function registerInitCommand(program: Command): void {
 
       const installPromise = options.skipInstall
         ? null
-        : installPluginFromGlobal(opencodeDir, packageMetadata.name, packageMetadata.version, false);
+        : installPluginFromGlobal(opencodeDir, packageMetadata.name, false);
 
       // Wait for health check results first
       if (healthPromise) {
@@ -243,18 +241,12 @@ export function registerInitCommand(program: Command): void {
         }
       }
 
-      // Now install the plugin from global cache + @opencode-ai/plugin
+      // Now install the plugin from global cache via junction
       if (installPromise) {
         console.log(`\n${c.heading("Installing workspace-local plugin...")}\n`);
         await installPromise;
         console.log(`\n  ${c.success("Installed:")} .opencode/node_modules/`);
-        const updatedGlobalConfigs = removeStaleGlobalPluginRegistrations(os.homedir(), packageMetadata.name);
-        if (updatedGlobalConfigs.length > 0) {
-          for (const p of updatedGlobalConfigs) {
-            console.log(`  ${c.warn("Removed stale plugin registration from")} ${p}`);
-          }
-        }
-        console.log(`  ${c.dim("OpenCode loads the plugin from .opencode/plugins/rag-plugin.js; no global plugin registration is required.")}`);
+        console.log(`  ${c.dim("Plugin is linked to global runtime cache; no npm install was required.")}`);
       } else {
         console.log(`\n  ${c.exists("Skipped:")}   plugin installation (--skip-install)`);
       }
