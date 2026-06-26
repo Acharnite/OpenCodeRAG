@@ -195,7 +195,7 @@ Write-Host "  2. Run opencode-rag index to index workspace files."
 Write-Host "  3. Restart OpenCode if it is running so it discovers the RAG tools."
 Write-Host "  4. OpenCode will automatically use the indexed data for context-aware queries."
 if ($pathUpdated) {
-    $hint = "  4. In your current PowerShell session run: " + '$env:Path += ' + $CLI_BIN_DIR
+    $hint = "  5. In your current PowerShell session run: " + '$env:Path += ' + $CLI_BIN_DIR
     Write-Host $hint
 }
 Write-Host ""
