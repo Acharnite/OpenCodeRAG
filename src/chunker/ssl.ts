@@ -22,7 +22,6 @@ const BLOCK_END: Record<string, string> = {
 };
 
 const KEYWORD_RE = /^:(\w+)\b/i;
-const PROC_RE = /^:PROCEDURE\s+(\w+)/i;
 
 /**
  * Chunker for STARLIMS SSL script files (.ssl).
@@ -146,7 +145,7 @@ export class SslChunker implements Chunker {
  * @param filePath - Original file path (unused, for metadata consistency).
  * @returns The 1-based start line of the PROCEDURE, or null if not found.
  */
-function findProcedureStartLine(lines: string[], fromIndex: number, filePath: string): number | null {
+function findProcedureStartLine(lines: string[], fromIndex: number, _filePath: string): number | null {
   let depth = 0;
   for (let i = fromIndex - 1; i >= 0; i--) {
     const line = lines[i]!.trim().toUpperCase();

@@ -16,7 +16,7 @@ import type { EmbeddingProvider, VectorStore, KeywordIndex, SearchResult } from 
 import type { RagConfig } from "../core/config.js";
 import { SUPPORTED_IMAGE_EXTENSIONS, createImageVisionProvider, getMimeType, type ImageVisionProvider } from "../chunker/image.js";
 import { resizeImage } from "../content/image.js";
-import { retrieve, type RetrieveOptions } from "../retriever/retriever.js";
+import { retrieve } from "../retriever/retriever.js";
 import { Parser } from "web-tree-sitter";
 import { initParser, loadLanguage, walkTree, type AstNode } from "../chunker/grammar.js";
 import { readFileSync } from "node:fs";
@@ -148,7 +148,7 @@ async function extractSkeleton(
  * Extract a human-readable name from a code node.
  * For declarations, this is typically the identifier after the keyword.
  */
-function extractNodeName(text: string, nodeType: string): string {
+function extractNodeName(text: string, _nodeType: string): string {
   // Try first line only for large nodes
   const firstLine = text.split("\n")[0] ?? text;
 

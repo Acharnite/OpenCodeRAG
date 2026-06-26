@@ -59,20 +59,6 @@ function makeResult(
 
 const testWorktree = process.cwd();
 
-const dummyProvider: EmbeddingProvider = {
-  name: "test",
-  embed: async () => [],
-};
-
-const dummyStore: VectorStore = {
-  addChunks: async () => {},
-  search: async () => [],
-  count: async () => 0,
-  clear: async () => {},
-  deleteByFilePath: async () => {},
-  close: async () => {},
-};
-
 const populatedStore: VectorStore = {
   addChunks: async () => {},
   search: async () => [],
@@ -89,7 +75,7 @@ type SeenRetrieveCall = {
 
 function makeDependencies(
   results: SearchResult[],
-  count: number
+  _count: number
 ): {
   dependencies: { retrieve: typeof retrieve };
   getSeen: () => SeenRetrieveCall;

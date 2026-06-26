@@ -4,7 +4,6 @@
  */
 
 import pc from "picocolors";
-import path from "node:path";
 import { resolveRagContext, type BootstrapOptions, type RagContext } from "../core/bootstrap.js";
 import { destroyAllPooledConnections } from "../embedder/http.js";
 import type { RagConfig } from "../core/config.js";
@@ -69,10 +68,10 @@ export const c = {
  * @param error - Optional error object for structured logging.
  */
 export function logCliError(
-  logFilePath: string,
-  scope: string,
+  _logFilePath: string,
+  _scope: string,
   message: string,
-  error: unknown,
+  _error: unknown,
 ): void {
   console.error(c.error(message));
   //appendDebugLog(logFilePath, { scope, message, error });
@@ -86,8 +85,8 @@ export function logCliError(
  * @param message - Human-readable info message.
  */
 export function logCliInfo(
-  logFilePath: string,
-  scope: string,
+  _logFilePath: string,
+  _scope: string,
   message: string,
 ): void {
   console.log(message);

@@ -70,7 +70,7 @@ class OllamaImageVisionProvider implements ImageVisionProvider {
     this.proxy = config.proxy;
   }
 
-  async describeImage(imageBase64: string, mimeType: string, prompt: string, abort?: AbortSignal): Promise<string> {
+  async describeImage(imageBase64: string, _mimeType: string, prompt: string, _abort?: AbortSignal): Promise<string> {
     const body = {
       model: this.model,
       messages: [
@@ -144,7 +144,7 @@ class OpenAIImageVisionProvider implements ImageVisionProvider {
     this.proxy = config.proxy;
   }
 
-  async describeImage(imageBase64: string, mimeType: string, prompt: string, abort?: AbortSignal): Promise<string> {
+  async describeImage(imageBase64: string, mimeType: string, prompt: string, _abort?: AbortSignal): Promise<string> {
     const url = `${this.baseUrl}${this.baseUrl.endsWith("/v1") ? "" : "/v1"}/chat/completions`;
 
     const body = {
@@ -224,7 +224,7 @@ class AnthropicImageVisionProvider implements ImageVisionProvider {
     this.proxy = config.proxy;
   }
 
-  async describeImage(imageBase64: string, mimeType: string, prompt: string, abort?: AbortSignal): Promise<string> {
+  async describeImage(imageBase64: string, mimeType: string, prompt: string, _abort?: AbortSignal): Promise<string> {
     const body = {
       model: this.model,
       max_tokens: 2048,
@@ -307,7 +307,7 @@ class GeminiImageVisionProvider implements ImageVisionProvider {
     this.proxy = config.proxy;
   }
 
-  async describeImage(imageBase64: string, mimeType: string, prompt: string, abort?: AbortSignal): Promise<string> {
+  async describeImage(imageBase64: string, mimeType: string, prompt: string, _abort?: AbortSignal): Promise<string> {
     const body = {
       contents: [
         {

@@ -33,7 +33,7 @@ export function registerQueryCommand(program: Command): void {
         const cwd = process.cwd();
         let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
         const ctx = await resolveCliContext(options, logFilePath);
-        const { config, embedder, store, storePath, keywordIndex } = ctx;
+        const { config, embedder, store, keywordIndex } = ctx;
         logFilePath = ctx.logFilePath;
 
         logCliInfo(logFilePath, "query", `\n${c.heading("Querying:")} "${query}"`);

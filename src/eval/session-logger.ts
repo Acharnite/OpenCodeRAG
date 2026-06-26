@@ -1,5 +1,4 @@
 import type { SessionEvent, TokenUsage } from "./types.js";
-import { isRagTool } from "./types.js";
 import { appendSessionEvent } from "./storage.js";
 
 interface EventLike {

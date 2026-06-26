@@ -109,7 +109,7 @@ async function extractSkeleton(
   }));
 }
 
-function extractNodeName(text: string, nodeType: string): string {
+function extractNodeName(text: string, _nodeType: string): string {
   const firstLine = text.split("\n")[0] ?? text;
   const nameMatch = firstLine.match(
     /^(?:export\s+)?(?:async\s+)?(?:function\s+)?(?:\w+\s+)?(?:(\w+))\s*(?:[<(]|$)/

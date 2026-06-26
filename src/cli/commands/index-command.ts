@@ -142,7 +142,7 @@ export function registerIndexCommand(program: Command): void {
           return stats;
         };
 
-        const stats = await runPass(false, abortController.signal);
+        await runPass(false, abortController.signal);
 
         process.removeListener("SIGINT", handleSigint);
         process.removeListener("SIGTERM", handleSigint);

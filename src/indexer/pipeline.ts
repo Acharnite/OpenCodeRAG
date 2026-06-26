@@ -16,7 +16,7 @@ import { embedBatch } from "../embedder/factory.js";
 import { createVectorStore } from "../vectorstore/factory.js";
 import { swapStoreDirectories } from "../vectorstore/lancedb.js";
 import { createIndexStats, type IndexRunStats, type IndexStatusSummary } from "./stats.js";
-import { prepareFile, buildTextsToEmbed, storeFileChunks, type WorkerResult, type PreparedFile } from "./worker.js";
+import { prepareFile, buildTextsToEmbed, storeFileChunks, type WorkerResult } from "./worker.js";
 import { getCurrentCommit, getChangedFilesSince, getUntrackedFiles, getRepoRoot } from "./git-diff.js";
 
 export type { WatchPassScheduler } from "./watch.js";

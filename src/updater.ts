@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -62,7 +62,7 @@ function compareVersions(a: string, b: string): number {
  */
 export async function checkForUpdate(
   currentVersion: string,
-  proxy?: { url?: string; noProxy?: string[] },
+  _proxy?: { url?: string; noProxy?: string[] },
 ): Promise<UpdateInfo> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);

@@ -21,7 +21,7 @@ import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
 import { loadDocProgress, markSubdirectoryDocumented } from "./core/doc-progress.js";
 import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
-import { countTokens, estimateContextTokensFormatted } from "./eval/token-counter.js";
+import { countTokens } from "./eval/token-counter.js";
 import { checkForUpdate, type UpdateInfo } from "./updater.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -458,7 +458,7 @@ function formatFileList(results: SearchResult[], worktree: string, maxFiles = 10
  * @returns The extracted user message text, or an empty string if not found.
  */
 function extractUserMessageText(
-  input: { sessionID: string; agent?: string; model?: { providerID: string; modelID: string }; messageID?: string; variant?: string },
+  _input: { sessionID: string; agent?: string; model?: { providerID: string; modelID: string }; messageID?: string; variant?: string },
   output?: { message?: unknown; parts?: unknown[] }
 ): string {
   // Try to extract from output.parts first (most common path)

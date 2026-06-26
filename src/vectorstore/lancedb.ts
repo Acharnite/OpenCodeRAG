@@ -5,7 +5,6 @@ import type { VectorStore, Chunk, SearchResult } from "../core/interfaces.js";
 import { normalizeFilePath, manifestPathFor } from "../core/manifest.js";
 
 const TABLE_NAME = "chunks";
-const VECTOR_COLUMN = "embedding";
 
 const QUERY_COLUMNS = ["id", "content", "description", "filePath", "startLine", "endLine", "language"];
 
@@ -553,7 +552,7 @@ export class LanceDBStore implements VectorStore {
       for (const ver of sorted.slice(1)) {
         try {
           await table.checkout(ver.version);
-          const count = await table.countRows();
+          await table.countRows();
           await table.restore();
           await table.checkoutLatest();
           this.table = table;

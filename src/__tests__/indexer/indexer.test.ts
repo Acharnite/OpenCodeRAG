@@ -296,26 +296,6 @@ describe("indexer", () => {
   });
 
   describe("description provider integration", () => {
-    function makeTestDescriptionProvider(descriptions: Map<string, string>): DescriptionProvider {
-      return {
-        async generateDescription(chunk: Chunk): Promise<string> {
-          const desc = descriptions.get(chunk.id);
-          if (!desc) throw new Error(`No description for chunk ${chunk.id}`);
-          return desc;
-        },
-        async generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>> {
-          const result = new Map<string, string>();
-          for (const chunk of chunks) {
-            const desc = descriptions.get(chunk.id);
-            if (desc) {
-              result.set(chunk.id, desc);
-            }
-          }
-          return result;
-        },
-      };
-    }
-
     it("generates descriptions and embeds description + content together", async () => {
       await writeFile(path.join(workspaceDir, "src", "a.ts"), "function alpha() { return 1; }\n");
 

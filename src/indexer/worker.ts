@@ -305,7 +305,7 @@ export async function storeFileChunks(
   prep: PreparedFile,
   embeddings: number[][],
   store: VectorStore,
-  logger?: Logger,
+  _logger?: Logger,
 ): Promise<WorkerResult> {
   if (prep.earlyResult) return prep.earlyResult;
   if (!prep.chunks || !prep.textToEmbed) {

@@ -18,7 +18,7 @@ import path from "node:path";
 import os from "node:os";
 import { createRagHooks } from "../../plugin.js";
 import { DEFAULT_CONFIG, type RagConfig } from "../../core/config.js";
-import { appendSessionEvent, computeSummary, compareSessions } from "../../eval/storage.js";
+import { appendSessionEvent, compareSessions } from "../../eval/storage.js";
 import {
   analyzeTokenUsage,
   compareTokenAnalyses,
@@ -27,7 +27,7 @@ import {
   projectTokenSavings,
 } from "../../eval/token-analysis.js";
 import { handleEvalAnalysis, handleEvalTokenCompare, handleEvalProjectSavings } from "../../web/api.js";
-import type { EmbeddingProvider, SearchResult, VectorStore, KeywordIndex } from "../../core/interfaces.js";
+import type { EmbeddingProvider, SearchResult, VectorStore } from "../../core/interfaces.js";
 import type { SessionEvent } from "../../eval/types.js";
 
 function makeTmpDir(): string {
@@ -67,10 +67,6 @@ function makeResult(
   };
 }
 
-function makeToolContext(): Record<string, unknown> {
-  return { sessionID: "session-test", callID: "call-test", agent: "test" };
-}
-
 function makeMockDependencies(results: SearchResult[]) {
   const retrieve = async (
     _query: string,
@@ -89,11 +85,6 @@ const dummyStore: VectorStore = {
   clear: async () => {},
   deleteByFilePath: async () => {},
   close: async () => {},
-};
-
-const dummyProvider: EmbeddingProvider = {
-  name: "test",
-  embed: async () => [],
 };
 
 // ── Token estimation tests ──────────────────────────────────────

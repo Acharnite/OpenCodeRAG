@@ -1,7 +1,7 @@
-import { resolveRagContext, type BootstrapOptions } from "./core/bootstrap.js";
+import { resolveRagContext } from "./core/bootstrap.js";
 import { retrieve } from "./retriever/retriever.js";
 import type { RetrieveOptions } from "./retriever/retriever.js";
-import { runIndexPass, getIndexStatusSummary, type IndexRunStats } from "./indexer.js";
+import { runIndexPass, type IndexRunStats } from "./indexer.js";
 import { scanWorkspaceFiles, type WorkspaceFile } from "./content/reader.js";
 import type { SearchResult } from "./core/interfaces.js";
 

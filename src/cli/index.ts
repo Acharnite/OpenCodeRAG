@@ -11,7 +11,6 @@ import { Command } from "commander";
 import { realpathSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getPackageMetadata } from "./helpers.js";
 import {
   registerIndexCommand,
   registerQueryCommand,

@@ -293,7 +293,6 @@ async function sendRawHttpRequest(
   timeoutMs: number,
   redirectCount: number
 ): Promise<HttpResponseLike> {
-  const payload = JSON.stringify(body);
   const requestBuffer = buildRequestPayload(body, headers, url);
   const port = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
   const isHttps = url.protocol === "https:";

@@ -12,6 +12,7 @@ import path from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadConfig } from "../../core/config.js";
 import { checkProviderHealth, pullOllamaModels } from "../../embedder/health.js";
+import { destroyAllPooledConnections } from "../../embedder/http.js";
 import { c } from "../format.js";
 import { getPackageMetadata, readJsonObject, writeJsonFile } from "../helpers.js";
 import type { InitOptions } from "../types.js";
@@ -256,6 +257,8 @@ export function registerInitCommand(program: Command): void {
       console.error(`\n  ${c.error("Init failed:")} ${(err as Error).message}`);
       console.error(`  ${c.dim("Fix the issue above, then run 'opencode-rag init' again.")}`);
       process.exitCode = 1;
+    } finally {
+      destroyAllPooledConnections();
     }
     });
 }

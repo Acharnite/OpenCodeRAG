@@ -1,5 +1,5 @@
 import type { Chunk, DescriptionProvider } from "../core/interfaces.js";
-import type { DescriptionConfig, ProxyConfig } from "../core/config.js";
+import type { DescriptionConfig } from "../core/config.js";
 import { postJson } from "../embedder/http.js";
 import { buildUserMessage, sleep } from "./shared.js";
 import pLimit from "p-limit";

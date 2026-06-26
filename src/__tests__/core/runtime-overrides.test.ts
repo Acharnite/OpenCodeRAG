@@ -1,6 +1,6 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, readFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {

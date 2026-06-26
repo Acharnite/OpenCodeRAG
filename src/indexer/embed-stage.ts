@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import type { Chunk, EmbeddingProvider } from "../core/interfaces.js";
 import { embedBatch } from "../embedder/factory.js";
 
@@ -16,19 +15,6 @@ export async function embedChunks({
   concurrency,
 }: EmbedChunksOptions): Promise<Chunk[]> {
   if (chunks.length === 0) return [];
-
-  const limit = pLimit(concurrency);
-
-  const results = await Promise.all(
-    chunks.map((chunk, index) =>
-      limit(async () => {
-        if (!chunk.embedding || chunk.embedding.length === 0) {
-          return chunk;
-        }
-        return chunk;
-      }),
-    ),
-  );
 
   const textsToEmbed: string[] = [];
   const chunkIndices: number[] = [];

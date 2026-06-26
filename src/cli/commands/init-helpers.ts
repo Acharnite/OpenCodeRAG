@@ -7,13 +7,10 @@ import path from "node:path";
 import os from "node:os";
 import {
   existsSync,
-  readFileSync,
-  writeFileSync,
   mkdirSync,
   rmSync,
   symlinkSync,
 } from "node:fs";
-import { spawn } from "node:child_process";
 import { DEFAULT_CONFIG } from "../../core/config.js";
 import { c } from "../format.js";
 import {

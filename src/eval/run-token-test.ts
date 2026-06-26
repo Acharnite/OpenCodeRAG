@@ -7,7 +7,7 @@
 
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { loadConfig, DEFAULT_CONFIG, resolveLogConfig } from "../core/config.js";
+import { loadConfig, DEFAULT_CONFIG } from "../core/config.js";
 import { createEmbedder } from "../embedder/factory.js";
 import { createVectorStore } from "../vectorstore/factory.js";
 import { retrieve } from "../retriever/retriever.js";
@@ -160,9 +160,7 @@ async function main() {
   const thresholdResults: { threshold: number; injected: number; avgContext: number; totalContext: number }[] = [];
 
   for (const threshold of thresholds) {
-    let totalCtx = 0;
-    let injected = 0;
-    for (const r of results) {
+    for (const _r of results) {
       // Re-run filtering with this threshold
       // We stored the original search results — re-filter
     }
@@ -193,9 +191,6 @@ async function main() {
       totalContext: tTotalCtx,
     });
   }
-
-  // Find best threshold
-  const bestThreshold = thresholdResults.find((t) => t.injected > 0 && t.totalContext > 0);
 
   console.log("\n  Threshold analysis:");
   for (const t of thresholdResults) {
