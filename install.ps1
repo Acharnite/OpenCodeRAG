@@ -117,27 +117,28 @@ if ($args[0] -eq "uninstall") {
 # --- compile ---
 
 if ($args[0] -eq "compile") {
-    Set-Location $REPO_ROOT
+    Push-Location $REPO_ROOT
 
     step "Building $PLUGIN_NAME..."
-    & cmd /c "npm run build"
-    if ($LASTEXITCODE -ne 0) { die "npm run build failed" }
+    npm run build
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm run build failed" }
 
-    step "Installing production dependencies (compiles native modules)..."
-    & cmd /c "npm install --omit=dev --legacy-peer-deps --ignore-scripts --no-package-lock 2>&1"
-    if ($LASTEXITCODE -ne 0) { die "npm install --production failed" }
+    step "Stripping dev dependencies and installing production deps..."
+    npm install --omit=dev --legacy-peer-deps --ignore-scripts --no-package-lock 2>&1
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm install --omit=dev failed" }
 
-    step "Installing @opencode-ai/plugin into runtime..."
-    & cmd /c "npm install @opencode-ai/plugin --no-save --no-package-lock --legacy-peer-deps --silent 2>&1"
-    if ($LASTEXITCODE -ne 0) { die "npm install @opencode-ai/plugin failed" }
+    step "Ensuring @opencode-ai/plugin is available..."
+    # Re-install @opencode-ai/plugin after it was removed by --omit=dev
+    npm install @opencode-ai/plugin --no-save --no-package-lock --legacy-peer-deps --silent 2>&1
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm install @opencode-ai/plugin failed" }
 
     step "Packing $PLUGIN_NAME..."
     $version = get_plugin_version
     $tgzName = "$PLUGIN_NAME-$version.tgz"
     $tgzPath = Join-Path $REPO_ROOT $tgzName
     Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
-    $packOutput = & cmd /c "npm pack --pack-destination `"$REPO_ROOT`" 2>&1"
-    if ($LASTEXITCODE -ne 0) { die "npm pack failed: $packOutput" }
+    $packOutput = npm pack --pack-destination $REPO_ROOT 2>&1
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm pack failed: $packOutput" }
 
     step "Preparing runtime directory ($RUNTIME_DIR)..."
     New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
@@ -148,7 +149,7 @@ if ($args[0] -eq "compile") {
     & tar -xzf $tgzPath -C "$RUNTIME_DIR\node_modules"
     Rename-Item "$RUNTIME_DIR\node_modules\package" $pluginDir -Force
 
-    # Copy all production deps (with precompiled native modules) to runtime
+    # Copy all production deps to runtime
     if (Test-Path -LiteralPath $pluginDir\dist) {
         $depsTarget = "$RUNTIME_DIR\node_modules"
         if (Test-Path -LiteralPath "$depsTarget\commander") {
@@ -158,44 +159,24 @@ if ($args[0] -eq "compile") {
             Get-ChildItem -LiteralPath "$REPO_ROOT\node_modules" -Directory |
                 Where-Object { $_.Name -ne $PLUGIN_NAME -and $_.Name -ne ".bin" } |
                 ForEach-Object {
-                    $dest = Join-Path $depsTarget $_.Name
-                    Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse -Force -ErrorAction SilentlyContinue
-                }
-            # Also copy standalone package.json files in @-scoped dirs
-            Get-ChildItem -LiteralPath "$REPO_ROOT\node_modules" -Directory -Filter "@*" |
-                ForEach-Object {
-                    $destScope = Join-Path $depsTarget $_.Name
-                    New-Item -ItemType Directory -Path $destScope -Force | Out-Null
-                    Get-ChildItem -LiteralPath $_.FullName -Recurse |
-                        ForEach-Object {
-                            $relPath = $_.FullName.Substring($_.FullName.IndexOf($_.Name))
-                            $destPath = Join-Path $destScope $relPath
-                            if ($_.PSIsContainer) {
-                                New-Item -ItemType Directory -Path $destPath -Force | Out-Null
-                            } else {
-                                Copy-Item -LiteralPath $_.FullName -Destination $destPath -Force -ErrorAction SilentlyContinue
-                            }
-                        }
+                    Copy-Item -LiteralPath $_.FullName -Destination "$depsTarget\$($_.Name)" -Recurse -Force -ErrorAction SilentlyContinue
                 }
             info "Dependencies copied."
         }
     } else {
-        fail_msg "$pluginDir"; die "Failed to extract plugin — dist/ not found"
+        Pop-Location; fail_msg "$pluginDir"; die "Failed to extract plugin — dist/ not found"
     }
 
-    # Verify runtime is self-contained
+    # Verify
     if ((Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\commander") -and
-        (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\@opencode-ai\plugin")) {
+        (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\@opencode-ai\plugin\package.json")) {
         ok "Precompiled bundle ready at $RUNTIME_DIR"
-        info "  $RUNTIME_DIR\node_modules\opencode-rag-plugin\ (dist + wasm)"
-        info "  $RUNTIME_DIR\node_modules\ (with precompiled deps + @opencode-ai/plugin)"
     } else {
-        fail_msg "Precompiled bundle"; die "Runtime deps incomplete — check node_modules/"
+        Pop-Location; fail_msg "Precompiled bundle"; die "Runtime deps incomplete"
     }
 
-    # Clean up the .tgz from repo root
     Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
-
+    Pop-Location
     exit 0
 }
 

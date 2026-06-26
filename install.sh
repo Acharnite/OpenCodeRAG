@@ -79,10 +79,10 @@ if [[ "${1:-}" = "compile" ]]; then
   step "Building $PLUGIN_NAME..."
   npm run build
 
-  step "Installing production dependencies (compiles native modules)..."
+  step "Stripping dev dependencies and installing production deps..."
   npm install --omit=dev --legacy-peer-deps --ignore-scripts --no-package-lock 2>&1 || die "npm install --omit=dev failed"
 
-  step "Installing @opencode-ai/plugin into runtime..."
+  step "Ensuring @opencode-ai/plugin is available..."
   npm install @opencode-ai/plugin --no-save --no-package-lock --legacy-peer-deps --silent 2>&1 || die "npm install @opencode-ai/plugin failed"
 
   step "Packing $PLUGIN_NAME..."
