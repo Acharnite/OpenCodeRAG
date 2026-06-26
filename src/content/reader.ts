@@ -40,6 +40,8 @@ export async function walkFiles(
   excludeFiles?: Set<string>,
   logger?: Logger,
   dirCount?: { value: number },
+  maxDirs = 10_000,
+  maxResults = 100_000,
 ): Promise<string[]> {
   const results: string[] = [];
   const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -55,9 +57,21 @@ export async function walkFiles(
         if (dirCount.value % 100 === 0) {
           logger?.info(`Traversed ${dirCount.value} directories... (${fullPath})`);
         }
+        if (dirCount.value > maxDirs) {
+          logger?.warn(`Exceeded ${maxDirs} directories — truncating walk at ${fullPath}`);
+          return results;
+        }
       }
-      results.push(...(await walkFiles(fullPath, extensions, excludeDirs, excludeFiles, logger, dirCount)));
+      if (results.length >= maxResults) {
+        logger?.warn(`Exceeded ${maxResults} matching files — truncating walk at ${fullPath}`);
+        return results;
+      }
+      results.push(...(await walkFiles(fullPath, extensions, excludeDirs, excludeFiles, logger, dirCount, maxDirs, maxResults)));
     } else if (entry.isFile()) {
+      if (results.length >= maxResults) {
+        logger?.warn(`Exceeded ${maxResults} matching files — truncating walk`);
+        return results;
+      }
       const ext = path.extname(entry.name).toLowerCase();
       const basename = entry.name.toLowerCase();
       if ((extensions.has(ext) || extensions.has(basename)) && !excludeFiles?.has(basename)) {

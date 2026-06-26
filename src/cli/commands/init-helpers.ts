@@ -287,15 +287,17 @@ export function getRuntimeDir(): string {
 }
 
 /**
- * Copy the pre-extracted plugin package from the global runtime directory
- * into the workspace's `.opencode/node_modules/`, then run a lightweight
- * npm install for `@opencode-ai/plugin`).
+ * Run npm with the given arguments and a timeout.
  *
  * @param args - Command arguments for npm.
  * @param cwd - Working directory for npm.
+ * @param timeoutMs - Max milliseconds before the child process is killed (default 120s).
  */
-async function runNpm(args: string[], cwd: string): Promise<void> {
+async function runNpm(args: string[], cwd: string, timeoutMs = 120_000): Promise<void> {
   await new Promise<void>((resolve, reject) => {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), timeoutMs);
+
     let child: ReturnType<typeof spawn>;
     if (process.platform === "win32") {
       const cmd = process.env.ComSpec ?? "cmd.exe";
@@ -304,16 +306,28 @@ async function runNpm(args: string[], cwd: string): Promise<void> {
         cwd,
         stdio: "ignore",
         env: process.env,
+        signal: ac.signal,
       });
     } else {
       child = spawn("npm", args, {
         cwd,
         stdio: "ignore",
         env: process.env,
+        signal: ac.signal,
       });
     }
-    child.on("error", (err) => reject(err));
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      if ((err as NodeJS.ErrnoException).code === "ABORT_ERR") {
+        reject(new Error(`npm ${args[0]} timed out after ${timeoutMs}ms`));
+      } else {
+        reject(err);
+      }
+    });
+
     child.on("close", (code) => {
+      clearTimeout(timer);
       if (code === 0) resolve();
       else reject(new Error(`npm ${args[0]} exited with code ${code ?? 1}`));
     });
@@ -370,9 +384,44 @@ export async function installPluginFromGlobal(
   ];
   await runNpm(pluginInstallArgs, opencodeDir);
 
-  // Install @opencode-ai/plugin from npm (pure JS, no native deps)
+  // Install @opencode-ai/plugin from npm explicitly — MUST use --no-save and
+  // the explicit package@version form so that npm does NOT prune the
+  // already-installed opencode-rag-plugin (which is not in package.json).
   console.log(`  ${c.created("Installing:")} @opencode-ai/plugin...`);
-  await runNpm(["install", "--no-package-lock", "--silent"], opencodeDir);
+  const opencodePkg = readJsonObject(path.join(opencodeDir, "package.json"));
+  const deps = opencodePkg?.dependencies as Record<string, unknown> | undefined;
+  const pluginSdkVersion = typeof deps?.["@opencode-ai/plugin"] === "string"
+    ? deps["@opencode-ai/plugin"] as string
+    : undefined;
+  if (!pluginSdkVersion) {
+    throw new Error(
+      "@opencode-ai/plugin version not found in workspace package.json. " +
+        "This is a bug — run 'opencode-rag init' with --force to regenerate the config.",
+    );
+  }
+  await runNpm([
+    "install",
+    `@opencode-ai/plugin@${pluginSdkVersion}`,
+    "--no-save",
+    "--no-package-lock",
+    "--silent",
+  ], opencodeDir);
+
+  // Verify the plugin entry and @opencode-ai/plugin are actually on disk
+  const cliEntry = path.join(opencodeDir, "node_modules", packageName, "dist", "cli.js");
+  if (!existsSync(cliEntry)) {
+    throw new Error(
+      `Plugin entry not found at ${cliEntry} after npm install. ` +
+        "Check network connectivity to the npm registry and try again.",
+    );
+  }
+  const pluginPkg = path.join(opencodeDir, "node_modules", "@opencode-ai", "plugin", "package.json");
+  if (!existsSync(pluginPkg)) {
+    throw new Error(
+      "@opencode-ai/plugin not found after npm install. " +
+        "Check that the package.json declares it as a dependency and that the npm registry is reachable.",
+    );
+  }
 }
 
 

@@ -33,6 +33,19 @@ remove_from_config() {
   done
 }
 
+remove_stale_plugin_from_config() {
+  local removed=false
+  for cfg in opencode.jsonc opencode.json; do
+    local cfgpath="$GLOBAL_CONFIG/$cfg"
+    [[ -f "$cfgpath" ]] || continue
+    if node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('$cfgpath','utf8'));if(c.plugin){delete c.plugin;fs.writeFileSync('$cfgpath',JSON.stringify(c,null,2)+'\n');process.exit(0)}process.exit(1)" 2>/dev/null; then
+      info "Removed stale plugin entry from $cfgpath"
+      removed=true
+    fi
+  done
+  $removed
+}
+
 # --- preflight ---
 
 command -v npm >/dev/null 2>&1 || die "npm is required but was not found in PATH"
@@ -87,8 +100,9 @@ mkdir -p "$RUNTIME_DIR"
 if [[ ! -f "$RUNTIME_DIR/package.json" ]]; then
   printf '{"private":true,"type":"module"}\n' > "$RUNTIME_DIR/package.json"
 fi
-(cd "$RUNTIME_DIR" && npm install "$tgz_path" --no-package-lock --ignore-scripts --silent 2>/dev/null || true)
-if [[ $? -ne 0 ]]; then die "npm install from .tgz failed"; fi
+if ! (cd "$RUNTIME_DIR" && npm install "$tgz_path" --no-package-lock --ignore-scripts --silent 2>/dev/null); then
+  die "npm install from .tgz failed"
+fi
 
 plugin_dir="$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
 if [[ -d "$plugin_dir/dist" ]]; then
@@ -121,6 +135,16 @@ if [[ -x "$CLI_BIN_DIR/opencode-rag" ]]; then
   ok "CLI wrapper"
 else
   fail "CLI wrapper"; verified=false
+fi
+
+# --- CLI smoke test ---
+
+step "Verifying CLI works..."
+cli_help=$("$CLI_BIN_DIR/opencode-rag" --help 2>&1)
+if echo "$cli_help" | grep -q "opencode-rag"; then
+  ok "CLI help loads successfully"
+else
+  fail "CLI smoke test"; verified=false
 fi
 
 # --- done ---

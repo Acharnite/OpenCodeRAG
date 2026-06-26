@@ -183,6 +183,16 @@ if (Test-Path -LiteralPath "$pluginDir\dist") { ok "Runtime package (installed)"
 
 if (Test-Path -LiteralPath "$CLI_BIN_DIR\opencode-rag.ps1") { ok "CLI wrapper" } else { fail_msg "CLI wrapper"; $verified = $false }
 
+# --- CLI smoke test ---
+
+step "Verifying CLI works..."
+$cliOutput = & "$CLI_BIN_DIR\opencode-rag.ps1" --help 2>&1
+if ($LASTEXITCODE -eq 0 -and $cliOutput -match "opencode-rag") {
+  ok "CLI help loads successfully"
+} else {
+  fail_msg "CLI smoke test"; $verified = $false
+}
+
 # --- done ---
 
 step ""

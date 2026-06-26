@@ -52,7 +52,8 @@ describe("indexer", () => {
   beforeEach(async () => {
     workspaceDir = await makeTempDir("indexer-workspace");
     storeDir = await makeTempDir("indexer-store");
-    store = new LanceDBStore(storeDir, 4);
+    // Use in-memory store for speed; storePath still needs a real dir for manifest
+    store = new LanceDBStore("memory://", 4);
   });
 
   it("indexes new files and records them in the manifest", async () => {
