@@ -5,7 +5,7 @@
 
 import pc from "picocolors";
 import path from "node:path";
-import { resolveRagContext, type RagContext } from "../core/bootstrap.js";
+import { resolveRagContext, type BootstrapOptions, type RagContext } from "../core/bootstrap.js";
 import { destroyAllPooledConnections } from "../embedder/http.js";
 import type { RagConfig } from "../core/config.js";
 import type { SearchResult } from "../core/interfaces.js";
@@ -108,8 +108,12 @@ export function logCliInfo(
 export async function resolveCliContext(
   opt: CliOptions,
   logFilePath: string,
+  bootstrapOpts?: Partial<BootstrapOptions>,
 ): Promise<RagContext> {
-  const ctx = await resolveRagContext({ configPath: opt.config });
+  const ctx = await resolveRagContext({
+    configPath: opt.config,
+    ...bootstrapOpts,
+  });
   logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.file(ctx.logFilePath)}`);
   logConfigDetails(logFilePath, ctx.config);
   return ctx;

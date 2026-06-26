@@ -725,7 +725,7 @@ describe("MCP server describe_image integration", () => {
     try {
       const raw = await client.callTool({
         name: "describe_image",
-        arguments: { filePath: "images/TestFile.png" },
+        arguments: { filePath: "TestFile.png" },
       });
       const result = raw as ToolResult;
       assert.ok(result.content);
