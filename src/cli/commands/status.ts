@@ -64,7 +64,7 @@ export function registerStatusCommand(program: Command): void {
       try {
         const cwd = process.cwd();
         let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-        const ctx = await resolveCliContext(options, logFilePath, { skipProbe: true, skipKeywordIndex: true });
+        const ctx = await resolveCliContext(options, logFilePath, { skipProbe: true });
         const { config, store, storePath, keywordIndex } = ctx;
         logFilePath = ctx.logFilePath;
 
